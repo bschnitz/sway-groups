@@ -344,7 +344,7 @@ async fn run_group(
             println!("Set active group for \"{}\" to \"{}\"", output, group);
         }
         GroupAction::Active { output } => {
-            let active = group_service.get_active_group(&output).await?;
+            let active = group_service.get_active_group(&output).await.unwrap_or_else(|_| "0".to_string());
             println!("{}", active);
         }
         GroupAction::Next { output, wrap } => {
@@ -436,9 +436,11 @@ async fn run_workspace(
                 None => {
                     let output_name = output.as_deref()
                         .map(|o| o.to_string())
-                        .or_else(|| ipc_client.get_primary_output().ok())
-                        .ok_or_else(|| anyhow::anyhow!("Cannot determine output for default group"))?;
-                    group_service.get_active_group(&output_name).await?
+                        .or_else(|| ipc_client.get_primary_output().ok());
+                    match output_name {
+                        Some(ref out) => group_service.get_active_group(out).await.unwrap_or_else(|_| "0".to_string()),
+                        None => "0".to_string(),
+                    }
                 }
             };
             workspace_service.add_to_group(&workspace, &target_group).await?;
@@ -446,11 +448,14 @@ async fn run_workspace(
             println!("Added workspace \"{}\" to group \"{}\"", workspace, target_group);
         }
         WorkspaceAction::Remove { workspace, group } => {
-            let source_group = match group {
-                Some(ref g) => g.clone(),
+            let source_group = match &group {
+                Some(g) => g.clone(),
                 None => {
-                    let output_name = ipc_client.get_primary_output()?;
-                    group_service.get_active_group(&output_name).await?
+                    let output_name = ipc_client.get_primary_output().ok();
+                    match output_name {
+                        Some(ref out) => group_service.get_active_group(out).await.unwrap_or_else(|_| "0".to_string()),
+                        None => "0".to_string(),
+                    }
                 }
             };
             workspace_service.remove_from_group(&workspace, &source_group).await?;
