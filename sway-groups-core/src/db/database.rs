@@ -22,15 +22,24 @@ impl DatabaseManager {
 
         let conn = Database::connect(options).await?;
 
-        // Initialize schema using SeaORM 2.0 approach
         let backend = conn.get_database_backend();
         let schema = Schema::new(backend);
 
-        // Create tables using create_table_from_entity
-        conn.execute(&schema.create_table_from_entity(GroupEntity)).await?;
-        conn.execute(&schema.create_table_from_entity(WorkspaceEntity)).await?;
-        conn.execute(&schema.create_table_from_entity(WorkspaceGroupEntity)).await?;
-        conn.execute(&schema.create_table_from_entity(OutputEntity)).await?;
+        let mut stmt_group = schema.create_table_from_entity(GroupEntity);
+        stmt_group.if_not_exists();
+        conn.execute(&stmt_group).await?;
+
+        let mut stmt_workspace = schema.create_table_from_entity(WorkspaceEntity);
+        stmt_workspace.if_not_exists();
+        conn.execute(&stmt_workspace).await?;
+
+        let mut stmt_wg = schema.create_table_from_entity(WorkspaceGroupEntity);
+        stmt_wg.if_not_exists();
+        conn.execute(&stmt_wg).await?;
+
+        let mut stmt_output = schema.create_table_from_entity(OutputEntity);
+        stmt_output.if_not_exists();
+        conn.execute(&stmt_output).await?;
 
         Ok(Self { conn })
     }

@@ -3,4 +3,5 @@
 pub mod client;
 pub mod types;
 
-pub use client::SwayIpcClient;
+pub use client::{EventStream, SwayIpcClient};
+pub use types::SwayEventType;

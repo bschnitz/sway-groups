@@ -57,15 +57,9 @@ pub struct SwayWorkspace {
 pub struct SwayOutput {
     pub id: i64,
     pub name: String,
-    pub active: bool,
-    pub visible: bool,
-    pub focused: bool,
+    #[serde(default)]
     pub primary: bool,
-    pub layout: String,
-    #[serde(rename = "type")]
-    pub node_type: String,
     pub rect: SwayRect,
-    pub output_mode: Option<SwayOutputMode>,
 }
 
 /// Rectangle structure.
@@ -77,14 +71,6 @@ pub struct SwayRect {
     pub height: i64,
 }
 
-/// Output mode information.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SwayOutputMode {
-    pub width: i64,
-    pub height: i64,
-    pub refresh: i64,
-}
-
 /// Command result from sway.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandResult {
@@ -92,7 +78,7 @@ pub struct CommandResult {
     pub error: Option<String>,
 }
 
-/// IPC message header.
+/// IPC message header (14 bytes: 6 magic + 4 payload_size + 4 message_type).
 #[derive(Debug, Clone)]
 pub struct IpcHeader {
     pub magic: [u8; 6],
@@ -102,12 +88,12 @@ pub struct IpcHeader {
 
 impl IpcHeader {
     /// Parse header from bytes.
-    pub fn from_bytes(bytes: &[u8; 12]) -> Self {
+    pub fn from_bytes(bytes: &[u8; 14]) -> Self {
         let mut magic = [0u8; 6];
         magic.copy_from_slice(&bytes[0..6]);
 
-        let message_type = u32::from_ne_bytes(bytes[6..10].try_into().unwrap());
-        let payload_size = u32::from_ne_bytes(bytes[10..12].try_into().unwrap());
+        let payload_size = u32::from_ne_bytes(bytes[6..10].try_into().unwrap());
+        let message_type = u32::from_ne_bytes(bytes[10..14].try_into().unwrap());
 
         Self {
             magic,
@@ -126,11 +112,11 @@ impl IpcHeader {
     }
 
     /// Serialize header to bytes.
-    pub fn to_bytes(&self) -> [u8; 12] {
-        let mut bytes = [0u8; 12];
+    pub fn to_bytes(&self) -> [u8; 14] {
+        let mut bytes = [0u8; 14];
         bytes[0..6].copy_from_slice(&self.magic);
-        bytes[6..10].copy_from_slice(&u32::to_ne_bytes(self.message_type));
-        bytes[10..12].copy_from_slice(&u32::to_ne_bytes(self.payload_size));
+        bytes[6..10].copy_from_slice(&u32::to_ne_bytes(self.payload_size));
+        bytes[10..14].copy_from_slice(&u32::to_ne_bytes(self.message_type));
         bytes
     }
 }

@@ -1,0 +1,14 @@
+[Unit]
+Description=swayg daemon for automatic workspace suffix synchronization
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.cargo/bin/swaygd
+Restart=on-failure
+RestartSec=5
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=graphical-session.target

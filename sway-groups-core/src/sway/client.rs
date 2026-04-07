@@ -1,7 +1,7 @@
 //! Sway IPC client implementation.
 
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 
 use super::types::*;
@@ -11,6 +11,31 @@ use crate::error::{Error, Result};
 #[derive(Clone)]
 pub struct SwayIpcClient {
     socket_path: String,
+}
+
+/// Stream for receiving sway IPC events after subscribing.
+pub struct EventStream {
+    stream: UnixStream,
+}
+
+impl EventStream {
+    /// Read the next event from the stream.
+    /// Returns the event type and payload.
+    pub fn read_event(&mut self) -> Result<(u32, Vec<u8>)> {
+        let mut header = [0u8; 14];
+        self.stream.read_exact(&mut header)?;
+
+        let ipc_header = IpcHeader::from_bytes(&header);
+
+        if &ipc_header.magic != b"i3-ipc" {
+            return Err(Error::SwayIpc("Invalid IPC magic".to_string()));
+        }
+
+        let mut payload = vec![0u8; ipc_header.payload_size as usize];
+        self.stream.read_exact(&mut payload)?;
+
+        Ok((ipc_header.message_type, payload))
+    }
 }
 
 impl SwayIpcClient {
@@ -31,9 +56,30 @@ impl SwayIpcClient {
     }
 
     /// Connect to sway and return a stream.
-    fn connect(&self) -> Result<TcpStream> {
-        TcpStream::connect(&self.socket_path)
+    fn connect(&self) -> Result<UnixStream> {
+        UnixStream::connect(&self.socket_path)
             .map_err(|_| Error::SwayNotRunning)
+    }
+
+    /// Subscribe to sway events. Returns an EventStream that yields events.
+    /// Events: "workspace", "output", "mode", "window", "barconfig_update", "binding", "shutdown", "tick"
+    pub fn subscribe(&self, events: &[&str]) -> Result<EventStream> {
+        let mut stream = self.connect()?;
+
+        let payload = serde_json::to_string(events)?;
+        let header = IpcHeader::new(SwayMsgType::Subscribe, payload.len() as u32);
+
+        stream.write_all(&header.to_bytes())?;
+        stream.write_all(payload.as_bytes())?;
+        stream.flush()?;
+
+        let response = Self::read_message(&mut stream)?;
+        let result: serde_json::Value = serde_json::from_slice(&response)?;
+        if result.get("success").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(Error::SwayIpc("Failed to subscribe to sway events".to_string()));
+        }
+
+        Ok(EventStream { stream })
     }
 
     /// Send a command to sway and get the result.
@@ -47,7 +93,6 @@ impl SwayIpcClient {
         stream.write_all(payload)?;
         stream.flush()?;
 
-        // Read response
         let response = Self::read_message(&mut stream)?;
 
         let results: Vec<CommandResult> = serde_json::from_slice(&response)?;
@@ -118,13 +163,12 @@ impl SwayIpcClient {
     }
 
     /// Read a message from the stream.
-    fn read_message(stream: &mut TcpStream) -> Result<Vec<u8>> {
-        let mut header = [0u8; 12];
+    fn read_message(stream: &mut UnixStream) -> Result<Vec<u8>> {
+        let mut header = [0u8; 14];
         stream.read_exact(&mut header)?;
 
         let ipc_header = IpcHeader::from_bytes(&header);
 
-        // i3-ipc magic is 6 bytes: "i3-ipc"
         if &ipc_header.magic != b"i3-ipc" {
             return Err(Error::SwayIpc("Invalid IPC magic".to_string()));
         }
