@@ -183,6 +183,15 @@ enum WorkspaceAction {
         #[arg(short, long)]
         output: Option<String>,
     },
+    /// Move workspace to groups (comma-separated), removing from all other groups.
+    Move {
+        /// Workspace name or number.
+        workspace: String,
+
+        /// Target groups (comma-separated).
+        #[arg(short, long)]
+        groups: String,
+    },
     /// Remove workspace from group.
     Remove {
         /// Workspace name.
@@ -446,6 +455,15 @@ async fn run_workspace(
             workspace_service.add_to_group(&workspace, &target_group).await?;
             suffix_service.sync_all_suffixes().await?;
             println!("Added workspace \"{}\" to group \"{}\"", workspace, target_group);
+        }
+        WorkspaceAction::Move { workspace, groups } => {
+            let target_groups: Vec<&str> = groups.split(',').map(|g| g.trim()).filter(|g| !g.is_empty()).collect();
+            if target_groups.is_empty() {
+                anyhow::bail!("No groups specified for move. Use --groups <group1,group2,...>");
+            }
+            workspace_service.move_to_groups(&workspace, &target_groups).await?;
+            suffix_service.sync_all_suffixes().await?;
+            println!("Moved workspace \"{}\" to group(s): {}", workspace, target_groups.join(", "));
         }
         WorkspaceAction::Remove { workspace, group } => {
             let source_group = match &group {

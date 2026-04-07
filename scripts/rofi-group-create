@@ -1,0 +1,16 @@
+#!/bin/sh
+# Create a new group via rofi text input.
+
+name=$(echo "" | rofi -dmenu -p "New group name:")
+if [ -z "$name" ]; then
+    notify-send "swayg" "Group creation cancelled."
+    exit 0
+fi
+
+result=$(swayg group create "$name" 2>&1)
+if echo "$result" | grep -qi 'already exists'; then
+    notify-send "swayg" "Group '$name' already exists."
+    exit 1
+fi
+
+notify-send "swayg" "Created group '$name'."

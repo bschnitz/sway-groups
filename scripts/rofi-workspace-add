@@ -1,0 +1,29 @@
+#!/bin/sh
+# Add the current workspace to an additional group (chosen via rofi).
+# Shows only groups the workspace is not yet in.
+
+current_ws=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
+import json, sys
+for w in json.load(sys.stdin):
+    if w['focused']:
+        n = w['name']
+        for s in ('_class_hidden', '_class_global'):
+            n = n.removesuffix(s)
+        print(n)
+        break
+")
+
+if [ -z "$current_ws" ]; then
+    notify-send "swayg" "Cannot determine current workspace."
+    exit 1
+fi
+
+current_groups=$(swayg workspace groups "$current_ws" | sed 's/.*: //; s/"//g; s/, */\n/g' | sort)
+
+group=$(swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | grep -vxFf <(echo "$current_groups") | rofi -dmenu -p "Add '$current_ws' to group:")
+if [ -z "$group" ]; then
+    notify-send "swayg" "Add to group cancelled."
+    exit 0
+fi
+
+swayg workspace add "$current_ws" --group "$group"

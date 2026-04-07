@@ -1,0 +1,25 @@
+#!/bin/sh
+# Switch active group on the current output via rofi.
+
+output=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
+import json, sys
+for w in json.load(sys.stdin):
+    if w['focused']:
+        print(w['output'])
+        break
+")
+
+if [ -z "$output" ]; then
+    notify-send "swayg" "Cannot determine current output."
+    exit 1
+fi
+
+active=$(swayg group active "$output")
+
+group=$(swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | rofi -dmenu -p "Select group:" -a "$active")
+if [ -z "$group" ]; then
+    notify-send "swayg" "Group selection cancelled."
+    exit 0
+fi
+
+swayg group select "$output" "$group"

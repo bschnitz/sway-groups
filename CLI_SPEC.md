@@ -195,6 +195,17 @@ $ swayg workspace add 4 --group dev
 Added workspace "4" to group "dev"
 ```
 
+#### `swayg workspace move <WORKSPACE> -g|--groups <GROUPS>`
+Move a workspace to one or more groups (comma-separated), removing it from all other groups. The groups must exist.
+
+```sh
+$ swayg workspace move 4 --groups dev
+Moved workspace "4" to group(s): dev
+
+$ swayg workspace move 4 --groups dev,work
+Moved workspace "4" to group(s): dev, work
+```
+
 #### `swayg workspace remove <WORKSPACE> [-g|--group <GROUP>]`
 Remove a workspace from a group. Defaults to the active group.
 

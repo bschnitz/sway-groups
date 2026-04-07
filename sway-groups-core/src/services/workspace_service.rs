@@ -200,6 +200,78 @@ impl WorkspaceService {
         Ok(())
     }
 
+    /// Move a workspace to specific groups, removing it from all others.
+    pub async fn move_to_groups(
+        &self,
+        workspace_name: &str,
+        group_names: &[&str],
+    ) -> Result<()> {
+        let workspace = match WorkspaceEntity::find_by_name(workspace_name)
+            .one(self.db.conn())
+            .await?
+        {
+            Some(ws) => ws,
+            None => {
+                let sway_workspaces = self.ipc_client.get_workspaces()?;
+                let sway_ws = sway_workspaces
+                    .iter()
+                    .find(|w| w.name == workspace_name || w.num.map(|n| n.to_string()) == Some(workspace_name.to_string()));
+
+                match sway_ws {
+                    Some(ws) => {
+                        let number = ws.num.map(|n| n as i32);
+                        let now = chrono::Utc::now().naive_utc();
+
+                        let active = workspace::ActiveModel {
+                            name: Set(ws.name.clone()),
+                            number: Set(number),
+                            output: Set(Some(ws.output.clone())),
+                            is_global: Set(false),
+                            created_at: Set(Some(now)),
+                            updated_at: Set(Some(now)),
+                            ..Default::default()
+                        };
+                        active.insert(self.db.conn()).await?
+                    }
+                    None => {
+                        return Err(Error::WorkspaceNotFound(workspace_name.to_string()));
+                    }
+                }
+            }
+        };
+
+        let memberships = WorkspaceGroupEntity::find_by_workspace(workspace.id)
+            .all(self.db.conn())
+            .await?;
+
+        for m in memberships {
+            m.delete(self.db.conn()).await?;
+        }
+
+        for group_name in group_names {
+            let group = GroupEntity::find_by_name(*group_name)
+                .one(self.db.conn())
+                .await?
+                .ok_or_else(|| Error::GroupNotFound(group_name.to_string()))?;
+
+            let now = chrono::Utc::now().naive_utc();
+            let membership = workspace_group::ActiveModel {
+                workspace_id: Set(workspace.id),
+                group_id: Set(group.id),
+                created_at: Set(Some(now)),
+                ..Default::default()
+            };
+            membership.insert(self.db.conn()).await?;
+        }
+
+        info!(
+            "Moved workspace '{}' to groups: {}",
+            workspace_name,
+            group_names.join(", ")
+        );
+        Ok(())
+    }
+
     /// Get groups for a workspace.
     pub async fn get_groups_for_workspace(
         &self,

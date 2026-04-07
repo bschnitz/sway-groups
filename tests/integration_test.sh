@@ -89,7 +89,7 @@ if [ -z "$WS_A" ] || [ -z "$WS_B" ]; then
 fi
 
 # Test group names (prefixed to avoid collisions)
-T_GRP=("T_empty" "T_one" "T_two" "T_nav" "T_a" "T_b" "T_c" "T_dup")
+T_GRP=("T_empty" "T_one" "T_two" "T_nav" "T_a" "T_b" "T_c" "T_dup" "T_prune_me" "T_keep_me" "T_move_x" "T_move_y" "T_renamed")
 
 cleanup() {
     echo ""
@@ -386,8 +386,74 @@ echo "$OUT" | grep -q '"0"' && pass "workspace list shows group filter" || fail 
 
 echo ""
 
-# ============ 13. Daemon ============
-echo -e "${BOLD}--- 13. Daemon ---${NC}"
+# ============ 13. Group Active / List by Output ============
+echo -e "${BOLD}--- 13. Group Active / List by Output ---${NC}"
+
+OUT=$(sg group active "$ORIG_OUT" 2>&1)
+echo "$OUT" | grep -q '0' && pass "group active returns current group" || fail "group active" "$OUT"
+
+sg group create T_move_active_test >/dev/null
+sg group select "$ORIG_OUT" T_move_active_test >/dev/null
+OUT=$(sg group active "$ORIG_OUT" 2>&1)
+echo "$OUT" | grep -q 'T_move_active_test' && pass "group active reflects group switch" || fail "group active after switch" "$OUT"
+sg group select "$ORIG_OUT" 0 >/dev/null
+sg group delete T_move_active_test --force >/dev/null
+
+OUT=$(sg group list --output "$ORIG_OUT" 2>&1)
+echo "$OUT" | grep -q "Group" && pass "group list --output returns groups" || fail "group list --output" "$OUT"
+
+echo ""
+
+# ============ 14. Workspace Move ============
+echo -e "${BOLD}--- 14. Workspace Move ---${NC}"
+
+sg group create T_move_x >/dev/null
+sg group create T_move_y >/dev/null
+sg workspace add "$WS_A" -g 0 >/dev/null
+
+OUT=$(sg workspace move "$WS_A" --groups T_move_x 2>&1)
+echo "$OUT" | grep -q "Moved workspace \"$WS_A\" to group(s): T_move_x" && pass "workspace move to single group" || fail "workspace move single" "$OUT"
+
+OUT=$(sg workspace groups "$WS_A" 2>&1)
+echo "$OUT" | grep -q 'T_move_x' && pass "move removed from old group (0), now only in T_move_x" || fail "move removed old" "$OUT"
+! echo "$OUT" | grep -q '"0"' && pass "move no longer in group 0" || fail "move still in 0" "$OUT"
+
+OUT=$(sg workspace move "$WS_A" --groups T_move_x,T_move_y 2>&1)
+echo "$OUT" | grep -q "Moved workspace" && pass "workspace move to multiple groups" || fail "workspace move multiple" "$OUT"
+
+OUT=$(sg workspace groups "$WS_A" 2>&1)
+echo "$OUT" | grep -q 'T_move_x' && echo "$OUT" | grep -q 'T_move_y' && pass "workspace is in both target groups after move" || fail "move both groups" "$OUT"
+
+OUT=$(sg workspace move __nonexistent__ --groups T_move_x 2>&1)
+echo "$OUT" | grep -qi 'not found' && pass "workspace move rejects non-existent workspace" || fail "move nonexistent ws" "$OUT"
+
+OUT=$(sg workspace move "$WS_A" --groups __no_such_group__ 2>&1)
+echo "$OUT" | grep -qi 'not found' && pass "workspace move rejects non-existent group" || fail "move nonexistent group" "$OUT"
+
+# Move back to 0 for cleanup
+sg workspace move "$WS_A" --groups 0 >/dev/null
+sg group delete T_move_x --force >/dev/null
+sg group delete T_move_y --force >/dev/null
+
+echo ""
+
+# ============ 15. Nav next-on-output / prev-on-output ============
+echo -e "${BOLD}--- 15. Nav next-on-output / prev-on-output ---${NC}"
+
+sg group select "$ORIG_OUT" 0 >/dev/null
+sleep 0.3
+
+FW_ORIG=$(focused_ws)
+OUT=$(sg nav next-on-output -w 2>&1)
+echo "$OUT" | grep -q 'Navigated' && pass "nav next-on-output navigates" || fail "nav next-on-output" "$OUT"
+
+OUT=$(sg nav prev-on-output -w 2>&1)
+echo "$OUT" | grep -q 'Navigated' && pass "nav prev-on-output navigates" || fail "nav prev-on-output" "$OUT"
+
+echo ""
+
+# ============ 16. Daemon ====
+echo -e "${BOLD}--- 16. Daemon ---${NC}"
 
 sg daemon stop >/dev/null 2>&1 || true
 sleep 1

@@ -1,0 +1,22 @@
+#!/bin/sh
+# Delete a group via rofi. Asks for confirmation. The default group "0" is excluded.
+
+group=$(swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | grep -v '^0$' | rofi -dmenu -p "Delete group:")
+if [ -z "$group" ]; then
+    notify-send "swayg" "Group deletion cancelled."
+    exit 0
+fi
+
+confirm=$(echo -e "Yes\nNo" | rofi -dmenu -p "Delete '$group' and remove all workspace assignments?")
+if [ "$confirm" != "Yes" ]; then
+    notify-send "swayg" "Group deletion cancelled."
+    exit 0
+fi
+
+result=$(swayg group delete "$group" --force 2>&1)
+if echo "$result" | grep -qi "deleted"; then
+    notify-send "swayg" "Deleted group '$group'."
+else
+    notify-send "swayg" "Error: $result"
+    exit 1
+fi

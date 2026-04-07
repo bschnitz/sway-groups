@@ -218,6 +218,14 @@ swayg workspace add 4 --group dev
 
 A workspace can belong to multiple groups simultaneously.
 
+#### `swayg workspace move <WORKSPACE> -g|--groups <GROUPS>`
+Move a workspace to specific groups (comma-separated), removing it from all other groups.
+
+```sh
+swayg workspace move 4 --groups dev
+swayg workspace move 4 --groups dev,work
+```
+
 #### `swayg workspace remove <WORKSPACE> [-g|--group <GROUP>]`
 Remove a workspace from a group. If `--group` is omitted, the active group is used.
 

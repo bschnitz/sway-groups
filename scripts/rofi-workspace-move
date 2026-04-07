@@ -1,0 +1,27 @@
+#!/bin/sh
+# Move the current workspace to a group (chosen via rofi).
+# The workspace is removed from all other groups.
+
+current_ws=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
+import json, sys
+for w in json.load(sys.stdin):
+    if w['focused']:
+        n = w['name']
+        for s in ('_class_hidden', '_class_global'):
+            n = n.removesuffix(s)
+        print(n)
+        break
+")
+
+if [ -z "$current_ws" ]; then
+    notify-send "swayg" "Cannot determine current workspace."
+    exit 1
+fi
+
+group=$(swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | rofi -dmenu -p "Move '$current_ws' to group:")
+if [ -z "$group" ]; then
+    notify-send "swayg" "Move cancelled."
+    exit 0
+fi
+
+swayg workspace move "$current_ws" --groups "$group"
