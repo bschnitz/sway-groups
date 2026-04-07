@@ -217,14 +217,18 @@ impl NavigationService {
     }
 
     /// Navigate to a workspace via sway IPC and record focus.
+    /// If workspace_name is a base name, resolves it to the actual sway name (with suffix).
     async fn navigate_to_workspace(&self, workspace_name: &str) -> Result<()> {
-        let command = format!("workspace \"{}\"", workspace_name);
+        let sway_name = self.resolve_sway_workspace_name(workspace_name)?;
+
+        let command = format!("workspace \"{}\"", sway_name);
         let results = self.ipc_client.run_command(&command)?;
 
         if let Some(result) = results.first() {
             if result.success {
-                self.record_focus(workspace_name).await?;
-                info!("Navigated to workspace '{}'", workspace_name);
+                let base = self.suffix_service.get_base_name(&sway_name);
+                self.record_focus(&base).await?;
+                info!("Navigated to workspace '{}'", sway_name);
                 Ok(())
             } else {
                 Err(Error::SwayIpc(
@@ -234,6 +238,30 @@ impl NavigationService {
         } else {
             Err(Error::SwayIpc("Empty response from sway".to_string()))
         }
+    }
+
+    /// Resolve a workspace name (possibly base) to the actual sway workspace name.
+    /// If the name matches an existing sway workspace, returns that name.
+    /// Otherwise checks if a sway workspace has this as its base name (e.g. "3" -> "3_class_global").
+    fn resolve_sway_workspace_name(&self, workspace_name: &str) -> Result<String> {
+        let sway_workspaces = self.ipc_client.get_workspaces()?;
+
+        // Exact match first
+        for ws in &sway_workspaces {
+            if ws.name == workspace_name {
+                return Ok(ws.name.clone());
+            }
+        }
+
+        // Check if any sway workspace has this as its base name
+        for ws in &sway_workspaces {
+            if self.suffix_service.get_base_name(&ws.name) == workspace_name {
+                return Ok(ws.name.clone());
+            }
+        }
+
+        // No match found — return as-is (sway will create it)
+        Ok(workspace_name.to_string())
     }
 }
 

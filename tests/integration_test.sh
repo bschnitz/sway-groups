@@ -617,13 +617,17 @@ echo -e "${BOLD}--- 19. Daemon Syncs New Workspaces ---${NC}"
 systemctl --user restart swaygd
 sleep 2
 
-# Create a new workspace via sway
-swaymsg workspace "T_new_ws" >/dev/null 2>&1
+# Create a new workspace via sway (open a kitty so sway won't garbage-collect it)
+T_NEW_WS="__test_daemon_ws__"
+kitty --class "__test_${T_NEW_WS}" -e sleep 300 >/dev/null 2>&1 &
+TEST_KITTY_PIDS+=($!)
+sleep 0.3
+swaymsg workspace "$T_NEW_WS" >/dev/null 2>&1
 sleep 1
 
 # Verify the daemon synced the new workspace to the DB (via event, not manual sync)
 OUT=$(sg workspace list --plain 2>&1)
-echo "$OUT" | grep -q 'T_new_ws' && pass "daemon syncs new workspace to DB" || fail "daemon syncs new workspace" "DB: $OUT"
+echo "$OUT" | grep -q "$T_NEW_WS" && pass "daemon syncs new workspace to DB" || fail "daemon syncs new workspace" "DB: $OUT"
 
 # Verify nav next/prev can navigate to the new workspace
 sg nav go "$WS_A" >/dev/null
@@ -636,6 +640,121 @@ OUT=$(sg nav prev -o "$ORIG_OUT" 2>&1)
 echo "$OUT" | grep -q 'Navigated' && pass "nav prev navigates back from new workspace" || fail "nav prev from new workspace" "$OUT"
 
 # Return to user's workspace
+swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
+sleep 0.3
+
+echo ""
+
+# ============ 20. Global Workspace Navigation ============
+echo -e "${BOLD}--- 20. Global Workspace Navigation ---${NC}"
+
+sg group select "$ORIG_OUT" 0 >/dev/null
+sleep 0.3
+
+# Mark WS_A as global
+sg workspace global "$WS_A" >/dev/null
+OUT=$(sg status 2>&1)
+echo "$OUT" | grep -q "Global" && echo "$OUT" | grep -q "$WS_A" && pass "WS_A is now global" || fail "WS_A is global" "$OUT"
+
+# Sync to apply _class_global suffix
+sg sync --all >/dev/null
+sleep 0.3
+
+# Verify the suffix is applied in sway
+WS_A_SWAY=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
+import json, sys
+for w in json.load(sys.stdin):
+    if w['name'].startswith('$WS_A'):
+        print(w['name'])
+        break
+")
+echo "$WS_A_SWAY" | grep -q '_class_global' && pass "sway has _class_global suffix on $WS_A" || fail "_class_global suffix" "got: $WS_A_SWAY"
+
+# Navigate to WS_A (which has _class_global suffix) — must not create duplicate
+sg nav go "$WS_A" >/dev/null
+sleep 0.3
+
+# Verify only one workspace starting with WS_A exists
+WS_A_COUNT=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
+import json, sys
+count = 0
+for w in json.load(sys.stdin):
+    base = w['name']
+    for s in ('_class_hidden', '_class_global'):
+        base = base.removesuffix(s)
+    if base == '$WS_A':
+        count += 1
+print(count)
+")
+[ "$WS_A_COUNT" = "1" ] && pass "nav go to global workspace does not create duplicate" || fail "no duplicate global" "count: $WS_A_COUNT"
+
+# Test nav next goes to next workspace and nav prev comes back to global
+swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
+sleep 0.3
+
+OUT=$(sg nav next -o "$ORIG_OUT" 2>&1)
+echo "$OUT" | grep -q 'Navigated' && pass "nav next from global navigates" || fail "nav next from global" "$OUT"
+
+# Check no duplicate was created
+WS_A_COUNT2=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
+import json, sys
+count = 0
+for w in json.load(sys.stdin):
+    base = w['name']
+    for s in ('_class_hidden', '_class_global'):
+        base = base.removesuffix(s)
+    if base == '$WS_A':
+        count += 1
+print(count)
+")
+[ "$WS_A_COUNT2" = "1" ] && pass "no duplicate after nav next away from global" || fail "no dup after next" "count: $WS_A_COUNT2"
+
+# Navigate back toward WS_A
+OUT=$(sg nav go "$WS_A" 2>&1)
+echo "$OUT" | grep -q 'Navigated' && pass "nav go back to global workspace succeeds" || fail "nav go back to global" "$OUT"
+
+# Verify still only one
+WS_A_COUNT3=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
+import json, sys
+count = 0
+for w in json.load(sys.stdin):
+    base = w['name']
+    for s in ('_class_hidden', '_class_global'):
+        base = base.removesuffix(s)
+    if base == '$WS_A':
+        count += 1
+print(count)
+")
+[ "$WS_A_COUNT3" = "1" ] && pass "no duplicate after returning to global" || fail "no dup after return" "count: $WS_A_COUNT3"
+
+# Test nav prev/next through global workspace
+# First navigate to a workspace that is NOT the first in the sorted list
+# so nav prev will have a target
+sg nav go "$WS_B" >/dev/null
+sleep 0.3
+
+OUT=$(sg nav prev -o "$ORIG_OUT" 2>&1)
+echo "$OUT" | grep -q 'Navigated' && pass "nav prev toward global navigates" || fail "nav prev toward global" "$OUT"
+
+# Verify no duplicate
+WS_A_COUNT4=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
+import json, sys
+count = 0
+for w in json.load(sys.stdin):
+    base = w['name']
+    for s in ('_class_hidden', '_class_global'):
+        base = base.removesuffix(s)
+    if base == '$WS_A':
+        count += 1
+print(count)
+")
+[ "$WS_A_COUNT4" = "1" ] && pass "no duplicate after nav prev to global" || fail "no dup after prev" "count: $WS_A_COUNT4"
+
+# Cleanup: unglobal
+sg workspace unglobal "$WS_A" >/dev/null
+sg sync --all >/dev/null
+sleep 0.3
+
 swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
 sleep 0.3
 
