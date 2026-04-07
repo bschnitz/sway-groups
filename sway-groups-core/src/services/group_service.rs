@@ -1,9 +1,10 @@
 //! Group management service.
 
-use crate::db::entities::{group, output, GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
+use crate::db::entities::{group, group_state, output, GroupEntity, GroupStateEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
 use crate::services::suffix_service::SuffixService;
+use crate::sway::SwayIpcClient;
 use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, ModelTrait, Set};
 use tracing::{info, warn};
 
@@ -20,12 +21,13 @@ pub struct GroupInfo {
 pub struct GroupService {
     db: DatabaseManager,
     suffix_service: SuffixService,
+    ipc_client: SwayIpcClient,
 }
 
 impl GroupService {
     /// Create a new group service.
-    pub fn new(db: DatabaseManager, suffix_service: SuffixService) -> Self {
-        Self { db, suffix_service }
+    pub fn new(db: DatabaseManager, suffix_service: SuffixService, ipc_client: SwayIpcClient) -> Self {
+        Self { db, suffix_service, ipc_client }
     }
 
     /// List all groups with their workspaces.
@@ -53,8 +55,8 @@ impl GroupService {
                     // Filter by output if specified
                     if let Some(output) = output_filter
                         && ws.output.as_ref() != Some(&output.to_string()) {
-                            continue;
-                        }
+                        continue;
+                    }
                     workspace_names.push(ws.name);
                 }
             }
@@ -202,7 +204,96 @@ impl GroupService {
         Ok(output.active_group)
     }
 
-    /// Set the active group for an output.
+    /// Save the currently focused workspace for a group on an output.
+    async fn save_current_workspace(&self, output: &str, group_name: &str) -> Result<()> {
+        let current_ws = match self.ipc_client.get_focused_workspace() {
+            Ok(ws) => ws,
+            Err(_) => return Ok(()),
+        };
+
+        let base_name = self.suffix_service.get_base_name(&current_ws.name);
+        let now = chrono::Utc::now().naive_utc();
+
+        let existing = GroupStateEntity::find_by_output_and_group(output, group_name)
+            .one(self.db.conn())
+            .await?;
+
+        if let Some(state) = existing {
+            let mut active = state.into_active_model();
+            active.last_focused_workspace = Set(Some(base_name));
+            active.last_visited = Set(Some(now));
+            active.update(self.db.conn()).await?;
+        } else {
+            let active = group_state::ActiveModel {
+                output: Set(output.to_string()),
+                group_name: Set(group_name.to_string()),
+                last_focused_workspace: Set(Some(base_name)),
+                last_visited: Set(Some(now)),
+                ..Default::default()
+            };
+            active.insert(self.db.conn()).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Get the last focused workspace for a group on an output.
+    async fn get_last_focused_workspace(&self, output: &str, group_name: &str) -> Result<Option<String>> {
+        let state = GroupStateEntity::find_by_output_and_group(output, group_name)
+            .one(self.db.conn())
+            .await?;
+
+        Ok(state.and_then(|s| s.last_focused_workspace))
+    }
+
+    /// Switch focus to a workspace via sway IPC.
+    fn focus_workspace(&self, workspace_name: &str) -> Result<()> {
+        let command = format!("workspace \"{}\"", workspace_name);
+        let results = self.ipc_client.run_command(&command)?;
+
+        if let Some(result) = results.first() {
+            if result.success {
+                info!("Focused workspace '{}'", workspace_name);
+                return Ok(());
+            } else {
+                return Err(Error::SwayIpc(
+                    result.error.clone().unwrap_or_else(|| "Unknown error".to_string()),
+                ));
+            }
+        }
+        Err(Error::SwayIpc("Empty response from sway".to_string()))
+    }
+
+    /// Get workspaces belonging to a group on a specific output, sorted alphabetically.
+    async fn get_workspaces_for_group_on_output(&self, group_name: &str, output: &str) -> Result<Vec<String>> {
+        let group = match GroupEntity::find_by_name(group_name)
+            .one(self.db.conn())
+            .await?
+        {
+            Some(g) => g,
+            None => return Ok(Vec::new()),
+        };
+
+        let memberships = WorkspaceGroupEntity::find_by_group(group.id)
+            .all(self.db.conn())
+            .await?;
+
+        let mut ws_names = Vec::new();
+        for membership in memberships {
+            if let Some(ws) = WorkspaceEntity::find_by_id(membership.workspace_id)
+                .one(self.db.conn())
+                .await?
+                && let Some(ref ws_output) = ws.output
+                    && ws_output == output {
+                        ws_names.push(ws.name);
+                    }
+        }
+
+        ws_names.sort();
+        Ok(ws_names)
+    }
+
+    /// Set the active group for an output and switch workspace focus.
     pub async fn set_active_group(&self, output: &str, group: &str) -> Result<()> {
         // Verify group exists
         if GroupEntity::find_by_name(group)
@@ -211,6 +302,12 @@ impl GroupService {
             .is_none()
         {
             return Err(Error::GroupNotFound(group.to_string()));
+        }
+
+        // Save currently focused workspace for the old group
+        let old_group = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
+        if old_group != group {
+            self.save_current_workspace(output, &old_group).await?;
         }
 
         // Get or create output
@@ -236,10 +333,38 @@ impl GroupService {
             active.insert(self.db.conn()).await?;
         }
 
-        info!("Set active group for {} to '{}'", output, group);
-
         // Sync suffixes for all outputs
         self.suffix_service.sync_all_suffixes().await?;
+
+        // Handle workspace focus for the new group
+        let group_workspaces = self.get_workspaces_for_group_on_output(group, output).await?;
+
+        if group_workspaces.is_empty() {
+            // Case 1: Group has no workspaces -> focus workspace "0"
+            self.focus_workspace("0")?;
+        } else {
+            // Check if this group was previously visited on this output
+            let last_focused = self.get_last_focused_workspace(output, group).await?;
+
+            if let Some(ref ws_name) = last_focused {
+                // Case 3: Group was visited before -> restore last focused workspace
+                // Verify it still exists in the group
+                if group_workspaces.iter().any(|w| w == ws_name) {
+                    self.focus_workspace(ws_name)?;
+                } else {
+                    // Workspace no longer in group -> fallback to first
+                    self.focus_workspace(&group_workspaces[0])?;
+                }
+            } else {
+                // Case 2: First visit -> focus first workspace alphabetically
+                self.focus_workspace(&group_workspaces[0])?;
+            }
+        }
+
+        // Record this visit
+        self.save_current_workspace(output, group).await?;
+
+        info!("Set active group for {} to '{}'", output, group);
 
         Ok(())
     }

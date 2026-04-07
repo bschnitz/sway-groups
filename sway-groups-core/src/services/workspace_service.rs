@@ -252,7 +252,8 @@ impl WorkspaceService {
         let now = chrono::Utc::now().naive_utc();
 
         for sway_ws in sway_workspaces {
-            let existing = WorkspaceEntity::find_by_name(&sway_ws.name)
+            let base_name = Self::strip_suffix(&sway_ws.name);
+            let existing = WorkspaceEntity::find_by_name(&base_name)
                 .one(self.db.conn())
                 .await?;
 
@@ -265,7 +266,7 @@ impl WorkspaceService {
             } else {
                 let number = sway_ws.num.map(|n| n as i32);
                 let active = workspace::ActiveModel {
-                    name: Set(sway_ws.name.clone()),
+                    name: Set(base_name.clone()),
                     number: Set(number),
                     output: Set(Some(sway_ws.output)),
                     is_global: Set(false),
@@ -292,5 +293,13 @@ impl WorkspaceService {
 
         info!("Synced workspaces from sway");
         Ok(())
+    }
+
+    /// Strip swayg suffixes from a workspace name.
+    fn strip_suffix(name: &str) -> String {
+        name.strip_suffix("_class_hidden")
+            .or_else(|| name.strip_suffix("_class_global"))
+            .map(String::from)
+            .unwrap_or_else(|| name.to_string())
     }
 }

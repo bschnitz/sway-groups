@@ -643,8 +643,9 @@ fn run_daemon(action: DaemonAction) -> anyhow::Result<()> {
                         anyhow::bail!("swaygd is already running (PID {})", pid);
                     }
 
-            let exe = std::env::current_exe()?;
-            let child = std::process::Command::new(exe)
+            let mut exe = std::env::current_exe()?;
+            exe.set_file_name("swaygd");
+            let child = std::process::Command::new(&exe)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .spawn()?;
@@ -669,6 +670,14 @@ fn run_daemon(action: DaemonAction) -> anyhow::Result<()> {
             unsafe {
                 libc::kill(pid as i32, libc::SIGTERM);
             }
+
+            for _ in 0..50 {
+                if !std::path::Path::new(&format!("/proc/{}", pid)).exists() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+
             std::fs::remove_file(&pid_path).ok();
             println!("Stopped swaygd (PID {})", pid);
         }

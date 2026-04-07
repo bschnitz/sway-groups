@@ -37,7 +37,7 @@ async fn main() -> AnyResult<()> {
     let db: DatabaseManager = DatabaseManager::new(db_path).await?;
     let ipc_client = SwayIpcClient::new()?;
     let suffix_service = SuffixService::new(db.clone(), ipc_client.clone());
-    let group_service = GroupService::new(db.clone(), suffix_service.clone());
+    let group_service = GroupService::new(db.clone(), suffix_service.clone(), ipc_client.clone());
     let workspace_service = WorkspaceService::new(db.clone(), ipc_client.clone());
     let nav_service = NavigationService::new(db.clone(), ipc_client.clone(), suffix_service.clone());
 

@@ -8,7 +8,7 @@
 
 - **Workspace**: A sway workspace (e.g., "1", "2", "3:Firefox")
 - **Group**: A named collection of workspaces (e.g., "0", "dev", "work")
-- **Active Group**: The currently selected group per output - only workspaces in this group are visible
+- **Active Group**: The currently selected group per output -- only workspaces in this group are visible
 - **Global Workspace**: A workspace visible in ALL groups (marked with `_class_global`)
 - **Hidden Suffix**: Non-active workspaces get `_class_hidden` suffix to indicate they should be hidden in waybar
 
@@ -39,8 +39,8 @@
 | Column | Type | Constraints |
 |--------|------|-------------|
 | id | INTEGER | PRIMARY KEY, AUTO_INCREMENT |
-| workspace_id | INTEGER | FOREIGN KEY → groups.id |
-| group_id | INTEGER | FOREIGN KEY → workspaces.id |
+| workspace_id | INTEGER | FOREIGN KEY -> workspaces.id |
+| group_id | INTEGER | FOREIGN KEY -> groups.id |
 | created_at | DATETIME | NOT NULL |
 
 #### `outputs`
@@ -51,6 +51,26 @@
 | active_group | TEXT | NOT NULL |
 | created_at | DATETIME | NOT NULL |
 | updated_at | DATETIME | NOT NULL |
+
+#### `group_state`
+| Column | Type | Constraints |
+|--------|------|-------------|
+| id | INTEGER | PRIMARY KEY, AUTO_INCREMENT |
+| output | TEXT | NOT NULL |
+| group_name | TEXT | NOT NULL |
+| last_focused_workspace | TEXT | NULLABLE |
+| last_visited | DATETIME | NULLABLE |
+
+Tracks the last focused workspace per group per output for workspace restoration on group switch.
+
+#### `focus_history`
+| Column | Type | Constraints |
+|--------|------|-------------|
+| id | INTEGER | PRIMARY KEY, AUTO_INCREMENT |
+| workspace_name | TEXT | NOT NULL |
+| focused_at | DATETIME | NOT NULL |
+
+Stack of workspace focus events for `nav back`. Entries older than 10 minutes are automatically pruned.
 
 ## CLI Commands
 
@@ -64,201 +84,121 @@ swayg [OPTIONS] <COMMAND>
 
 ### `swayg group` - Group Management
 
-#### `swayg group list [OPTIONS]`
+#### `swayg group list [-o|--output <OUTPUT>]`
 List all groups and their workspaces.
 
-**Options:**
-```
--o, --output <OUTPUT>  Filter by output name
-```
-
-**Example Output:**
-```
-Group "0":
-  - 1
-  - 2
-  - 3
-Group "dev":
-  - 1:Firefox
-  - 2:Terminal
+```sh
+swayg group list
+swayg group list --output DP-1
 ```
 
 #### `swayg group create <NAME>`
 Create a new group.
 
-**Arguments:**
-```
-<NAME>              Name of the group to create
-```
-
-**Example:**
-```
+```sh
 $ swayg group create dev
 Created group "dev"
 ```
 
 #### `swayg group delete <NAME> [-f|--force]`
-Delete a group.
+Delete a group. Requires `--force` if workspaces are assigned. The default group "0" cannot be deleted.
 
-**Arguments:**
-```
-<NAME>              Name of the group to delete
-```
-
-**Options:**
-```
--f, --force         Force delete even if workspaces are assigned
-```
-
-**Example:**
-```
+```sh
 $ swayg group delete old-project
-Error: Group "old-project" has 3 workspaces. Use --force to delete anyway.
+Error: Group "old-project" has 1 workspaces. Use --force to delete anyway.
+
+$ swayg group delete old-project --force
+Deleted group "old-project"
 ```
 
 #### `swayg group rename <OLD_NAME> <NEW_NAME>`
-Rename a group.
+Rename a group. Cannot rename the default group "0".
 
-**Arguments:**
-```
-<OLD_NAME>          Current name of the group
-<NEW_NAME>          New name for the group
-```
-
-**Constraints:**
-- Cannot rename the default group "0"
-
-**Example:**
-```
+```sh
 $ swayg group rename work project
 Renamed group "work" to "project"
 ```
 
 #### `swayg group select <OUTPUT> <GROUP>`
-Set the active group for an output.
+Set the active group for an output. Automatically switches workspace focus:
+- **Empty group**: Focuses workspace "0"
+- **First visit**: Focuses alphabetically first workspace in the group
+- **Previously visited**: Restores last focused workspace in the group
 
-**Arguments:**
-```
-<OUTPUT>             Output name (e.g., "DP-1", "HDMI-A-0")
-<GROUP>             Group name to make active
-```
-
-**Behavior:**
-- Creates the output entry if it doesn't exist
-- Syncs workspace suffixes after changing active group
-
-**Example:**
-```
-$ swayg group select DP-1 dev
-Set active group for "DP-1" to "dev"
+```sh
+$ swayg group select eDP-1 dev
+Set active group for "eDP-1" to "dev"
 ```
 
 #### `swayg group active <OUTPUT>`
-Show the currently active group for an output.
+Show the currently active group for an output. Falls back to "0" if the output is not yet registered.
 
-**Arguments:**
-```
-<OUTPUT>             Output name
-```
-
-**Example:**
-```
-$ swayg group active DP-1
+```sh
+$ swayg group active eDP-1
 dev
 ```
 
 #### `swayg group next [-o|--output <OUTPUT>] [-w|--wrap]`
-Switch to the next group alphabetically.
+Switch to the next group alphabetically (all groups).
 
-**Options:**
-```
--o, --output <OUTPUT>  Output name (default: primary output)
--w, --wrap            Wrap around to first group
+```sh
+swayg group next --output eDP-1 --wrap
 ```
 
-**Example:**
-```
-$ swayg group next --output DP-1 --wrap
-Switched from "dev" to "project"
+#### `swayg group next-on-output [-o|--output <OUTPUT>] [-w|--wrap]`
+Switch to the next non-empty group on the output. Only considers groups that have workspaces on the specified output.
+
+```sh
+swayg group next-on-output --output eDP-1 --wrap
 ```
 
 #### `swayg group prev [-o|--output <OUTPUT>] [-w|--wrap]`
-Switch to the previous group alphabetically.
+Switch to the previous group alphabetically (all groups).
 
-**Options:**
+```sh
+swayg group prev --output eDP-1 --wrap
 ```
--o, --output <OUTPUT>  Output name (default: primary output)
--w, --wrap            Wrap around to last group
+
+#### `swayg group prev-on-output [-o|--output <OUTPUT>] [-w|--wrap]`
+Switch to the previous non-empty group on the output.
+
+```sh
+swayg group prev-on-output --output eDP-1 --wrap
 ```
 
 #### `swayg group prune [--keep <NAME>...]`
 Remove empty groups (except default "0").
 
-**Options:**
-```
---keep <NAME>        Groups to keep even if empty (can be repeated)
-```
-
-**Example:**
-```
+```sh
 $ swayg group prune --keep 0 --keep default
-Pruned 2 empty groups
+Pruned 2 empty group(s)
 ```
 
 ### `swayg workspace` - Workspace Management
 
 #### `swayg workspace list [-o|--output <OUTPUT>] [-g|--group <GROUP>]`
-List workspaces in a group.
+List workspaces with visibility status.
 
-**Options:**
-```
--o, --output <OUTPUT>  Filter by output
--g, --group <GROUP>    Filter by group (default: active group for output)
-```
-
-**Example Output:**
-```
-Workspaces in group "dev" on "DP-1":
+```sh
+$ swayg workspace list --group dev
+Workspaces in group "dev" on "eDP-1":
   1:Firefox    (visible)
   2:Terminal   (hidden)
-  3            (visible)
+  3            (global)
 ```
 
-#### `swayg workspace add <WORKSPACE> [-g|--group <GROUP>] [-o|--output <OUTPUT>]`
-Add a workspace to a group.
+#### `swayg workspace add <WORKSPACE> [-g|--group <GROUP>]`
+Add a workspace to a group. The workspace must exist in sway. If `--group` is omitted, defaults to the active group for the output. A workspace can belong to multiple groups.
 
-**Arguments:**
-```
-<WORKSPACE>          Workspace name or number
-```
-
-**Options:**
-```
--g, --group <GROUP>  Target group (default: active group for output)
--o, --output <OUTPUT>  Output for the workspace
-```
-
-**Example:**
-```
+```sh
 $ swayg workspace add 4 --group dev
 Added workspace "4" to group "dev"
 ```
 
 #### `swayg workspace remove <WORKSPACE> [-g|--group <GROUP>]`
-Remove a workspace from a group.
+Remove a workspace from a group. Defaults to the active group.
 
-**Arguments:**
-```
-<WORKSPACE>          Workspace name
-```
-
-**Options:**
-```
--g, --group <GROUP>  Source group (default: active group)
-```
-
-**Example:**
-```
+```sh
 $ swayg workspace remove 4 --group dev
 Removed workspace "4" from group "dev"
 ```
@@ -266,13 +206,7 @@ Removed workspace "4" from group "dev"
 #### `swayg workspace global <WORKSPACE>`
 Mark a workspace as global (visible in all groups).
 
-**Arguments:**
-```
-<WORKSPACE>          Workspace name
-```
-
-**Example:**
-```
+```sh
 $ swayg workspace global 1
 Marked workspace "1" as global
 ```
@@ -280,111 +214,82 @@ Marked workspace "1" as global
 #### `swayg workspace unglobal <WORKSPACE>`
 Remove global status from a workspace.
 
-**Arguments:**
-```
-<WORKSPACE>          Workspace name
+```sh
+$ swayg workspace unglobal 1
+Removed global status from workspace "1"
 ```
 
 #### `swayg workspace groups <WORKSPACE>`
 List all groups a workspace belongs to.
 
-**Arguments:**
-```
-<WORKSPACE>          Workspace name
-```
-
-**Example:**
-```
+```sh
 $ swayg workspace groups 2
 Workspace "2" is in groups: "0", "dev"
 ```
 
 ### `swayg nav` - Navigation Commands
 
-These are group-aware wrappers around sway workspace commands.
+Group-aware workspace navigation. Only considers workspaces in the active group plus global workspaces.
 
 #### `swayg nav next [-o|--output <OUTPUT>] [-w|--wrap]`
-Navigate to next workspace in the active group.
+Navigate to the next workspace in the active group on the output.
 
-**Options:**
-```
--o, --output <OUTPUT>  Output name
--w, --wrap            Wrap around
+```sh
+$ swayg nav next --output eDP-1
+Navigated to "2"
 ```
 
-**Behavior:**
-- Only considers workspaces in the active group
-- Global workspaces are always included
-- Hides current workspace, reveals next one
+#### `swayg nav next-on-output [-w|--wrap]`
+Navigate to the next workspace globally across all outputs.
 
-**Example:**
-```
-$ swayg nav next --output DP-1
-Navigated from "1" to "2"
+```sh
+swayg nav next-on-output --wrap
 ```
 
 #### `swayg nav prev [-o|--output <OUTPUT>] [-w|--wrap]`
-Navigate to previous workspace in the active group.
+Navigate to the previous workspace in the active group on the output.
 
-**Options:**
-```
--o, --output <OUTPUT>  Output name
--w, --wrap            Wrap around
+```sh
+swayg nav prev --output eDP-1 --wrap
 ```
 
-#### `swayg nav go <WORKSPACE> [-o|--output <OUTPUT>]`
+#### `swayg nav prev-on-output [-w|--wrap]`
+Navigate to the previous workspace globally across all outputs.
+
+```sh
+swayg nav prev-on-output --wrap
+```
+
+#### `swayg nav go <WORKSPACE>`
 Navigate to a specific workspace.
 
-**Arguments:**
-```
-<WORKSPACE>          Target workspace name or number
-```
-
-**Options:**
-```
--o, --output <OUTPUT>  Output name
-```
-
-**Example:**
-```
-$ swayg nav go 3 --output DP-1
+```sh
+$ swayg nav go 3
 Navigated to "3"
 ```
 
-#### `swayg nav back [-o|--output <OUTPUT>]`
-Navigate back to the previously focused workspace.
+#### `swayg nav back`
+Navigate back to the previously focused workspace. Maintains a focus history with entries pruned after 10 minutes.
 
-**Options:**
-```
--o, --output <OUTPUT>  Output name
+```sh
+$ swayg nav back
+Navigated back to "1"
 ```
 
 ### `swayg sync`
-Synchronize database with current sway state.
+Manually synchronize the database with the current sway state. Normally handled automatically by the daemon. Useful for initial setup or recovery.
 
-**Options:**
-```
--a, --all            Sync everything
--w, --workspaces     Sync only workspaces
--g, --groups         Sync only groups
--o, --outputs        Sync only outputs
-```
-
-**Example:**
-```
+```sh
 $ swayg sync --all
-Synced:
-  - 5 workspaces
-  - 3 groups
-  - 2 outputs
+Synced: workspaces, groups, outputs
 ```
 
 ### `swayg status`
 Show current status of all outputs and their active groups.
 
-**Example Output:**
-```
-DP-1: active group = "dev"
+```sh
+$ swayg status
+eDP-1: active group = "dev"
   Visible: 1, 3
   Hidden: 2, 4
 HDMI-A-0: active group = "0"
@@ -395,18 +300,13 @@ HDMI-A-0: active group = "0"
 ### `swayg daemon` - Background Service
 
 #### `swayg daemon start`
-Start the swayg daemon for automatic suffix synchronization.
-
-**Options:**
-```
---socket <PATH>      Unix socket path for daemon communication
-```
+Start the swayg daemon for automatic suffix synchronization. Refuses to start if already running.
 
 #### `swayg daemon stop`
-Stop the running daemon.
+Stop the running daemon via SIGTERM.
 
 #### `swayg daemon status`
-Check if daemon is running.
+Check if the daemon is running.
 
 ## Suffix Management
 
@@ -423,6 +323,7 @@ Suffixes are automatically synced when:
 - Active group changes (`swayg group select`, `swayg group next`, etc.)
 - Workspace added/removed from group
 - Workspace global status changes
+- Daemon receives sway IPC events
 
 ## Workspace Naming Convention
 
@@ -430,6 +331,7 @@ Workspaces in sway use a naming convention:
 - Basic: `"1"`, `"2"`, `"3"`
 - Named: `"1:Firefox"`, `"2:Terminal"`
 - Hidden: `"2_class_hidden"`, `"3:Code_class_hidden"`
+- Global: `"1_class_global"`
 
 The CLI handles the suffix manipulation transparently.
 

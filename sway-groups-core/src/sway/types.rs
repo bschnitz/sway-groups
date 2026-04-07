@@ -46,10 +46,12 @@ pub struct SwayWorkspace {
     pub focused: bool,
     pub urgent: bool,
     pub output: String,
-    pub representation: String,
-    pub layout: String,
-    #[serde(rename = "type")]
-    pub node_type: String,
+    #[serde(default)]
+    pub representation: Option<String>,
+    #[serde(default)]
+    pub layout: Option<String>,
+    #[serde(default, rename = "type")]
+    pub node_type: Option<String>,
 }
 
 /// Output representation from sway.
