@@ -5,7 +5,9 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
+PIDFile=%h/.local/share/swayg/swaygd.pid
 ExecStart=%h/.cargo/bin/swaygd
+ExecStopPost=/bin/rm -f %h/.local/share/swayg/swaygd.pid
 Restart=on-failure
 RestartSec=5
 Environment=RUST_LOG=info

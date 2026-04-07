@@ -4,7 +4,7 @@ use sea_orm::{ConnectOptions, Database, DatabaseConnection, Schema, ConnectionTr
 use std::path::PathBuf;
 use anyhow::Result as AnyResult;
 
-use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
+use crate::db::entities::{FocusHistoryEntity, GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
 
 /// Database manager for sway-groups.
 #[derive(Clone)]
@@ -40,6 +40,10 @@ impl DatabaseManager {
         let mut stmt_output = schema.create_table_from_entity(OutputEntity);
         stmt_output.if_not_exists();
         conn.execute(&stmt_output).await?;
+
+        let mut stmt_focus_history = schema.create_table_from_entity(FocusHistoryEntity);
+        stmt_focus_history.if_not_exists();
+        conn.execute(&stmt_focus_history).await?;
 
         Ok(Self { conn })
     }

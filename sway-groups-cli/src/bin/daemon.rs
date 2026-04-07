@@ -20,6 +20,16 @@ fn get_db_path() -> PathBuf {
     }
 }
 
+fn get_pid_path() -> PathBuf {
+    if let Some(proj_dirs) = ProjectDirs::from("com", "swayg", "swayg") {
+        let data_dir = proj_dirs.data_dir();
+        std::fs::create_dir_all(data_dir).ok();
+        data_dir.join("swaygd.pid")
+    } else {
+        PathBuf::from("/tmp/swaygd.pid")
+    }
+}
+
 async fn handle_event(
     event_type: u32,
     _payload: &[u8],
@@ -74,6 +84,17 @@ async fn main() -> AnyResult<()> {
         .init();
 
     info!("Starting swaygd daemon...");
+
+    let pid_path = get_pid_path();
+    std::fs::write(&pid_path, std::process::id().to_string())?;
+    info!("PID file written to: {}", pid_path.display());
+
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        info!("Received shutdown signal, cleaning up...");
+        let _ = std::fs::remove_file(&pid_path);
+        std::process::exit(0);
+    });
 
     let db_path = get_db_path();
     let db = DatabaseManager::new(db_path).await?;

@@ -45,11 +45,10 @@ impl WorkspaceService {
 
         for ws in workspaces {
             // Filter by output if specified
-            if let Some(output) = output_filter {
-                if ws.output.as_ref() != Some(&output.to_string()) {
+            if let Some(output) = output_filter
+                && ws.output.as_ref() != Some(&output.to_string()) {
                     continue;
                 }
-            }
 
             // Get group memberships
             let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
@@ -67,11 +66,10 @@ impl WorkspaceService {
             }
 
             // Filter by group if specified
-            if let Some(group_name) = group_filter {
-                if !group_names.iter().any(|g| g == group_name) {
+            if let Some(group_name) = group_filter
+                && !group_names.iter().any(|g| g == group_name) {
                     continue;
                 }
-            }
 
             result.push(WorkspaceInfo {
                 id: ws.id,

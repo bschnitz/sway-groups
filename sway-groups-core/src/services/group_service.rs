@@ -51,11 +51,10 @@ impl GroupService {
                     .await?
                 {
                     // Filter by output if specified
-                    if let Some(output) = output_filter {
-                        if ws.output.as_ref() != Some(&output.to_string()) {
+                    if let Some(output) = output_filter
+                        && ws.output.as_ref() != Some(&output.to_string()) {
                             continue;
                         }
-                    }
                     workspace_names.push(ws.name);
                 }
             }
@@ -69,6 +68,25 @@ impl GroupService {
         }
 
         Ok(result)
+    }
+
+    /// List all group names alphabetically, without workspace details.
+    pub async fn list_all_group_names(&self) -> Result<Vec<String>> {
+        let groups = GroupEntity::find_all_ordered()
+            .all(self.db.conn())
+            .await?;
+
+        Ok(groups.into_iter().map(|g| g.name).collect())
+    }
+
+    /// List non-empty group names for a specific output, alphabetically.
+    pub async fn list_group_names_on_output(&self, output: &str) -> Result<Vec<String>> {
+        let groups = self.list_groups(Some(output)).await?;
+        Ok(groups
+            .into_iter()
+            .filter(|g| g.workspace_count > 0)
+            .map(|g| g.name)
+            .collect())
     }
 
     /// Create a new group.
@@ -123,7 +141,7 @@ impl GroupService {
                 memberships.len()
             );
             return Err(Error::InvalidArgs(format!(
-                "Group '{}' has {} workspaces. Delete them first or use --force.",
+                "Group '{}' has {} workspaces. Use --force to delete anyway.",
                 name,
                 memberships.len()
             )));
@@ -226,66 +244,92 @@ impl GroupService {
         Ok(())
     }
 
-    /// Switch to next group alphabetically.
-    pub async fn next_group(&self, output: &str, wrap: bool) -> Result<()> {
+    /// Switch to next group alphabetically (all groups).
+    pub async fn next_group(&self, output: &str, wrap: bool) -> Result<Option<String>> {
         let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
-        let groups = self.list_groups(Some(output)).await?;
+        let group_names = self.list_all_group_names().await?;
 
-        if groups.is_empty() {
-            return Ok(());
+        if group_names.is_empty() {
+            return Ok(None);
         }
 
-        let group_names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
-        let current_idx = group_names.iter().position(|&g| g == current);
-
-        let next_idx = if let Some(idx) = current_idx {
-            if idx + 1 < groups.len() {
-                idx + 1
-            } else if wrap {
-                0
-            } else {
-                return Ok(());
-            }
-        } else if let Some(&first) = group_names.first() {
-            let idx = group_names.iter().position(|&g| g == first).unwrap();
-            idx
-        } else {
-            return Ok(());
+        let current_idx = group_names.iter().position(|g| g == &current);
+        let next_idx = match current_idx {
+            Some(idx) if idx + 1 < group_names.len() => idx + 1,
+            Some(_) if wrap => 0,
+            Some(_) => return Ok(None),
+            None => 0,
         };
 
-        self.set_active_group(output, group_names[next_idx]).await?;
-        Ok(())
+        let next_name = group_names[next_idx].clone();
+        self.set_active_group(output, &next_name).await?;
+        Ok(Some(next_name))
     }
 
-    /// Switch to previous group alphabetically.
-    pub async fn prev_group(&self, output: &str, wrap: bool) -> Result<()> {
+    /// Switch to next non-empty group on a specific output.
+    pub async fn next_group_on_output(&self, output: &str, wrap: bool) -> Result<Option<String>> {
         let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
-        let groups = self.list_groups(Some(output)).await?;
+        let group_names = self.list_group_names_on_output(output).await?;
 
-        if groups.is_empty() {
-            return Ok(());
+        if group_names.is_empty() {
+            return Ok(None);
         }
 
-        let group_names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
-        let current_idx = group_names.iter().position(|&g| g == current);
-
-        let prev_idx = if let Some(idx) = current_idx {
-            if idx > 0 {
-                idx - 1
-            } else if wrap {
-                groups.len() - 1
-            } else {
-                return Ok(());
-            }
-        } else if let Some(&last) = group_names.last() {
-            let idx = group_names.iter().position(|&g| g == last).unwrap();
-            idx
-        } else {
-            return Ok(());
+        let current_idx = group_names.iter().position(|g| g == &current);
+        let next_idx = match current_idx {
+            Some(idx) if idx + 1 < group_names.len() => idx + 1,
+            Some(_) if wrap => 0,
+            Some(_) => return Ok(None),
+            None => 0,
         };
 
-        self.set_active_group(output, group_names[prev_idx]).await?;
-        Ok(())
+        let next_name = group_names[next_idx].clone();
+        self.set_active_group(output, &next_name).await?;
+        Ok(Some(next_name))
+    }
+
+    /// Switch to previous group alphabetically (all groups).
+    pub async fn prev_group(&self, output: &str, wrap: bool) -> Result<Option<String>> {
+        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
+        let group_names = self.list_all_group_names().await?;
+
+        if group_names.is_empty() {
+            return Ok(None);
+        }
+
+        let current_idx = group_names.iter().position(|g| g == &current);
+        let prev_idx = match current_idx {
+            Some(idx) if idx > 0 => idx - 1,
+            Some(_) if wrap => group_names.len() - 1,
+            Some(_) => return Ok(None),
+            None => group_names.len() - 1,
+        };
+
+        let prev_name = group_names[prev_idx].clone();
+        self.set_active_group(output, &prev_name).await?;
+        Ok(Some(prev_name))
+    }
+
+    /// Switch to previous non-empty group on a specific output.
+    pub async fn prev_group_on_output(&self, output: &str, wrap: bool) -> Result<Option<String>> {
+        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
+        let group_names = self.list_group_names_on_output(output).await?;
+
+        if group_names.is_empty() {
+            return Ok(None);
+        }
+
+        let current_idx = group_names.iter().position(|g| g == &current);
+        let prev_idx = match current_idx {
+            Some(idx) if idx > 0 => idx - 1,
+            Some(_) if wrap => group_names.len() - 1,
+            Some(_) => return Ok(None),
+            None => group_names.len() - 1,
+        };
+
+        let prev_name = group_names[prev_idx].clone();
+        self.set_active_group(output, &prev_name).await?;
+        Ok(Some(prev_name))
     }
 
     /// Remove empty groups.

@@ -21,6 +21,7 @@ tracing-subscriber.workspace = true
 serde.workspace = true
 directories.workspace = true
 sway-groups-core = { path = "../sway-groups-core" }
+libc = "0.2.184"
 
 [features]
 default = []

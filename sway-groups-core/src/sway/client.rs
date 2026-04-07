@@ -162,6 +162,20 @@ impl SwayIpcClient {
         Ok(workspaces.into_iter().map(|w| w.name).collect())
     }
 
+    /// Get the primary output (output of the currently focused workspace).
+    /// Falls back to the first available output.
+    pub fn get_primary_output(&self) -> Result<String> {
+        if let Ok(focused) = self.get_focused_workspace() {
+            return Ok(focused.output);
+        }
+        let outputs = self.get_outputs()?;
+        outputs
+            .into_iter()
+            .next()
+            .map(|o| o.name)
+            .ok_or_else(|| Error::SwayIpc("No outputs available".to_string()))
+    }
+
     /// Read a message from the stream.
     fn read_message(stream: &mut UnixStream) -> Result<Vec<u8>> {
         let mut header = [0u8; 14];

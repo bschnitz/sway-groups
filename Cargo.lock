@@ -2579,6 +2579,7 @@ dependencies = [
  "anyhow",
  "clap",
  "directories",
+ "libc",
  "serde",
  "sway-groups-core",
  "thiserror 2.0.18",

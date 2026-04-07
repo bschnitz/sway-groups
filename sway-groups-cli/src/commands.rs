@@ -1,7 +1,11 @@
 //! CLI commands for swayg.
 
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
-use sway_groups_core::services::{GroupService, SuffixService, WorkspaceService};
+use directories::ProjectDirs;
+use sway_groups_core::services::{GroupService, NavigationService, SuffixService, WorkspaceService};
+use sway_groups_core::sway::SwayIpcClient;
 
 /// Sway workspace groups management CLI.
 #[derive(Parser)]
@@ -54,6 +58,11 @@ enum Command {
     },
     /// Show current status.
     Status,
+    /// Daemon management commands.
+    Daemon {
+        #[command(subcommand)]
+        action: DaemonAction,
+    },
 }
 
 /// Group subcommands.
@@ -100,7 +109,7 @@ enum GroupAction {
         /// Output name.
         output: String,
     },
-    /// Switch to next group.
+    /// Switch to next group (all groups).
     Next {
         /// Output name.
         #[arg(short, long)]
@@ -110,8 +119,28 @@ enum GroupAction {
         #[arg(short, long)]
         wrap: bool,
     },
-    /// Switch to previous group.
+    /// Switch to next non-empty group on the output.
+    NextOnOutput {
+        /// Output name.
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Wrap around.
+        #[arg(short, long)]
+        wrap: bool,
+    },
+    /// Switch to previous group (all groups).
     Prev {
+        /// Output name.
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Wrap around.
+        #[arg(short, long)]
+        wrap: bool,
+    },
+    /// Switch to previous non-empty group on the output.
+    PrevOnOutput {
         /// Output name.
         #[arg(short, long)]
         output: Option<String>,
@@ -183,7 +212,7 @@ enum WorkspaceAction {
 /// Navigation subcommands.
 #[derive(Subcommand)]
 enum NavAction {
-    /// Go to next workspace in active group.
+    /// Go to next workspace in active group on output.
     Next {
         /// Output name.
         #[arg(short, long)]
@@ -193,12 +222,24 @@ enum NavAction {
         #[arg(short, long)]
         wrap: bool,
     },
-    /// Go to previous workspace in active group.
+    /// Go to next workspace globally (across all outputs).
+    NextOnOutput {
+        /// Wrap around.
+        #[arg(short, long)]
+        wrap: bool,
+    },
+    /// Go to previous workspace in active group on output.
     Prev {
         /// Output name.
         #[arg(short, long)]
         output: Option<String>,
 
+        /// Wrap around.
+        #[arg(short, long)]
+        wrap: bool,
+    },
+    /// Go to previous workspace globally (across all outputs).
+    PrevOnOutput {
         /// Wrap around.
         #[arg(short, long)]
         wrap: bool,
@@ -213,139 +254,435 @@ enum NavAction {
         output: Option<String>,
     },
     /// Go back to previous workspace.
-    Back {
-        /// Output name.
-        #[arg(short, long)]
-        output: Option<String>,
-    },
+    Back,
+}
+
+/// Daemon subcommands.
+#[derive(Subcommand)]
+enum DaemonAction {
+    /// Start the swayg daemon.
+    Start,
+    /// Stop the running daemon.
+    Stop,
+    /// Check if daemon is running.
+    Status,
 }
 
 /// Run the CLI commands.
 pub async fn run(
     cli: Cli,
-    _group_service: &GroupService,
-    _workspace_service: &WorkspaceService,
-    _suffix_service: &SuffixService,
+    group_service: &GroupService,
+    workspace_service: &WorkspaceService,
+    suffix_service: &SuffixService,
+    nav_service: &NavigationService,
+    ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match cli.command {
-        Command::Group { action } => run_group(action).await?,
-        Command::Workspace { action } => run_workspace(action).await?,
-        Command::Nav { action } => run_nav(action).await?,
+        Command::Group { action } => run_group(action, group_service, ipc_client).await?,
+        Command::Workspace { action } => run_workspace(action, workspace_service, group_service, suffix_service, ipc_client).await?,
+        Command::Nav { action } => run_nav(action, nav_service, ipc_client).await?,
         Command::Sync { all, workspaces, groups, outputs } => {
-            if all || (!workspaces && !groups && !outputs) {
-                println!("Syncing everything...");
+            run_sync(all, workspaces, groups, outputs, workspace_service, suffix_service).await?;
+        }
+        Command::Status => {
+            run_status(group_service, suffix_service, ipc_client).await?;
+        }
+        Command::Daemon { action } => {
+            run_daemon(action)?;
+        }
+    }
+    Ok(())
+}
+
+fn resolve_output(output: Option<&str>, ipc_client: &SwayIpcClient) -> anyhow::Result<String> {
+    match output {
+        Some(o) => Ok(o.to_string()),
+        None => {
+            let primary = ipc_client.get_primary_output()?;
+            Ok(primary)
+        }
+    }
+}
+
+async fn run_group(
+    action: GroupAction,
+    group_service: &GroupService,
+    ipc_client: &SwayIpcClient,
+) -> anyhow::Result<()> {
+    match action {
+        GroupAction::List { output } => {
+            let groups = group_service.list_groups(output.as_deref()).await?;
+            if groups.is_empty() {
+                println!("No groups found.");
             } else {
-                if workspaces {
-                    println!("Syncing workspaces...");
-                }
-                if groups {
-                    println!("Syncing groups...");
-                }
-                if outputs {
-                    println!("Syncing outputs...");
+                for group in &groups {
+                    println!("Group \"{}\":", group.name);
+                    if group.workspaces.is_empty() {
+                        println!("  (empty)");
+                    } else {
+                        for ws in &group.workspaces {
+                            println!("  - {}", ws);
+                        }
+                    }
                 }
             }
         }
-        Command::Status => {
-            println!("Status: OK");
-        }
-    }
-    Ok(())
-}
-
-/// Run group commands.
-async fn run_group(action: GroupAction) -> anyhow::Result<()> {
-    match action {
-        GroupAction::List { output } => {
-            println!("Listing groups{}...",
-                output.as_ref().map(|o| format!(" for output '{}'", o)).unwrap_or_default()
-            );
-        }
         GroupAction::Create { name } => {
-            println!("Creating group '{}'...", name);
+            group_service.create_group(&name).await?;
+            println!("Created group \"{}\"", name);
         }
         GroupAction::Delete { name, force } => {
-            println!("Deleting group '{}' (force={})...", name, force);
+            group_service.delete_group(&name, force).await?;
+            println!("Deleted group \"{}\"", name);
         }
         GroupAction::Rename { old_name, new_name } => {
-            println!("Renaming group '{}' to '{}'...", old_name, new_name);
+            group_service.rename_group(&old_name, &new_name).await?;
+            println!("Renamed group \"{}\" to \"{}\"", old_name, new_name);
         }
         GroupAction::Select { output, group } => {
-            println!("Setting active group for '{}' to '{}'...", output, group);
+            group_service.set_active_group(&output, &group).await?;
+            println!("Set active group for \"{}\" to \"{}\"", output, group);
         }
         GroupAction::Active { output } => {
-            println!("Showing active group for '{}'...", output);
+            let active = group_service.get_active_group(&output).await?;
+            println!("{}", active);
         }
         GroupAction::Next { output, wrap } => {
-            println!("Next group (output={}, wrap={})...", output.as_deref().unwrap_or("default"), wrap);
+            let output = resolve_output(output.as_deref(), ipc_client)?;
+            if let Some(next) = group_service.next_group(&output, wrap).await? {
+                println!("Switched from active group to \"{}\"", next);
+            }
+        }
+        GroupAction::NextOnOutput { output, wrap } => {
+            let output = resolve_output(output.as_deref(), ipc_client)?;
+            if let Some(next) = group_service.next_group_on_output(&output, wrap).await? {
+                println!("Switched from active group to \"{}\"", next);
+            }
         }
         GroupAction::Prev { output, wrap } => {
-            println!("Previous group (output={}, wrap={})...", output.as_deref().unwrap_or("default"), wrap);
+            let output = resolve_output(output.as_deref(), ipc_client)?;
+            if let Some(prev) = group_service.prev_group(&output, wrap).await? {
+                println!("Switched from active group to \"{}\"", prev);
+            }
+        }
+        GroupAction::PrevOnOutput { output, wrap } => {
+            let output = resolve_output(output.as_deref(), ipc_client)?;
+            if let Some(prev) = group_service.prev_group_on_output(&output, wrap).await? {
+                println!("Switched from active group to \"{}\"", prev);
+            }
         }
         GroupAction::Prune { keep } => {
-            println!("Pruning empty groups (keeping: {:?})...", keep);
+            let removed = group_service.prune_groups(&keep).await?;
+            if removed == 0 {
+                println!("No empty groups to prune.");
+            } else {
+                println!("Pruned {} empty group(s)", removed);
+            }
         }
     }
     Ok(())
 }
 
-/// Run workspace commands.
-async fn run_workspace(action: WorkspaceAction) -> anyhow::Result<()> {
+async fn run_workspace(
+    action: WorkspaceAction,
+    workspace_service: &WorkspaceService,
+    group_service: &GroupService,
+    suffix_service: &SuffixService,
+    ipc_client: &SwayIpcClient,
+) -> anyhow::Result<()> {
     match action {
         WorkspaceAction::List { output, group } => {
-            println!("Listing workspaces (output={}, group={})...",
-                output.as_deref().unwrap_or("all"),
-                group.as_deref().unwrap_or("all")
-            );
+            let workspaces = workspace_service.list_workspaces(output.as_deref(), group.as_deref()).await?;
+            if workspaces.is_empty() {
+                println!("No workspaces found.");
+            } else {
+                let group_label = group.as_deref().unwrap_or("active");
+                let output_label = output.as_deref().unwrap_or("all");
+
+                let active_group_name = if group.is_none() {
+                    let output_name = output.as_deref()
+                        .map(|s| s.to_string())
+                        .or_else(|| ipc_client.get_primary_output().ok());
+                    match output_name {
+                        Some(ref out) => group_service.get_active_group(out).await.ok(),
+                        None => None,
+                    }
+                } else {
+                    None
+                };
+
+                println!("Workspaces in group \"{}\" on \"{}\":", group_label, output_label);
+                for ws in &workspaces {
+                    let status = if ws.is_global {
+                        "(global)"
+                    } else if let Some(ref active) = active_group_name {
+                        if ws.groups.iter().any(|g| g == active) {
+                            "(visible)"
+                        } else if !ws.groups.is_empty() {
+                            "(hidden)"
+                        } else {
+                            "(visible)"
+                        }
+                    } else {
+                        ""
+                    };
+                    println!("  {:20} {}", ws.name, status);
+                }
+            }
         }
-        WorkspaceAction::Add { workspace, group, output: _ } => {
-            println!("Adding workspace '{}' to group '{}'...",
-                workspace,
-                group.as_deref().unwrap_or("active")
-            );
+        WorkspaceAction::Add { workspace, group, output } => {
+            let target_group = match &group {
+                Some(g) => g.clone(),
+                None => {
+                    let output_name = output.as_deref()
+                        .map(|o| o.to_string())
+                        .or_else(|| ipc_client.get_primary_output().ok())
+                        .ok_or_else(|| anyhow::anyhow!("Cannot determine output for default group"))?;
+                    group_service.get_active_group(&output_name).await?
+                }
+            };
+            workspace_service.add_to_group(&workspace, &target_group).await?;
+            suffix_service.sync_all_suffixes().await?;
+            println!("Added workspace \"{}\" to group \"{}\"", workspace, target_group);
         }
         WorkspaceAction::Remove { workspace, group } => {
-            println!("Removing workspace '{}' from group '{}'...",
-                workspace,
-                group.as_deref().unwrap_or("active")
-            );
+            let source_group = match group {
+                Some(ref g) => g.clone(),
+                None => {
+                    let output_name = ipc_client.get_primary_output()?;
+                    group_service.get_active_group(&output_name).await?
+                }
+            };
+            workspace_service.remove_from_group(&workspace, &source_group).await?;
+            suffix_service.sync_all_suffixes().await?;
+            println!("Removed workspace \"{}\" from group \"{}\"", workspace, source_group);
         }
         WorkspaceAction::Global { workspace } => {
-            println!("Marking workspace '{}' as global...", workspace);
+            workspace_service.set_global(&workspace, true).await?;
+            suffix_service.sync_all_suffixes().await?;
+            println!("Marked workspace \"{}\" as global", workspace);
         }
         WorkspaceAction::Unglobal { workspace } => {
-            println!("Removing global status from workspace '{}'...", workspace);
+            workspace_service.set_global(&workspace, false).await?;
+            suffix_service.sync_all_suffixes().await?;
+            println!("Removed global status from workspace \"{}\"", workspace);
         }
         WorkspaceAction::Groups { workspace } => {
-            println!("Showing groups for workspace '{}'...", workspace);
+            let groups = workspace_service.get_groups_for_workspace(&workspace).await?;
+            if groups.is_empty() {
+                println!("Workspace \"{}\" is not in any group.", workspace);
+            } else {
+                println!("Workspace \"{}\" is in groups: {}", workspace,
+                    groups.iter().map(|g| format!("\"{}\"", g)).collect::<Vec<_>>().join(", "));
+            }
         }
     }
     Ok(())
 }
 
-/// Run navigation commands.
-async fn run_nav(action: NavAction) -> anyhow::Result<()> {
+async fn run_nav(
+    action: NavAction,
+    nav_service: &NavigationService,
+    ipc_client: &SwayIpcClient,
+) -> anyhow::Result<()> {
     match action {
         NavAction::Next { output, wrap } => {
-            println!("Navigating to next workspace (output={}, wrap={})...",
-                output.as_deref().unwrap_or("default"), wrap
-            );
+            let output = resolve_output(output.as_deref(), ipc_client)?;
+            if let Some(target) = nav_service.next_workspace(&output, wrap).await? {
+                println!("Navigated to \"{}\"", target);
+            }
+        }
+        NavAction::NextOnOutput { wrap } => {
+            if let Some(target) = nav_service.next_workspace_global(wrap).await? {
+                println!("Navigated to \"{}\"", target);
+            }
         }
         NavAction::Prev { output, wrap } => {
-            println!("Navigating to previous workspace (output={}, wrap={})...",
-                output.as_deref().unwrap_or("default"), wrap
-            );
+            let output = resolve_output(output.as_deref(), ipc_client)?;
+            if let Some(target) = nav_service.prev_workspace(&output, wrap).await? {
+                println!("Navigated to \"{}\"", target);
+            }
         }
-        NavAction::Go { workspace, output } => {
-            println!("Navigating to workspace '{}' on '{}'...",
-                workspace,
-                output.as_deref().unwrap_or("default")
-            );
+        NavAction::PrevOnOutput { wrap } => {
+            if let Some(target) = nav_service.prev_workspace_global(wrap).await? {
+                println!("Navigated to \"{}\"", target);
+            }
         }
-        NavAction::Back { output } => {
-            println!("Navigating back on '{}'...",
-                output.as_deref().unwrap_or("default")
-            );
+        NavAction::Go { workspace, output: _ } => {
+            nav_service.go_workspace(&workspace).await?;
+            println!("Navigated to \"{}\"", workspace);
+        }
+        NavAction::Back => {
+            if let Some(target) = nav_service.go_back().await? {
+                println!("Navigated back to \"{}\"", target);
+            } else {
+                println!("No previous workspace found.");
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn run_sync(
+    all: bool,
+    workspaces: bool,
+    groups: bool,
+    outputs: bool,
+    workspace_service: &WorkspaceService,
+    suffix_service: &SuffixService,
+) -> anyhow::Result<()> {
+    let mut synced_ws = false;
+    let mut synced_gr = false;
+    let mut synced_out = false;
+
+    if all || workspaces {
+        workspace_service.sync_from_sway().await?;
+        synced_ws = true;
+    }
+    if all || groups {
+        synced_gr = true;
+    }
+    if all || outputs {
+        synced_out = true;
+    }
+
+    if all || (!workspaces && !groups && !outputs) {
+        workspace_service.sync_from_sway().await?;
+        synced_ws = true;
+        synced_gr = true;
+        synced_out = true;
+    }
+
+    suffix_service.sync_all_suffixes().await?;
+
+    let mut parts = Vec::new();
+    if synced_ws {
+        parts.push("workspaces");
+    }
+    if synced_gr {
+        parts.push("groups");
+    }
+    if synced_out {
+        parts.push("outputs");
+    }
+    println!("Synced: {}", parts.join(", "));
+
+    Ok(())
+}
+
+async fn run_status(
+    group_service: &GroupService,
+    suffix_service: &SuffixService,
+    ipc_client: &SwayIpcClient,
+) -> anyhow::Result<()> {
+    let outputs = ipc_client.get_outputs()?;
+    let sway_workspaces = ipc_client.get_workspaces()?;
+
+    for output in &outputs {
+        let active_group = group_service.get_active_group(&output.name).await
+            .unwrap_or_else(|_| "0".to_string());
+        println!("{}: active group = \"{}\"", output.name, active_group);
+
+        let output_workspaces: Vec<_> = sway_workspaces.iter()
+            .filter(|w| w.output == output.name)
+            .collect();
+
+        let mut visible = Vec::new();
+        let mut hidden = Vec::new();
+        let mut global_ws = Vec::new();
+
+        for ws in &output_workspaces {
+            let base_name = suffix_service.get_base_name(&ws.name);
+            if suffix_service.is_global(&ws.name) {
+                global_ws.push(base_name);
+            } else if suffix_service.is_hidden(&ws.name) {
+                hidden.push(base_name);
+            } else {
+                visible.push(base_name);
+            }
+        }
+
+        visible.sort();
+        hidden.sort();
+        global_ws.sort();
+
+        println!("  Visible: {}", if visible.is_empty() { "(none)".to_string() } else { visible.join(", ") });
+        println!("  Hidden:  {}", if hidden.is_empty() { "(none)".to_string() } else { hidden.join(", ") });
+        if !global_ws.is_empty() {
+            println!("  Global:  {}", global_ws.join(", "));
+        }
+    }
+
+    Ok(())
+}
+
+fn get_pid_path() -> PathBuf {
+    if let Some(proj_dirs) = ProjectDirs::from("com", "swayg", "swayg") {
+        let data_dir = proj_dirs.data_dir();
+        std::fs::create_dir_all(data_dir).ok();
+        data_dir.join("swaygd.pid")
+    } else {
+        PathBuf::from("/tmp/swaygd.pid")
+    }
+}
+
+fn run_daemon(action: DaemonAction) -> anyhow::Result<()> {
+    match action {
+        DaemonAction::Start => {
+            let pid_path = get_pid_path();
+
+            // Check if already running
+            if let Ok(pid_str) = std::fs::read_to_string(&pid_path)
+                && let Ok(pid) = pid_str.trim().parse::<u32>()
+                    && std::path::Path::new(&format!("/proc/{}", pid)).exists() {
+                        anyhow::bail!("swaygd is already running (PID {})", pid);
+                    }
+
+            let exe = std::env::current_exe()?;
+            let child = std::process::Command::new(exe)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()?;
+
+            let pid = child.id();
+            std::fs::write(&pid_path, pid.to_string())?;
+            println!("Started swaygd (PID {})", pid);
+        }
+        DaemonAction::Stop => {
+            let pid_path = get_pid_path();
+
+            let pid_str = std::fs::read_to_string(&pid_path)
+                .map_err(|_| anyhow::anyhow!("PID file not found. Is swaygd running?"))?;
+            let pid: u32 = pid_str.trim().parse()
+                .map_err(|_| anyhow::anyhow!("Invalid PID in PID file"))?;
+
+            if !std::path::Path::new(&format!("/proc/{}", pid)).exists() {
+                std::fs::remove_file(&pid_path).ok();
+                anyhow::bail!("swaygd (PID {}) is not running", pid);
+            }
+
+            unsafe {
+                libc::kill(pid as i32, libc::SIGTERM);
+            }
+            std::fs::remove_file(&pid_path).ok();
+            println!("Stopped swaygd (PID {})", pid);
+        }
+        DaemonAction::Status => {
+            let pid_path = get_pid_path();
+
+            match std::fs::read_to_string(&pid_path) {
+                Ok(pid_str) => {
+                    let pid: u32 = pid_str.trim().parse().unwrap_or(0);
+                    if pid > 0 && std::path::Path::new(&format!("/proc/{}", pid)).exists() {
+                        println!("swaygd is running (PID {})", pid);
+                    } else {
+                        println!("swaygd is not running (stale PID file)");
+                    }
+                }
+                Err(_) => {
+                    println!("swaygd is not running");
+                }
+            }
         }
     }
     Ok(())
