@@ -1,0 +1,26 @@
+[package]
+name = "sway-groups-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "swayg"
+path = "src/main.rs"
+
+[[bin]]
+name = "swaygd"
+path = "src/bin/daemon.rs"
+
+[dependencies]
+tokio.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+directories.workspace = true
+sway-groups-core = { path = "../sway-groups-core" }
+
+[features]
+default = []
