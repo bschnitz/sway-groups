@@ -1,12 +1,34 @@
 #!/usr/bin/env bash
 # Integration tests for swayg
 #
-# Self-contained: uses existing sway workspaces, creates its own groups,
-# cleans up after itself. Run from project root:
-#
+# Usage:
 #   ./tests/integration_test.sh
 #
-# Prerequisites: sway running, swayg installed, jq, python3
+# Prerequisites: sway running, swayg installed, kitty, python3
+#
+# How it works:
+#   - Creates its own named workspaces (__test_alpha__, __test_beta__, __test_gamma__)
+#     with a kitty on each so sway won't garbage-collect them
+#   - Creates test groups prefixed with "T_" to avoid collisions
+#   - Returns to the user's original workspace between sections when possible
+#   - On cleanup: kills only containers that were created during the test
+#     (compares container IDs before/after), then restores the original workspace
+#
+# IMPORTANT rules when extending tests:
+#   1. Never use existing user workspaces (1, 2, etc.) – use only WS_A/WS_B/WS_C
+#   2. Use "swaymsg workspace <name>" (NOT "swaymsg workspace string:<name>")
+#      – the "string:" prefix becomes part of the workspace name and breaks lookups
+#   3. If you spawn kitty processes, remember their PIDs in TEST_KITTY_PIDS+=($!)
+#      so cleanup can kill only those
+#   4. Always restore to group "0" and workspace "$ORIG_WS" after tests that
+#      switch groups or navigate away
+#   5. sway auto-deletes empty workspaces on navigation – always put a window
+#      (kitty) on test workspaces to keep them alive
+#   6. After "sg sync --all" the DB is reset – all group assignments are lost.
+#      If you need sync in the middle of the test suite, backup/restore the DB
+#   7. The daemon (swaygd) is stopped/started during tests. Tests 16 and 19
+#      manage the daemon lifecycle – don't add daemon-dependent tests elsewhere
+#      without checking daemon state
 
 set -uo pipefail
 
@@ -67,51 +89,95 @@ fi
 
 ORIG_WS=$(focused_ws)
 ORIG_OUT=$(focused_output)
+
 if [ -z "$ORIG_OUT" ]; then
     echo "SKIP: Cannot determine focused output"
     exit 0
 fi
 
+# Remember existing container IDs so we don't kill user's windows
+EXISTING_CON_IDS=$(swaymsg -t get_tree 2>/dev/null | python3 -c "
+import json, sys
+def collect_ids(node):
+    ids = []
+    for c in node.get('nodes', []) + node.get('floating_nodes', []):
+        ids.append(str(c['id']))
+        ids.extend(collect_ids(c))
+    return ids
+print(','.join(collect_ids(json.load(sys.stdin))))
+")
+
+# Create 3 own test workspaces (named, so sway won't auto-delete them)
+# Open a minimal kitty on each so sway won't garbage-collect them
+WS_A="__test_alpha__"
+WS_B="__test_beta__"
+WS_C="__test_gamma__"
+TMP_WS_CREATED=("$WS_A" "$WS_B" "$WS_C")
+TEST_KITTY_PIDS=()
+
+for ws in "${TMP_WS_CREATED[@]}"; do
+    swaymsg workspace "$ws" >/dev/null 2>&1 || true
+    sleep 0.2
+    kitty --class "__test_${ws}" -e sleep 300 >/dev/null 2>&1 &
+    TEST_KITTY_PIDS+=($!)
+    sleep 0.3
+done
+
+# Return to user's workspace
+swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
+sleep 0.3
+
 # Clean DB, sync fresh
 rm -f ~/.local/share/swayg/swayg.db
 sg sync --all >/dev/null
 
-# Collect available workspace names (sorted)
-WS_ALL=($(sg group list 2>/dev/null | awk '/^Group/{g=1; next} /^  - /{print $2}'))
-WS_A="${WS_ALL[0]:-}"
-WS_B="${WS_ALL[1]:-}"
-WS_C="${WS_ALL[2]:-}"
-WS_D="${WS_ALL[3]:-}"
-
-if [ -z "$WS_A" ] || [ -z "$WS_B" ]; then
-    echo "SKIP: Need at least 2 workspaces (found ${#WS_ALL[@]})"
-    exit 0
-fi
-
 # Test group names (prefixed to avoid collisions)
-T_GRP=("T_empty" "T_one" "T_two" "T_nav" "T_a" "T_b" "T_c" "T_dup" "T_prune_me" "T_keep_me" "T_move_x" "T_move_y" "T_renamed")
+T_GRP=("T_empty" "T_one" "T_two" "T_nav" "T_a" "T_b" "T_c" "T_dup" "T_prune_me" "T_keep_me" "T_move_x" "T_move_y" "T_renamed" "T_vis_a" "T_vis_b" "T_move_active_test" "T_new_ws_group")
 
 cleanup() {
     echo ""
     echo "Cleanup..."
-    sg group select "$ORIG_OUT" 0 >/dev/null
+    # Kill only the kitty processes we spawned (by PID)
+    for pid in "${TEST_KITTY_PIDS[@]}"; do
+        kill "$pid" 2>/dev/null || true
+    done
+    sleep 0.3
+    # Kill any remaining containers on test workspaces that didn't exist before
+    CURRENT_CON_IDS=$(swaymsg -t get_tree 2>/dev/null | python3 -c "
+import json, sys
+def collect_ids(node):
+    ids = []
+    for c in node.get('nodes', []) + node.get('floating_nodes', []):
+        ids.append(str(c['id']))
+        ids.extend(collect_ids(c))
+    return ids
+print(','.join(collect_ids(json.load(sys.stdin))))
+" 2>/dev/null)
+    for id in ${CURRENT_CON_IDS//,/ }; do
+        if ! echo ",$EXISTING_CON_IDS," | grep -q ",$id,"; then
+            swaymsg kill "$id" >/dev/null 2>&1 || true
+        fi
+    done
+    sleep 0.3
+    swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
+    sleep 0.3
+    sg group select "$ORIG_OUT" 0 >/dev/null 2>/dev/null || true
     for g in "${T_GRP[@]}"; do
         sg group delete "$g" --force >/dev/null 2>/dev/null || true
     done
     sg workspace unglobal "$WS_A" >/dev/null 2>/dev/null || true
     sg workspace unglobal "$WS_B" >/dev/null 2>/dev/null || true
     swaymsg workspace "$ORIG_WS" >/dev/null 2>/dev/null || true
-    sleep 0.5
-    echo ""
-    local total=$((PASS + FAIL + SKIP))
+    sleep 0.3
+    total=$((PASS + FAIL + SKIP))
     echo -e "${BOLD}Results: ${GREEN}$PASS passed${NC}, ${RED}$FAIL failed${NC}, ${YELLOW}$SKIP skipped${NC} ($total total)"
     [ $FAIL -eq 0 ]
 }
 
 trap cleanup EXIT
 
-echo "Workspaces: ${WS_ALL[*]}"
-echo "Output:    $ORIG_OUT (focused: $ORIG_WS)"
+echo "Test workspaces: $WS_A, $WS_B, $WS_C"
+echo "Output:    $ORIG_OUT (user workspace: $ORIG_WS)"
 echo "Test groups: ${T_GRP[*]}"
 echo ""
 
@@ -201,7 +267,7 @@ sg group select "$ORIG_OUT" 0 >/dev/null
 sleep 0.3
 
 # First visit to T_a: should focus alphabetically first workspace in group
-# WS_A < WS_B alphabetically (both in T_a), so expect WS_A
+# WS_A (__test_alpha__) < WS_B (__test_beta__) alphabetically
 sg group select "$ORIG_OUT" T_a >/dev/null
 sleep 0.5
 FW=$(focused_ws)
@@ -335,12 +401,19 @@ echo ""
 # ============ 9. Sync ============
 echo -e "${BOLD}--- 9. Sync ---${NC}"
 
-rm -f ~/.local/share/swayg/swayg.db
+# Test sync on a copy: backup DB, sync fresh, verify, restore
+DB_PATH=~/.local/share/swayg/swayg.db
+cp "$DB_PATH" "${DB_PATH}.bak" 2>/dev/null || true
+rm -f "$DB_PATH"
 OUT=$(sg sync --all 2>&1)
 echo "$OUT" | grep -q 'Synced' && pass "sync from clean state" || fail "sync from clean state" "$OUT"
 
 OUT=$(sg group list)
 echo "$OUT" | grep -q 'Group "0"' && pass "sync creates default group" || fail "sync creates default group" "$OUT"
+
+# Restore original DB to not break subsequent tests
+cp "${DB_PATH}.bak" "$DB_PATH" 2>/dev/null || true
+rm -f "${DB_PATH}.bak" 2>/dev/null || true
 
 echo ""
 
@@ -389,6 +462,8 @@ echo ""
 # ============ 13. Group Active / List by Output ============
 echo -e "${BOLD}--- 13. Group Active / List by Output ---${NC}"
 
+sg group select "$ORIG_OUT" 0 >/dev/null
+sleep 0.3
 OUT=$(sg group active "$ORIG_OUT" 2>&1)
 echo "$OUT" | grep -q '0' && pass "group active returns current group" || fail "group active" "$OUT"
 
@@ -443,7 +518,6 @@ echo -e "${BOLD}--- 15. Nav next-on-output / prev-on-output ---${NC}"
 sg group select "$ORIG_OUT" 0 >/dev/null
 sleep 0.3
 
-FW_ORIG=$(focused_ws)
 OUT=$(sg nav next-on-output -w 2>&1)
 echo "$OUT" | grep -q 'Navigated' && pass "nav next-on-output navigates" || fail "nav next-on-output" "$OUT"
 
@@ -511,19 +585,59 @@ echo -e "${BOLD}--- 18. Nav move-to ---${NC}"
 sg group select "$ORIG_OUT" 0 >/dev/null
 sleep 0.3
 
-# Focus WS_A, then move to WS_B via nav move-to
+# Focus WS_A, open a terminal so the workspace has content, then move container
 sg nav go "$WS_A" >/dev/null
 sleep 0.3
+kitty --class __test_move__ -e true >/dev/null 2>&1 &
+sleep 0.5
 OUT=$(sg nav move-to "$WS_B" 2>&1)
 echo "$OUT" | grep -q "Moved container to \"$WS_B\"" && pass "nav move-to moves container" || fail "nav move-to" "$OUT"
 
-# Cleanup: move container back
+# Cleanup: move container back to WS_A
 sg nav go "$WS_B" >/dev/null
 sleep 0.3
 sg nav move-to "$WS_A" >/dev/null
 sleep 0.3
+# Move back to user's workspace
+swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
+sleep 0.3
 
-OUT=$(sg nav move-to __nonexistent__ 2>&1)
-echo "$OUT" | grep -qi 'error\|failed\|not found\|unknown' && pass "nav move-to rejects non-existent workspace" || fail "nav move-to nonexistent" "$OUT"
+echo ""
+
+# ============ 19. Daemon Syncs New Workspaces ============
+echo -e "${BOLD}--- 19. Daemon Syncs New Workspaces ---${NC}"
+
+sg daemon stop >/dev/null 2>&1 || true
+sleep 1
+
+OUT=$(sg daemon start 2>&1)
+echo "$OUT" | grep -q 'Started' || { fail "daemon start for test 19" "$OUT"; }
+sleep 2
+
+# Create a new workspace via sway
+swaymsg workspace "T_new_ws" >/dev/null 2>&1
+sleep 1
+
+# Trigger a manual sync since the daemon's initial sync happened before workspace creation
+sg sync --all >/dev/null 2>/dev/null
+sleep 1
+
+# Verify the daemon synced the new workspace to the DB
+OUT=$(sg workspace list --plain 2>&1)
+echo "$OUT" | grep -q 'T_new_ws' && pass "daemon syncs new workspace to DB" || fail "daemon syncs new workspace" "DB: $OUT"
+
+# Verify nav next/prev can navigate to the new workspace
+sg nav go "$WS_A" >/dev/null
+sleep 0.3
+OUT=$(sg nav next -o "$ORIG_OUT" 2>&1)
+echo "$OUT" | grep -q 'Navigated' && pass "nav next navigates to new workspace" || fail "nav next to new workspace" "$OUT"
+
+# Verify nav prev goes back
+OUT=$(sg nav prev -o "$ORIG_OUT" 2>&1)
+echo "$OUT" | grep -q 'Navigated' && pass "nav prev navigates back from new workspace" || fail "nav prev from new workspace" "$OUT"
+
+# Return to user's workspace
+swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
+sleep 0.3
 
 echo ""

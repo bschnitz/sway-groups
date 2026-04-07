@@ -18,12 +18,12 @@ if [ -z "$current_ws" ]; then
     exit 1
 fi
 
-current_groups=$(swayg workspace groups "$current_ws" | sed 's/.*: //; s/"//g; s/, */\n/g' | sort)
+current_groups=$($HOME/.cargo/bin/swayg workspace groups "$current_ws" | sed 's/.*: //; s/"//g; s/, */\n/g' | sort)
 
-group=$(swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | grep -vxFf <(echo "$current_groups") | rofi -dmenu -p "Add '$current_ws' to group:")
+group=$($HOME/.cargo/bin/swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | grep -vxFf <(echo "$current_groups") | rofi -dmenu -p "Add '$current_ws' to group:")
 if [ -z "$group" ]; then
     notify-send "swayg" "Add to group cancelled."
     exit 0
 fi
 
-swayg workspace add "$current_ws" --group "$group"
+$HOME/.cargo/bin/swayg workspace add "$current_ws" --group "$group"

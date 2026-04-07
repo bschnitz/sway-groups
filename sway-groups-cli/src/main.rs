@@ -26,7 +26,7 @@ fn get_db_path() -> PathBuf {
 #[tokio::main]
 async fn main() -> AnyResult<()> {
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .with(tracing_subscriber::EnvFilter::from_default_env()
             .add_directive("swayg=info".parse()?))
         .init();

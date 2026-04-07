@@ -18,7 +18,7 @@ if [ -z "$current_ws" ]; then
     exit 1
 fi
 
-groups=$(swayg workspace groups "$current_ws" | sed 's/.*: //; s/"//g; s/, */\n/g')
+groups=$($HOME/.cargo/bin/swayg workspace groups "$current_ws" | sed 's/.*: //; s/"//g; s/, */\n/g')
 
 if [ -z "$groups" ]; then
     notify-send "swayg" "Workspace '$current_ws' is not in any group."
@@ -31,4 +31,4 @@ if [ -z "$group" ]; then
     exit 0
 fi
 
-swayg workspace remove "$current_ws" --group "$group"
+$HOME/.cargo/bin/swayg workspace remove "$current_ws" --group "$group"

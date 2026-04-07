@@ -20,9 +20,9 @@ for s in _class_hidden _class_global; do
 done
 
 if echo "$raw_ws" | grep -q "_class_global$"; then
-    swayg workspace unglobal "$current_ws"
+    $HOME/.cargo/bin/swayg workspace unglobal "$current_ws"
     notify-send "swayg" "Workspace '$current_ws' is no longer global."
 else
-    swayg workspace global "$current_ws"
+    $HOME/.cargo/bin/swayg workspace global "$current_ws"
     notify-send "swayg" "Workspace '$current_ws' is now global."
 fi

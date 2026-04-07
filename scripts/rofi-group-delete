@@ -1,7 +1,7 @@
 #!/bin/sh
 # Delete a group via rofi. Asks for confirmation. The default group "0" is excluded.
 
-group=$(swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | grep -v '^0$' | rofi -dmenu -p "Delete group:")
+group=$($HOME/.cargo/bin/swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | grep -v '^0$' | rofi -dmenu -p "Delete group:")
 if [ -z "$group" ]; then
     notify-send "swayg" "Group deletion cancelled."
     exit 0
@@ -13,7 +13,7 @@ if [ "$confirm" != "Yes" ]; then
     exit 0
 fi
 
-result=$(swayg group delete "$group" --force 2>&1)
+result=$($HOME/.cargo/bin/swayg group delete "$group" --force 2>&1)
 if echo "$result" | grep -qi "deleted"; then
     notify-send "swayg" "Deleted group '$group'."
 else

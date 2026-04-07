@@ -8,7 +8,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use sway_groups_core::db::DatabaseManager;
 use sway_groups_core::sway::{EventStream, SwayEventType, SwayIpcClient};
-use sway_groups_core::services::SuffixService;
+use sway_groups_core::services::{SuffixService, WorkspaceService};
 
 fn get_db_path() -> PathBuf {
     if let Some(proj_dirs) = ProjectDirs::from("com", "swayg", "swayg") {
@@ -24,10 +24,12 @@ async fn handle_event(
     event_type: u32,
     _payload: &[u8],
     suffix_service: &SuffixService,
+    workspace_service: &WorkspaceService,
 ) -> AnyResult<()> {
     match event_type {
         t if t == SwayEventType::Workspace as u32 => {
-            info!("Workspace event received, syncing suffixes...");
+            info!("Workspace event received, syncing...");
+            workspace_service.sync_from_sway().await?;
             suffix_service.sync_all_suffixes().await?;
         }
         t if t == SwayEventType::Output as u32 => {
@@ -43,13 +45,13 @@ async fn handle_event(
     Ok(())
 }
 
-async fn event_loop(mut event_stream: EventStream, suffix_service: SuffixService) -> AnyResult<()> {
+async fn event_loop(mut event_stream: EventStream, suffix_service: SuffixService, workspace_service: WorkspaceService) -> AnyResult<()> {
     info!("Listening for sway events...");
 
     loop {
         match event_stream.read_event() {
             Ok((event_type, payload)) => {
-                if let Err(e) = handle_event(event_type, &payload, &suffix_service).await {
+                if let Err(e) = handle_event(event_type, &payload, &suffix_service, &workspace_service).await {
                     error!("Error handling event (type={}): {}", event_type, e);
                 }
             }
@@ -66,7 +68,7 @@ async fn event_loop(mut event_stream: EventStream, suffix_service: SuffixService
 #[tokio::main]
 async fn main() -> AnyResult<()> {
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .with(
             tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("swaygd=info".parse()?),
@@ -85,11 +87,13 @@ async fn main() -> AnyResult<()> {
     let db = DatabaseManager::new(db_path).await?;
     let ipc_client = SwayIpcClient::new()?;
     let suffix_service = SuffixService::new(db.clone(), ipc_client.clone());
+    let workspace_service = WorkspaceService::new(db.clone(), ipc_client.clone());
 
     suffix_service.sync_all_suffixes().await?;
+    workspace_service.sync_from_sway().await?;
 
     let event_stream = ipc_client.subscribe(&["workspace", "output", "shutdown"])?;
-    event_loop(event_stream, suffix_service).await?;
+    event_loop(event_stream, suffix_service, workspace_service).await?;
 
     Ok(())
 }

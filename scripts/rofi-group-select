@@ -14,12 +14,12 @@ if [ -z "$output" ]; then
     exit 1
 fi
 
-active=$(swayg group active "$output")
+active=$($HOME/.cargo/bin/swayg group active "$output")
 
-group=$(swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | rofi -dmenu -p "Select group:" -a "$active")
+group=$($HOME/.cargo/bin/swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | rofi -dmenu -p "Select group:" -a "$active")
 if [ -z "$group" ]; then
     notify-send "swayg" "Group selection cancelled."
     exit 0
 fi
 
-swayg group select "$output" "$group"
+$HOME/.cargo/bin/swayg group select "$output" "$group"

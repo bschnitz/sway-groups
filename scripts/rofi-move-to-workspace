@@ -1,0 +1,7 @@
+#!/bin/sh
+# Move the focused container to a visible workspace (chosen via rofi).
+
+ws=$($HOME/.cargo/bin/swayg workspace list --visible --plain 2>/dev/null | rofi -dmenu -p "Move to:")
+if [ -n "$ws" ]; then
+    $HOME/.cargo/bin/swayg nav move-to "$ws"
+fi

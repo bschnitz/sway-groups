@@ -7,7 +7,7 @@ if [ -z "$name" ]; then
     exit 0
 fi
 
-result=$(swayg group create "$name" 2>&1)
+result=$($HOME/.cargo/bin/swayg group create "$name" 2>&1)
 if echo "$result" | grep -qi 'already exists'; then
     notify-send "swayg" "Group '$name' already exists."
     exit 1
