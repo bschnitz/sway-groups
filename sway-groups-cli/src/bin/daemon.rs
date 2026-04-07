@@ -10,14 +10,18 @@ use sway_groups_core::db::DatabaseManager;
 use sway_groups_core::sway::{EventStream, SwayEventType, SwayIpcClient};
 use sway_groups_core::services::{SuffixService, WorkspaceService};
 
-fn get_db_path() -> PathBuf {
+fn get_data_dir() -> PathBuf {
     if let Some(proj_dirs) = ProjectDirs::from("com", "swayg", "swayg") {
         let data_dir = proj_dirs.data_dir();
         std::fs::create_dir_all(data_dir).ok();
-        data_dir.join("swayg.db")
+        data_dir.to_path_buf()
     } else {
-        PathBuf::from("swayg.db")
+        PathBuf::from(".")
     }
+}
+
+fn get_db_path() -> PathBuf {
+    get_data_dir().join("swayg.db")
 }
 
 async fn handle_event(
@@ -76,6 +80,9 @@ async fn main() -> AnyResult<()> {
         .init();
 
     info!("Starting swaygd daemon...");
+
+    let pid_path = get_data_dir().join("swaygd.pid");
+    std::fs::write(&pid_path, std::process::id().to_string())?;
 
     tokio::spawn(async {
         tokio::signal::ctrl_c().await.ok();

@@ -695,7 +695,6 @@ fn run_daemon(action: DaemonAction) -> anyhow::Result<()> {
         DaemonAction::Start => {
             let pid_path = get_pid_path();
 
-            // Check if already running
             if let Ok(pid_str) = std::fs::read_to_string(&pid_path)
                 && let Ok(pid) = pid_str.trim().parse::<u32>()
                     && std::path::Path::new(&format!("/proc/{}", pid)).exists() {

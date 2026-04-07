@@ -169,6 +169,11 @@ print(','.join(collect_ids(json.load(sys.stdin))))
     sg workspace unglobal "$WS_B" >/dev/null 2>/dev/null || true
     swaymsg workspace "$ORIG_WS" >/dev/null 2>/dev/null || true
     sleep 0.3
+    # Restore daemon if it was running before the test
+    if [ "$DAEMON_WAS_RUNNING" = true ]; then
+        systemctl --user start swaygd >/dev/null 2>&1 || true
+        sleep 1
+    fi
     total=$((PASS + FAIL + SKIP))
     echo -e "${BOLD}Results: ${GREEN}$PASS passed${NC}, ${RED}$FAIL failed${NC}, ${YELLOW}$SKIP skipped${NC} ($total total)"
     [ $FAIL -eq 0 ]
@@ -529,23 +534,24 @@ echo ""
 # ============ 16. Daemon ====
 echo -e "${BOLD}--- 16. Daemon ---${NC}"
 
-sg daemon stop >/dev/null 2>&1 || true
-sleep 1
+DAEMON_WAS_RUNNING=false
+if systemctl --user is-active --quiet swaygd 2>/dev/null; then
+    DAEMON_WAS_RUNNING=true
+    systemctl --user stop swaygd
+    sleep 1
+fi
 
-OUT=$(sg daemon status 2>&1)
-echo "$OUT" | grep -q 'not running' && pass "daemon not running after stop" || fail "daemon not running" "$OUT"
+OUT=$(systemctl --user is-active swaygd 2>&1)
+echo "$OUT" | grep -q 'inactive\|unknown' && pass "daemon not running after stop" || fail "daemon not running" "$OUT"
 
-OUT=$(sg daemon start 2>&1)
-echo "$OUT" | grep -q 'Started' && pass "daemon start" || fail "daemon start" "$OUT"
+systemctl --user start swaygd
 sleep 2
 
+OUT=$(systemctl --user is-active swaygd 2>&1)
+echo "$OUT" | grep -q 'active' && pass "daemon running after start" || fail "daemon running" "$OUT"
+
 OUT=$(sg daemon status 2>&1)
-echo "$OUT" | grep -q 'running' && pass "daemon running after start" || fail "daemon running" "$OUT"
-
-sleep 1
-
-OUT=$(sg daemon start 2>&1 || true)
-echo "$OUT" | grep -qi 'already running' && pass "daemon start rejects duplicate" || fail "daemon start duplicate" "output: $OUT"
+echo "$OUT" | grep -q 'running' && pass "sg daemon status agrees" || fail "sg daemon status" "$OUT"
 
 echo ""
 
@@ -607,22 +613,15 @@ echo ""
 # ============ 19. Daemon Syncs New Workspaces ============
 echo -e "${BOLD}--- 19. Daemon Syncs New Workspaces ---${NC}"
 
-sg daemon stop >/dev/null 2>&1 || true
-sleep 1
-
-OUT=$(sg daemon start 2>&1)
-echo "$OUT" | grep -q 'Started' || { fail "daemon start for test 19" "$OUT"; }
+# Restart daemon to get a clean event subscription
+systemctl --user restart swaygd
 sleep 2
 
 # Create a new workspace via sway
 swaymsg workspace "T_new_ws" >/dev/null 2>&1
 sleep 1
 
-# Trigger a manual sync since the daemon's initial sync happened before workspace creation
-sg sync --all >/dev/null 2>/dev/null
-sleep 1
-
-# Verify the daemon synced the new workspace to the DB
+# Verify the daemon synced the new workspace to the DB (via event, not manual sync)
 OUT=$(sg workspace list --plain 2>&1)
 echo "$OUT" | grep -q 'T_new_ws' && pass "daemon syncs new workspace to DB" || fail "daemon syncs new workspace" "DB: $OUT"
 

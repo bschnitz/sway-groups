@@ -23,17 +23,19 @@ pub enum SwayMsgType {
 }
 
 /// Sway IPC event types.
+/// These include the IPC_EVENT_MASK (0x80000000) that sway sets on event messages
+/// to distinguish them from regular IPC responses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum SwayEventType {
-    Workspace = 0,
-    Output = 1,
-    Mode = 2,
-    Window = 3,
-    BarConfigUpdate = 4,
-    BindingInfo = 5,
-    Shutdown = 6,
-    Tick = 7,
+    Workspace = 0x80000000,
+    Output = 0x80000001,
+    Mode = 0x80000002,
+    Window = 0x80000003,
+    BarConfigUpdate = 0x80000004,
+    BindingInfo = 0x80000005,
+    Shutdown = 0x80000006,
+    Tick = 0x80000007,
 }
 
 /// Workspace representation from sway.
