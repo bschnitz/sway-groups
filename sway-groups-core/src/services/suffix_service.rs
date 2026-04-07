@@ -8,6 +8,7 @@ use sea_orm::entity::prelude::*;
 use tracing::{debug, info};
 
 /// Service for managing workspace suffixes.
+#[derive(Clone)]
 pub struct SuffixService {
     db: DatabaseManager,
     ipc_client: SwayIpcClient,
@@ -26,7 +27,7 @@ impl SuffixService {
     /// Calculate the appropriate suffix for a workspace.
     pub fn calculate_suffix(
         &self,
-        workspace_name: &str,
+        _workspace_name: &str,
         active_group: &str,
         workspace_groups: &[String],
         is_global: bool,

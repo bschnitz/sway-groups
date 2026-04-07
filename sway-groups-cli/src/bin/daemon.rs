@@ -1,24 +1,24 @@
 //! swaygd - swayg daemon for automatic suffix synchronization.
 
 use anyhow::Result as AnyResult;
+use directories::ProjectDirs;
 use std::path::PathBuf;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use sway_groups_core::db::DatabaseManager;
 use sway_groups_core::sway::SwayIpcClient;
-use sway_groups_core::services::{GroupService, SuffixService};
+use sway_groups_core::services::SuffixService;
 
 /// Get the database path.
 fn get_db_path() -> PathBuf {
-    let data_dir = std::env::var("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            dirs::home_dir()
-                .map(|h| h.join(".local/share"))
-                .unwrap_or_else(|| PathBuf::from("."))
-        });
-    data_dir.join("swayg").join("swayg.db")
+    if let Some(proj_dirs) = ProjectDirs::from("com", "swayg", "swayg") {
+        let data_dir = proj_dirs.data_dir();
+        std::fs::create_dir_all(data_dir).ok();
+        data_dir.join("swayg.db")
+    } else {
+        PathBuf::from("swayg.db")
+    }
 }
 
 #[tokio::main]

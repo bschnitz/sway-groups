@@ -1,11 +1,12 @@
 //! Workspace management service.
 
-use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
+use crate::db::entities::{workspace, workspace_group};
+use crate::db::entities::{GroupEntity, WorkspaceEntity, WorkspaceGroupEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
-use sea_orm::entity::prelude::*;
-use tracing::{debug, info};
+use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, ModelTrait, Set};
+use tracing::info;
 
 /// Workspace information for display.
 #[derive(Debug, Clone)]
@@ -86,7 +87,7 @@ impl WorkspaceService {
     }
 
     /// Get a workspace by name.
-    pub async fn get_workspace(&self, name: &str) -> Result<Option<WorkspaceEntity::Model>> {
+    pub async fn get_workspace(&self, name: &str) -> Result<Option<workspace::Model>> {
         Ok(WorkspaceEntity::find_by_name(name)
             .one(self.db.conn())
             .await?)
@@ -110,15 +111,15 @@ impl WorkspaceService {
                 match sway_ws {
                     Some(ws) => {
                         let number = ws.num.map(|n| n as i32);
-                        let now = chrono::Utc::now();
+                        let now = chrono::Utc::now().naive_utc();
 
-                        let active = WorkspaceEntity::ActiveModel {
+                        let active = workspace::ActiveModel {
                             name: Set(ws.name.clone()),
                             number: Set(number),
                             output: Set(Some(ws.output.clone())),
                             is_global: Set(false),
-                            created_at: Set(now),
-                            updated_at: Set(now),
+                            created_at: Set(Some(now)),
+                            updated_at: Set(Some(now)),
                             ..Default::default()
                         };
                         active.insert(self.db.conn()).await?
@@ -149,11 +150,11 @@ impl WorkspaceService {
         }
 
         // Create membership
-        let now = chrono::Utc::now();
-        let membership = WorkspaceGroupEntity::ActiveModel {
+        let now = chrono::Utc::now().naive_utc();
+        let membership = workspace_group::ActiveModel {
             workspace_id: Set(workspace.id),
             group_id: Set(group.id),
-            created_at: Set(now),
+            created_at: Set(Some(now)),
             ..Default::default()
         };
         membership.insert(self.db.conn()).await?;
@@ -237,7 +238,7 @@ impl WorkspaceService {
 
         let mut active = workspace.into_active_model();
         active.is_global = Set(global);
-        active.updated_at = Set(chrono::Utc::now());
+        active.updated_at = Set(Some(chrono::Utc::now().naive_utc()));
         active.update(self.db.conn()).await?;
 
         info!(
@@ -250,43 +251,40 @@ impl WorkspaceService {
     /// Sync workspaces from sway.
     pub async fn sync_from_sway(&self) -> Result<()> {
         let sway_workspaces = self.ipc_client.get_workspaces()?;
-        let now = chrono::Utc::now();
+        let now = chrono::Utc::now().naive_utc();
 
         for sway_ws in sway_workspaces {
-            // Check if workspace exists
             let existing = WorkspaceEntity::find_by_name(&sway_ws.name)
                 .one(self.db.conn())
                 .await?;
 
-            if let Some(mut ws) = existing {
-                // Update existing
-                ws.number = Set(sway_ws.num.map(|n| n as i32));
-                ws.output = Set(Some(sway_ws.output));
-                ws.updated_at = Set(now);
-                ws.update(self.db.conn()).await?;
+            if let Some(ws) = existing {
+                let mut active = ws.into_active_model();
+                active.number = Set(sway_ws.num.map(|n| n as i32));
+                active.output = Set(Some(sway_ws.output));
+                active.updated_at = Set(Some(now));
+                active.update(self.db.conn()).await?;
             } else {
-                // Create new
                 let number = sway_ws.num.map(|n| n as i32);
-                let active = WorkspaceEntity::ActiveModel {
+                let active = workspace::ActiveModel {
                     name: Set(sway_ws.name.clone()),
                     number: Set(number),
                     output: Set(Some(sway_ws.output)),
                     is_global: Set(false),
-                    created_at: Set(now),
-                    updated_at: Set(now),
+                    created_at: Set(Some(now)),
+                    updated_at: Set(Some(now)),
                     ..Default::default()
                 };
-                active.insert(self.db.conn()).await?;
+                let ws = active.insert(self.db.conn()).await?;
 
-                // Add to default group "0"
                 if let Some(group_0) = GroupEntity::find_by_name("0")
                     .one(self.db.conn())
                     .await?
                 {
-                    let membership = WorkspaceGroupEntity::ActiveModel {
+                    let membership = workspace_group::ActiveModel {
                         workspace_id: Set(ws.id),
                         group_id: Set(group_0.id),
-                        created_at: Set(now),
+                        created_at: Set(Some(now)),
                         ..Default::default()
                     };
                     membership.insert(self.db.conn()).await?;

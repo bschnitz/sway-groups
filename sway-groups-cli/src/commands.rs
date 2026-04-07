@@ -298,7 +298,7 @@ async fn run_workspace(action: WorkspaceAction) -> anyhow::Result<()> {
                 group.as_deref().unwrap_or("all")
             );
         }
-        WorkspaceAction::Add { workspace, group, output } => {
+        WorkspaceAction::Add { workspace, group, output: _ } => {
             println!("Adding workspace '{}' to group '{}'...",
                 workspace,
                 group.as_deref().unwrap_or("active")

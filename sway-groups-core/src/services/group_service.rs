@@ -1,9 +1,10 @@
 //! Group management service.
 
-use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
+use crate::db::entities::{group, output, GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
 use crate::services::suffix_service::SuffixService;
+use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, ModelTrait, Set};
 use tracing::{info, warn};
 
 /// Group information for display.
@@ -71,7 +72,7 @@ impl GroupService {
     }
 
     /// Create a new group.
-    pub async fn create_group(&self, name: &str) -> Result<GroupEntity::Model> {
+    pub async fn create_group(&self, name: &str) -> Result<group::Model> {
         // Check if group already exists
         if GroupEntity::find_by_name(name)
             .one(self.db.conn())
@@ -84,8 +85,8 @@ impl GroupService {
             )));
         }
 
-        let now = chrono::Utc::now();
-        let active = GroupEntity::ActiveModel {
+        let now = chrono::Utc::now().naive_utc();
+        let active = group::ActiveModel {
             name: Set(name.to_string()),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
@@ -166,7 +167,7 @@ impl GroupService {
         }
 
         group.name = Set(new_name.to_string());
-        group.updated_at = Set(Some(chrono::Utc::now()));
+        group.updated_at = Set(Some(chrono::Utc::now().naive_utc()));
         group.update(self.db.conn()).await?;
 
         info!("Renamed group: {} -> {}", old_name, new_name);
@@ -199,15 +200,15 @@ impl GroupService {
             .one(self.db.conn())
             .await?;
 
-        let now = chrono::Utc::now();
+        let now = chrono::Utc::now().naive_utc();
 
-        if let Some(mut existing) = output_model {
-            existing.active_group = Set(group.to_string());
-            existing.updated_at = Set(Some(now));
-            existing.update(self.db.conn()).await?;
+        if let Some(existing) = output_model {
+            let mut active = existing.into_active_model();
+            active.active_group = Set(group.to_string());
+            active.updated_at = Set(Some(now));
+            active.update(self.db.conn()).await?;
         } else {
-            // Create new output
-            let active = OutputEntity::ActiveModel {
+            let active = output::ActiveModel {
                 name: Set(output.to_string()),
                 active_group: Set(group.to_string()),
                 created_at: Set(Some(now)),
