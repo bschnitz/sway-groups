@@ -487,8 +487,6 @@ echo ""
 # ============ 14. Workspace Move ============
 echo -e "${BOLD}--- 14. Workspace Move ---${NC}"
 
-sg group create T_move_x >/dev/null
-sg group create T_move_y >/dev/null
 sg workspace add "$WS_A" -g 0 >/dev/null
 
 OUT=$(sg workspace move "$WS_A" --groups T_move_x 2>&1)
@@ -498,17 +496,22 @@ OUT=$(sg workspace groups "$WS_A" 2>&1)
 echo "$OUT" | grep -q 'T_move_x' && pass "move removed from old group (0), now only in T_move_x" || fail "move removed old" "$OUT"
 ! echo "$OUT" | grep -q '"0"' && pass "move no longer in group 0" || fail "move still in 0" "$OUT"
 
+# Verify T_move_x was auto-created (not pre-existing)
+OUT=$(sg group list 2>&1)
+echo "$OUT" | grep -q 'T_move_x' && pass "move auto-created group T_move_x" || fail "auto-created T_move_x" "$OUT"
+
 OUT=$(sg workspace move "$WS_A" --groups T_move_x,T_move_y 2>&1)
 echo "$OUT" | grep -q "Moved workspace" && pass "workspace move to multiple groups" || fail "workspace move multiple" "$OUT"
 
 OUT=$(sg workspace groups "$WS_A" 2>&1)
 echo "$OUT" | grep -q 'T_move_x' && echo "$OUT" | grep -q 'T_move_y' && pass "workspace is in both target groups after move" || fail "move both groups" "$OUT"
 
+# Verify T_move_y was also auto-created
+OUT=$(sg group list 2>&1)
+echo "$OUT" | grep -q 'T_move_y' && pass "move auto-created group T_move_y" || fail "auto-created T_move_y" "$OUT"
+
 OUT=$(sg workspace move __nonexistent__ --groups T_move_x 2>&1)
 echo "$OUT" | grep -qi 'not found' && pass "workspace move rejects non-existent workspace" || fail "move nonexistent ws" "$OUT"
-
-OUT=$(sg workspace move "$WS_A" --groups __no_such_group__ 2>&1)
-echo "$OUT" | grep -qi 'not found' && pass "workspace move rejects non-existent group" || fail "move nonexistent group" "$OUT"
 
 # Move back to 0 for cleanup
 sg workspace move "$WS_A" --groups 0 >/dev/null

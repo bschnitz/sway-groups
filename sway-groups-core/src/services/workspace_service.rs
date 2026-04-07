@@ -1,6 +1,6 @@
 //! Workspace management service.
 
-use crate::db::entities::{workspace, workspace_group};
+use crate::db::entities::{group, workspace, workspace_group};
 use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
@@ -296,10 +296,24 @@ impl WorkspaceService {
         }
 
         for group_name in group_names {
-            let group = GroupEntity::find_by_name(*group_name)
+            let group = match GroupEntity::find_by_name(*group_name)
                 .one(self.db.conn())
                 .await?
-                .ok_or_else(|| Error::GroupNotFound(group_name.to_string()))?;
+            {
+                Some(g) => g,
+                None => {
+                    let now = chrono::Utc::now().naive_utc();
+                    let active = group::ActiveModel {
+                        name: Set(group_name.to_string()),
+                        created_at: Set(Some(now)),
+                        updated_at: Set(Some(now)),
+                        ..Default::default()
+                    };
+                    let model = active.insert(self.db.conn()).await?;
+                    info!("Auto-created group: {}", group_name);
+                    model
+                }
+            };
 
             let now = chrono::Utc::now().naive_utc();
             let membership = workspace_group::ActiveModel {

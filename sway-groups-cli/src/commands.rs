@@ -192,6 +192,7 @@ enum WorkspaceAction {
         output: Option<String>,
     },
     /// Move workspace to groups (comma-separated), removing from all other groups.
+    /// Groups are created automatically if they don't exist.
     Move {
         /// Workspace name or number.
         workspace: String,

@@ -119,6 +119,29 @@ impl GroupService {
         Ok(model)
     }
 
+    /// Get a group by name, creating it if it doesn't exist.
+    pub async fn get_or_create_group(&self, name: &str) -> Result<group::Model> {
+        if let Some(g) = GroupEntity::find_by_name(name)
+            .one(self.db.conn())
+            .await?
+        {
+            return Ok(g);
+        }
+
+        let now = chrono::Utc::now().naive_utc();
+        let active = group::ActiveModel {
+            name: Set(name.to_string()),
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            ..Default::default()
+        };
+
+        let model = active.insert(self.db.conn()).await?;
+        info!("Auto-created group: {}", name);
+
+        Ok(model)
+    }
+
     /// Delete a group.
     pub async fn delete_group(&self, name: &str, force: bool) -> Result<()> {
         // Cannot delete the default group "0"
