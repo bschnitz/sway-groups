@@ -200,13 +200,13 @@ swayg group prune --keep 0 --keep default
 
 ### `swayg workspace` - Workspace Management
 
-#### `swayg workspace list [-o|--output <OUTPUT>] [-g|--group <GROUP>]`
-List workspaces, optionally filtered by output and/or group.
+#### `swayg workspace list [-o|--output <OUTPUT>] [-g|--group <GROUP>] [--visible] [--plain]`
+List workspaces, optionally filtered by output and/or group. `--visible` shows only workspaces in the active group. `--plain` outputs names only (useful for piping).
 
 ```sh
 swayg workspace list
 swayg workspace list --group dev
-swayg workspace list --output DP-1
+swayg workspace list --visible --plain
 ```
 
 #### `swayg workspace add <WORKSPACE> [-g|--group <GROUP>]`
@@ -291,6 +291,13 @@ Navigate to a specific workspace.
 
 ```sh
 swayg nav go 3
+```
+
+#### `swayg nav move-to <WORKSPACE>`
+Move the currently focused container to a specific workspace.
+
+```sh
+swayg nav move-to 3
 ```
 
 #### `swayg nav back`

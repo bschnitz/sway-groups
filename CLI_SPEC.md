@@ -176,8 +176,11 @@ Pruned 2 empty group(s)
 
 ### `swayg workspace` - Workspace Management
 
-#### `swayg workspace list [-o|--output <OUTPUT>] [-g|--group <GROUP>]`
-List workspaces with visibility status.
+#### `swayg workspace list [-o|--output <OUTPUT>] [-g|--group <GROUP>] [--visible] [--plain]`
+List workspaces, optionally filtered by output and/or group.
+
+`--visible` shows only workspaces visible in the active group on the output.
+`--plain` outputs workspace names only, one per line (useful for scripting/piping).
 
 ```sh
 $ swayg workspace list --group dev
@@ -185,6 +188,12 @@ Workspaces in group "dev" on "eDP-1":
   1:Firefox    (visible)
   2:Terminal   (hidden)
   3            (global)
+```
+
+```sh
+$ swayg workspace list --visible --plain
+1
+28_www
 ```
 
 #### `swayg workspace add <WORKSPACE> [-g|--group <GROUP>]`
@@ -277,6 +286,14 @@ Navigate to a specific workspace.
 ```sh
 $ swayg nav go 3
 Navigated to "3"
+```
+
+#### `swayg nav move-to <WORKSPACE>`
+Move the currently focused container to a specific workspace.
+
+```sh
+$ swayg nav move-to 3
+Moved container to "3"
 ```
 
 #### `swayg nav back`

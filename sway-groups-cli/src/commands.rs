@@ -169,6 +169,14 @@ enum WorkspaceAction {
         /// Filter by group.
         #[arg(short, long)]
         group: Option<String>,
+
+        /// Show only workspaces visible in the active group.
+        #[arg(long)]
+        visible: bool,
+
+        /// Plain output: workspace names only, one per line.
+        #[arg(long)]
+        plain: bool,
     },
     /// Add workspace to group.
     Add {
@@ -261,6 +269,11 @@ enum NavAction {
         /// Output name.
         #[arg(short, long)]
         output: Option<String>,
+    },
+    /// Move focused container to a specific workspace.
+    MoveTo {
+        /// Workspace name or number.
+        workspace: String,
     },
     /// Go back to previous workspace.
     Back,
@@ -400,42 +413,66 @@ async fn run_workspace(
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
-        WorkspaceAction::List { output, group } => {
-            let workspaces = workspace_service.list_workspaces(output.as_deref(), group.as_deref()).await?;
-            if workspaces.is_empty() {
-                println!("No workspaces found.");
-            } else {
-                let group_label = group.as_deref().unwrap_or("active");
-                let output_label = output.as_deref().unwrap_or("all");
-
-                let active_group_name = if group.is_none() {
-                    let output_name = output.as_deref()
-                        .map(|s| s.to_string())
-                        .or_else(|| ipc_client.get_primary_output().ok());
-                    match output_name {
-                        Some(ref out) => group_service.get_active_group(out).await.ok(),
-                        None => None,
+        WorkspaceAction::List { output, group, visible, plain } => {
+            if visible {
+                let output_name = output.as_deref()
+                    .map(|s| s.to_string())
+                    .or_else(|| ipc_client.get_primary_output().ok())
+                    .unwrap_or_default();
+                let workspaces = workspace_service.list_visible_workspaces(&output_name).await?;
+                if workspaces.is_empty() {
+                    if !plain {
+                        println!("No visible workspaces found.");
                     }
                 } else {
-                    None
-                };
-
-                println!("Workspaces in group \"{}\" on \"{}\":", group_label, output_label);
-                for ws in &workspaces {
-                    let status = if ws.is_global {
-                        "(global)"
-                    } else if let Some(ref active) = active_group_name {
-                        if ws.groups.iter().any(|g| g == active) {
-                            "(visible)"
-                        } else if !ws.groups.is_empty() {
-                            "(hidden)"
-                        } else {
-                            "(visible)"
+                    for ws in &workspaces {
+                        println!("{}", ws);
+                    }
+                }
+            } else {
+                let workspaces = workspace_service.list_workspaces(output.as_deref(), group.as_deref()).await?;
+                if workspaces.is_empty() {
+                    if !plain {
+                        println!("No workspaces found.");
+                    }
+                } else {
+                    let active_group_name = if !plain && group.is_none() {
+                        let output_name = output.as_deref()
+                            .map(|s| s.to_string())
+                            .or_else(|| ipc_client.get_primary_output().ok());
+                        match output_name {
+                            Some(ref out) => group_service.get_active_group(out).await.ok(),
+                            None => None,
                         }
                     } else {
-                        ""
+                        None
                     };
-                    println!("  {:20} {}", ws.name, status);
+
+                    if !plain {
+                        let group_label = group.as_deref().unwrap_or("active");
+                        let output_label = output.as_deref().unwrap_or("all");
+                        println!("Workspaces in group \"{}\" on \"{}\":", group_label, output_label);
+                    }
+                    for ws in &workspaces {
+                        if plain {
+                            println!("{}", ws.name);
+                        } else {
+                            let status = if ws.is_global {
+                                "(global)"
+                            } else if let Some(ref active) = active_group_name {
+                                if ws.groups.iter().any(|g| g == active) {
+                                    "(visible)"
+                                } else if !ws.groups.is_empty() {
+                                    "(hidden)"
+                                } else {
+                                    "(visible)"
+                                }
+                            } else {
+                                ""
+                            };
+                            println!("  {:20} {}", ws.name, status);
+                        }
+                    }
                 }
             }
         }
@@ -534,6 +571,10 @@ async fn run_nav(
         NavAction::Go { workspace, output: _ } => {
             nav_service.go_workspace(&workspace).await?;
             println!("Navigated to \"{}\"", workspace);
+        }
+        NavAction::MoveTo { workspace } => {
+            nav_service.move_to_workspace(&workspace).await?;
+            println!("Moved container to \"{}\"", workspace);
         }
         NavAction::Back => {
             if let Some(target) = nav_service.go_back().await? {

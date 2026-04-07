@@ -1,7 +1,7 @@
 //! Workspace management service.
 
 use crate::db::entities::{workspace, workspace_group};
-use crate::db::entities::{GroupEntity, WorkspaceEntity, WorkspaceGroupEntity};
+use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
@@ -29,6 +29,53 @@ impl WorkspaceService {
     /// Create a new workspace service.
     pub fn new(db: DatabaseManager, ipc_client: SwayIpcClient) -> Self {
         Self { db, ipc_client }
+    }
+
+    /// List workspace names visible in the active group on an output.
+    pub async fn list_visible_workspaces(&self, output_name: &str) -> Result<Vec<String>> {
+        let active_group = OutputEntity::find_by_name(output_name)
+            .one(self.db.conn())
+            .await?
+            .map(|o| o.active_group)
+            .unwrap_or_else(|| "0".to_string());
+
+        let sway_workspaces = self.ipc_client.get_workspaces()?;
+        let mut visible = Vec::new();
+
+        for sway_ws in sway_workspaces.iter().filter(|w| w.output == output_name) {
+            let base_name = Self::strip_suffix(&sway_ws.name);
+
+            if let Some(workspace) = WorkspaceEntity::find_by_name(&base_name)
+                .one(self.db.conn())
+                .await?
+            {
+                if workspace.is_global {
+                    visible.push(base_name.clone());
+                    continue;
+                }
+
+                let memberships = WorkspaceGroupEntity::find_by_workspace(workspace.id)
+                    .all(self.db.conn())
+                    .await?;
+
+                for m in &memberships {
+                    if let Some(group) = GroupEntity::find_by_id(m.group_id)
+                        .one(self.db.conn())
+                        .await?
+                        && group.name == active_group {
+                            visible.push(base_name.clone());
+                            break;
+                        }
+                }
+
+                if memberships.is_empty() && active_group == "0" {
+                    visible.push(base_name);
+                }
+            }
+        }
+
+        visible.sort();
+        Ok(visible)
     }
 
     /// List all workspaces with their group memberships.

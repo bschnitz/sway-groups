@@ -144,6 +144,25 @@ impl NavigationService {
         self.navigate_to_workspace(workspace).await
     }
 
+    /// Move the currently focused container to a specific workspace.
+    pub async fn move_to_workspace(&self, workspace_name: &str) -> Result<()> {
+        let command = format!("move container to workspace \"{}\"", workspace_name);
+        let results = self.ipc_client.run_command(&command)?;
+
+        if let Some(result) = results.first() {
+            if result.success {
+                info!("Moved container to workspace '{}'", workspace_name);
+                Ok(())
+            } else {
+                Err(Error::SwayIpc(
+                    result.error.clone().unwrap_or_else(|| "Unknown error".to_string()),
+                ))
+            }
+        } else {
+            Err(Error::SwayIpc("Empty response from sway".to_string()))
+        }
+    }
+
     /// Navigate back to the previously focused workspace.
     pub async fn go_back(&self) -> Result<Option<String>> {
         let current = self.ipc_client.get_focused_workspace()?;

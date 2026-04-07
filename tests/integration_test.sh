@@ -474,3 +474,56 @@ OUT=$(sg daemon start 2>&1 || true)
 echo "$OUT" | grep -qi 'already running' && pass "daemon start rejects duplicate" || fail "daemon start duplicate" "output: $OUT"
 
 echo ""
+
+# ============ 17. Workspace List --visible --plain ============
+echo -e "${BOLD}--- 17. Workspace List --visible --plain ---${NC}"
+
+sg group create T_vis_a >/dev/null
+sg group create T_vis_b >/dev/null
+sg workspace add "$WS_A" -g T_vis_a >/dev/null
+sg workspace add "$WS_B" -g T_vis_b >/dev/null
+
+# Switch to T_vis_a: only WS_A should be visible
+sg group select "$ORIG_OUT" T_vis_a >/dev/null
+sleep 0.3
+
+OUT=$(sg workspace list --visible --plain 2>&1)
+echo "$OUT" | grep -q "$WS_A" && pass "visible list shows workspace in active group" || fail "visible list active group" "$OUT"
+! echo "$OUT" | grep -q "$WS_B" && pass "visible list hides workspace in other group" || fail "visible list other group" "$OUT"
+
+# --plain output: no header/footer, just names
+OUT=$(sg workspace list --visible --plain 2>&1)
+! echo "$OUT" | grep -qi "group\|visible\|workspace" && pass "--plain output has no headers" || fail "--plain headers" "$OUT"
+
+# --visible without --plain should show readable output
+OUT=$(sg workspace list --visible 2>&1)
+echo "$OUT" | grep -q "$WS_A" && pass "visible list without plain shows workspace" || fail "visible list no plain" "$OUT"
+
+sg group select "$ORIG_OUT" 0 >/dev/null
+sg group delete T_vis_a --force >/dev/null
+sg group delete T_vis_b --force >/dev/null
+
+echo ""
+
+# ============ 18. Nav move-to ============
+echo -e "${BOLD}--- 18. Nav move-to ---${NC}"
+
+sg group select "$ORIG_OUT" 0 >/dev/null
+sleep 0.3
+
+# Focus WS_A, then move to WS_B via nav move-to
+sg nav go "$WS_A" >/dev/null
+sleep 0.3
+OUT=$(sg nav move-to "$WS_B" 2>&1)
+echo "$OUT" | grep -q "Moved container to \"$WS_B\"" && pass "nav move-to moves container" || fail "nav move-to" "$OUT"
+
+# Cleanup: move container back
+sg nav go "$WS_B" >/dev/null
+sleep 0.3
+sg nav move-to "$WS_A" >/dev/null
+sleep 0.3
+
+OUT=$(sg nav move-to __nonexistent__ 2>&1)
+echo "$OUT" | grep -qi 'error\|failed\|not found\|unknown' && pass "nav move-to rejects non-existent workspace" || fail "nav move-to nonexistent" "$OUT"
+
+echo ""
