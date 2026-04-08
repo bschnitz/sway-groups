@@ -1,9 +1,6 @@
 //! CLI commands for swayg.
 
-use std::path::PathBuf;
-
 use clap::{Parser, Subcommand};
-use directories::ProjectDirs;
 use sway_groups_core::services::{GroupService, NavigationService, SuffixService, WorkspaceService};
 use sway_groups_core::sway::SwayIpcClient;
 
@@ -58,11 +55,6 @@ enum Command {
     },
     /// Show current status.
     Status,
-    /// Daemon management commands.
-    Daemon {
-        #[command(subcommand)]
-        action: DaemonAction,
-    },
 }
 
 /// Group subcommands.
@@ -280,17 +272,6 @@ enum NavAction {
     Back,
 }
 
-/// Daemon subcommands.
-#[derive(Subcommand)]
-enum DaemonAction {
-    /// Start the swayg daemon.
-    Start,
-    /// Stop the running daemon.
-    Stop,
-    /// Check if daemon is running.
-    Status,
-}
-
 /// Run the CLI commands.
 pub async fn run(
     cli: Cli,
@@ -309,9 +290,6 @@ pub async fn run(
         }
         Command::Status => {
             run_status(group_service, suffix_service, ipc_client).await?;
-        }
-        Command::Daemon { action } => {
-            run_daemon(action)?;
         }
     }
     Ok(())
@@ -678,85 +656,5 @@ async fn run_status(
         }
     }
 
-    Ok(())
-}
-
-fn get_pid_path() -> PathBuf {
-    if let Some(proj_dirs) = ProjectDirs::from("com", "swayg", "swayg") {
-        let data_dir = proj_dirs.data_dir();
-        std::fs::create_dir_all(data_dir).ok();
-        data_dir.join("swaygd.pid")
-    } else {
-        PathBuf::from("/tmp/swaygd.pid")
-    }
-}
-
-fn run_daemon(action: DaemonAction) -> anyhow::Result<()> {
-    match action {
-        DaemonAction::Start => {
-            let pid_path = get_pid_path();
-
-            if let Ok(pid_str) = std::fs::read_to_string(&pid_path)
-                && let Ok(pid) = pid_str.trim().parse::<u32>()
-                    && std::path::Path::new(&format!("/proc/{}", pid)).exists() {
-                        anyhow::bail!("swaygd is already running (PID {})", pid);
-                    }
-
-            let mut exe = std::env::current_exe()?;
-            exe.set_file_name("swaygd");
-            let child = std::process::Command::new(&exe)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()?;
-
-            let pid = child.id();
-            std::fs::write(&pid_path, pid.to_string())?;
-            println!("Started swaygd (PID {})", pid);
-        }
-        DaemonAction::Stop => {
-            let pid_path = get_pid_path();
-
-            let pid_str = std::fs::read_to_string(&pid_path)
-                .map_err(|_| anyhow::anyhow!("PID file not found. Is swaygd running?"))?;
-            let pid: u32 = pid_str.trim().parse()
-                .map_err(|_| anyhow::anyhow!("Invalid PID in PID file"))?;
-
-            if !std::path::Path::new(&format!("/proc/{}", pid)).exists() {
-                std::fs::remove_file(&pid_path).ok();
-                anyhow::bail!("swaygd (PID {}) is not running", pid);
-            }
-
-            unsafe {
-                libc::kill(pid as i32, libc::SIGTERM);
-            }
-
-            for _ in 0..50 {
-                if !std::path::Path::new(&format!("/proc/{}", pid)).exists() {
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            }
-
-            std::fs::remove_file(&pid_path).ok();
-            println!("Stopped swaygd (PID {})", pid);
-        }
-        DaemonAction::Status => {
-            let pid_path = get_pid_path();
-
-            match std::fs::read_to_string(&pid_path) {
-                Ok(pid_str) => {
-                    let pid: u32 = pid_str.trim().parse().unwrap_or(0);
-                    if pid > 0 && std::path::Path::new(&format!("/proc/{}", pid)).exists() {
-                        println!("swaygd is running (PID {})", pid);
-                    } else {
-                        println!("swaygd is not running (stale PID file)");
-                    }
-                }
-                Err(_) => {
-                    println!("swaygd is not running");
-                }
-            }
-        }
-    }
     Ok(())
 }
