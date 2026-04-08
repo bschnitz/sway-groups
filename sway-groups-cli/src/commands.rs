@@ -284,7 +284,7 @@ pub async fn run(
     match cli.command {
         Command::Group { action } => run_group(action, group_service, ipc_client).await?,
         Command::Workspace { action } => run_workspace(action, workspace_service, group_service, suffix_service, ipc_client).await?,
-        Command::Nav { action } => run_nav(action, nav_service, ipc_client).await?,
+        Command::Nav { action } => run_nav(action, nav_service, suffix_service, ipc_client).await?,
         Command::Sync { all, workspaces, groups, outputs } => {
             run_sync(all, workspaces, groups, outputs, workspace_service, suffix_service).await?;
         }
@@ -522,6 +522,7 @@ async fn run_workspace(
 async fn run_nav(
     action: NavAction,
     nav_service: &NavigationService,
+    suffix_service: &SuffixService,
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
@@ -563,6 +564,7 @@ async fn run_nav(
             }
         }
     }
+    suffix_service.sync_all_suffixes().await?;
     Ok(())
 }
 
