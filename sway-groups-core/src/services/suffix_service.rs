@@ -5,7 +5,7 @@ use crate::db::DatabaseManager;
 use crate::error::Result;
 use crate::sway::SwayIpcClient;
 use sea_orm::entity::prelude::*;
-use tracing::{debug, info};
+use tracing::info;
 
 /// Service for managing workspace suffixes.
 #[derive(Clone)]
@@ -88,27 +88,22 @@ impl SuffixService {
 
     /// Sync suffixes for all workspaces on an output.
     pub async fn sync_suffixes_for_output(&self, output_name: &str) -> Result<()> {
-        debug!("Syncing suffixes for output: {}", output_name);
-
-        // Get active group for output
         let active_group = OutputEntity::find_by_name(output_name)
             .one(self.db.conn())
             .await?
             .map(|o| o.active_group)
             .unwrap_or_else(|| "0".to_string());
+        info!("sync_suffixes: output={}, active_group='{}'", output_name, active_group);
 
-        // Get all workspaces from sway for this output
         let sway_workspaces = self.ipc_client.get_workspaces()?;
 
         for sway_ws in sway_workspaces.iter().filter(|w| w.output == output_name) {
             let base_name = self.get_base_name(&sway_ws.name);
 
-            // Get workspace from database
             if let Some(workspace) = WorkspaceEntity::find_by_name(&base_name)
                 .one(self.db.conn())
                 .await?
             {
-                // Get groups for this workspace
                 let memberships = WorkspaceGroupEntity::find_by_workspace(workspace.id)
                     .all(self.db.conn())
                     .await?;
@@ -123,7 +118,6 @@ impl SuffixService {
                     }
                 }
 
-                // Calculate target suffix
                 let target_suffix = self.calculate_suffix(
                     &base_name,
                     &active_group,
@@ -131,14 +125,10 @@ impl SuffixService {
                     workspace.is_global,
                 );
 
-                // Apply suffix if needed
                 let target_name = self.apply_suffix(&base_name, target_suffix);
                 if target_name != sway_ws.name {
+                    info!("sync_suffixes: RENAME '{}' -> '{}'", sway_ws.name, target_name);
                     self.ipc_client.rename_workspace(&sway_ws.name, &target_name)?;
-                    debug!(
-                        "Renamed workspace: {} -> {}",
-                        sway_ws.name, target_name
-                    );
                 }
             }
         }

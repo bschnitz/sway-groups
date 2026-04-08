@@ -14,7 +14,7 @@ use sway_groups_core::sway::SwayIpcClient;
 pub struct Cli {
     /// Enable verbose output.
     #[arg(short, long)]
-    verbose: bool,
+    pub verbose: bool,
 
     #[command(subcommand)]
     command: Command,

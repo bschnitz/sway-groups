@@ -4,6 +4,7 @@ use anyhow::Result as AnyResult;
 use directories::ProjectDirs;
 use std::path::PathBuf;
 use tracing::{error, info, warn};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use sway_groups_core::db::DatabaseManager;
@@ -71,11 +72,12 @@ async fn event_loop(mut event_stream: EventStream, suffix_service: SuffixService
 
 #[tokio::main]
 async fn main() -> AnyResult<()> {
+    let file_appender = RollingFileAppender::new(Rotation::DAILY, get_data_dir(), "swaygd");
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(tracing_subscriber::fmt::layer().with_writer(file_appender))
         .with(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("swaygd=info".parse()?),
+                .add_directive("swaygd=debug".parse()?),
         )
         .init();
 

@@ -6,7 +6,7 @@ use crate::error::{Error, Result};
 use crate::services::suffix_service::SuffixService;
 use crate::sway::SwayIpcClient;
 use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, ModelTrait, Set};
-use tracing::{info, warn};
+use tracing::{info, warn, debug};
 
 /// Group information for display.
 #[derive(Debug, Clone)]
@@ -353,6 +353,7 @@ impl GroupService {
         if old_group != group {
             self.save_current_workspace(output, &old_group).await?;
         }
+        debug!("set_active_group: output={}, old_group='{}', new_group='{}'", output, old_group, group);
 
         // Get or create output
         let output_model = OutputEntity::find_by_name(output)
@@ -382,28 +383,36 @@ impl GroupService {
 
         // Handle workspace focus for the new group
         let group_workspaces = self.get_workspaces_for_group_on_output(group, output).await?;
+        debug!("set_active_group: workspaces in group '{}' on '{}': {:?}", group, output, group_workspaces);
 
         if group_workspaces.is_empty() {
             // Case 1: Group has no workspaces -> focus workspace "0"
+            debug!("set_active_group: case 1 (empty group), focusing workspace '0'");
             self.focus_workspace("0")?;
         } else {
             // Check if this group was previously visited on this output
             let last_focused = self.get_last_focused_workspace(output, group).await?;
+            debug!("set_active_group: last_focused_workspace = {:?}", last_focused);
 
             if let Some(ref ws_name) = last_focused {
                 // Case 3: Group was visited before -> restore last focused workspace
                 // Verify it still exists in the group
                 if group_workspaces.iter().any(|w| w == ws_name) {
+                    debug!("set_active_group: case 3 (revisit), focusing '{}'", ws_name);
                     self.focus_workspace(ws_name)?;
                 } else {
-                    // Workspace no longer in group -> fallback to first
+                    debug!("set_active_group: case 3 fallback (workspace no longer in group), focusing '{}'", group_workspaces[0]);
                     self.focus_workspace(&group_workspaces[0])?;
                 }
             } else {
                 // Case 2: First visit -> focus first workspace alphabetically
+                debug!("set_active_group: case 2 (first visit), focusing '{}'", group_workspaces[0]);
                 self.focus_workspace(&group_workspaces[0])?;
             }
         }
+
+        let focused = self.ipc_client.get_focused_workspace().ok().map(|ws| ws.name);
+        debug!("set_active_group: sway focused workspace after switch = {:?}", focused);
 
         // Record this visit
         self.save_current_workspace(output, group).await?;
