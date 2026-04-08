@@ -1,6 +1,7 @@
 #!/bin/sh
 # Move the current workspace to a group (chosen via rofi).
 # The workspace is removed from all other groups.
+# After moving, switches to the first target group and focuses the workspace.
 
 current_ws=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
 import json, sys
@@ -18,6 +19,14 @@ if [ -z "$current_ws" ]; then
     exit 1
 fi
 
+current_output=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
+import json, sys
+for w in json.load(sys.stdin):
+    if w['focused']:
+        print(w['output'])
+        break
+")
+
 group=$($HOME/.cargo/bin/swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | rofi -dmenu -p "Move '$current_ws' to group:")
 if [ -z "$group" ]; then
     notify-send "swayg" "Move cancelled."
@@ -25,3 +34,7 @@ if [ -z "$group" ]; then
 fi
 
 $HOME/.cargo/bin/swayg workspace move "$current_ws" --groups "$group"
+
+first_group=$(echo "$group" | cut -d',' -f1)
+$HOME/.cargo/bin/swayg group select "$current_output" "$first_group"
+$HOME/.cargo/bin/swayg nav go "$current_ws"

@@ -18,8 +18,8 @@
 #   1. Never use existing user workspaces (1, 2, etc.) – use only WS_A/WS_B/WS_C
 #   2. Use "swaymsg workspace <name>" (NOT "swaymsg workspace string:<name>")
 #      – the "string:" prefix becomes part of the workspace name and breaks lookups
-#   3. If you spawn kitty processes, remember their PIDs in TEST_KITTY_PIDS+=($!)
-#      so cleanup can kill only those
+#   3. Kitty processes spawned during tests are automatically cleaned up
+#      by container ID comparison (no PID tracking needed)
 #   4. Always restore to group "0" and workspace "$ORIG_WS" after tests that
 #      switch groups or navigate away
 #   5. sway auto-deletes empty workspaces on navigation – always put a window
@@ -112,14 +112,11 @@ print(','.join(collect_ids(json.load(sys.stdin))))
 WS_A="__test_alpha__"
 WS_B="__test_beta__"
 WS_C="__test_gamma__"
-TMP_WS_CREATED=("$WS_A" "$WS_B" "$WS_C")
-TEST_KITTY_PIDS=()
 
-for ws in "${TMP_WS_CREATED[@]}"; do
+for ws in "$WS_A" "$WS_B" "$WS_C"; do
     swaymsg workspace "$ws" >/dev/null 2>&1 || true
     sleep 0.2
     kitty --class "__test_${ws}" -e sleep 300 >/dev/null 2>&1 &
-    TEST_KITTY_PIDS+=($!)
     sleep 0.3
 done
 
@@ -127,63 +124,6 @@ done
 swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
 sleep 0.3
 
-# Clean DB, sync fresh
-rm -f ~/.local/share/swayg/swayg.db
-sg sync --all >/dev/null
-
-# Test group names (prefixed to avoid collisions)
-T_GRP=("T_empty" "T_one" "T_two" "T_nav" "T_a" "T_b" "T_c" "T_dup" "T_prune_me" "T_keep_me" "T_move_x" "T_move_y" "T_renamed" "T_vis_a" "T_vis_b" "T_move_active_test" "T_new_ws_group")
-
-cleanup() {
-    echo ""
-    echo "Cleanup..."
-    # Kill only the kitty processes we spawned (by PID)
-    for pid in "${TEST_KITTY_PIDS[@]}"; do
-        kill "$pid" 2>/dev/null || true
-    done
-    sleep 0.3
-    # Kill any remaining containers on test workspaces that didn't exist before
-    CURRENT_CON_IDS=$(swaymsg -t get_tree 2>/dev/null | python3 -c "
-import json, sys
-def collect_ids(node):
-    ids = []
-    for c in node.get('nodes', []) + node.get('floating_nodes', []):
-        ids.append(str(c['id']))
-        ids.extend(collect_ids(c))
-    return ids
-print(','.join(collect_ids(json.load(sys.stdin))))
-" 2>/dev/null)
-    for id in ${CURRENT_CON_IDS//,/ }; do
-        if ! echo ",$EXISTING_CON_IDS," | grep -q ",$id,"; then
-            swaymsg kill "$id" >/dev/null 2>&1 || true
-        fi
-    done
-    sleep 0.3
-    swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
-    sleep 0.3
-    sg group select "$ORIG_OUT" 0 >/dev/null 2>/dev/null || true
-    for g in "${T_GRP[@]}"; do
-        sg group delete "$g" --force >/dev/null 2>/dev/null || true
-    done
-    sg workspace unglobal "$WS_A" >/dev/null 2>/dev/null || true
-    sg workspace unglobal "$WS_B" >/dev/null 2>/dev/null || true
-    swaymsg workspace "$ORIG_WS" >/dev/null 2>/dev/null || true
-    sleep 0.3
-    # Restore daemon if it was running before the test
-    if [ "$DAEMON_WAS_RUNNING" = true ]; then
-        systemctl --user start swaygd >/dev/null 2>&1 || true
-        sleep 1
-    fi
-    total=$((PASS + FAIL + SKIP))
-    echo -e "${BOLD}Results: ${GREEN}$PASS passed${NC}, ${RED}$FAIL failed${NC}, ${YELLOW}$SKIP skipped${NC} ($total total)"
-    [ $FAIL -eq 0 ]
-}
-
-trap cleanup EXIT
-
-echo "Test workspaces: $WS_A, $WS_B, $WS_C"
-echo "Output:    $ORIG_OUT (user workspace: $ORIG_WS)"
-echo "Test groups: ${T_GRP[*]}"
 echo ""
 
 # ============ 1. Group CRUD ============
@@ -623,7 +563,7 @@ sleep 2
 # Create a new workspace via sway (open a kitty so sway won't garbage-collect it)
 T_NEW_WS="__test_daemon_ws__"
 kitty --class "__test_${T_NEW_WS}" -e sleep 300 >/dev/null 2>&1 &
-TEST_KITTY_PIDS+=($!)
+sleep 0.3
 sleep 0.3
 swaymsg workspace "$T_NEW_WS" >/dev/null 2>&1
 sleep 1
@@ -758,6 +698,35 @@ sg workspace unglobal "$WS_A" >/dev/null
 sg sync --all >/dev/null
 sleep 0.3
 
+swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
+sleep 0.3
+
+echo ""
+
+# ============ 21. New workspace inherits active group ============
+echo -e "${BOLD}--- 21. New workspace inherits active group ---${NC}"
+
+sg group create T_sync_group >/dev/null
+sg group select "$ORIG_OUT" T_sync_group >/dev/null
+sleep 0.3
+
+systemctl --user restart swaygd
+sleep 2
+
+sg nav go "$WS_A" >/dev/null
+sleep 0.3
+kitty --class __test_inherit__ -e sleep 5 >/dev/null 2>&1 &
+sleep 0.5
+sg nav move-to "__test_inherit_ws__" >/dev/null
+sleep 1
+
+OUT=$(sg workspace groups __test_inherit_ws__ 2>&1)
+echo "$OUT" | grep -q 'T_sync_group' && pass "new workspace added to active group (T_sync_group)" || fail "new workspace in active group" "$OUT"
+! echo "$OUT" | grep -q '"0"' && pass "new workspace NOT in group 0" || fail "new workspace not in group 0" "$OUT"
+
+sg group select "$ORIG_OUT" 0 >/dev/null
+sleep 0.3
+sg group delete T_sync_group --force >/dev/null
 swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
 sleep 0.3
 

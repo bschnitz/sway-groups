@@ -398,6 +398,7 @@ impl WorkspaceService {
                 active.update(self.db.conn()).await?;
             } else {
                 let number = sway_ws.num.map(|n| n as i32);
+                let ws_output = sway_ws.output.clone();
                 let active = workspace::ActiveModel {
                     name: Set(base_name.clone()),
                     number: Set(number),
@@ -409,13 +410,19 @@ impl WorkspaceService {
                 };
                 let ws = active.insert(self.db.conn()).await?;
 
-                if let Some(group_0) = GroupEntity::find_by_name("0")
+                let active_group = OutputEntity::find_by_name(&ws_output)
+                    .one(self.db.conn())
+                    .await?
+                    .map(|o| o.active_group)
+                    .unwrap_or_else(|| "0".to_string());
+
+                if let Some(group) = GroupEntity::find_by_name(&active_group)
                     .one(self.db.conn())
                     .await?
                 {
                     let membership = workspace_group::ActiveModel {
                         workspace_id: Set(ws.id),
-                        group_id: Set(group_0.id),
+                        group_id: Set(group.id),
                         created_at: Set(Some(now)),
                         ..Default::default()
                     };
