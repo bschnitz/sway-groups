@@ -3,6 +3,7 @@
 use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
 use crate::db::DatabaseManager;
 use crate::error::Result;
+use crate::strip_legacy_suffix;
 use crate::sway::waybar_client::{WidgetSpec, WaybarClient};
 use crate::sway::SwayIpcClient;
 use sea_orm::EntityTrait;
@@ -39,7 +40,7 @@ impl WaybarSyncService {
             let is_output_focused = focused_output.as_deref() == Some(&output.name);
 
             for sway_ws in sway_workspaces.iter().filter(|w| w.output == output.name) {
-                let base_name = sway_ws.name.clone();
+                let base_name = strip_legacy_suffix(&sway_ws.name);
 
                 if let Some(workspace) = WorkspaceEntity::find_by_name(&base_name)
                     .one(self.db.conn())

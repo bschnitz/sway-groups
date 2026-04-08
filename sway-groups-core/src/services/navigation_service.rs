@@ -3,6 +3,7 @@
 use crate::db::entities::{focus_history, GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity, FocusHistoryEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
+use crate::strip_legacy_suffix;
 use crate::sway::SwayIpcClient;
 use sea_orm::{ActiveModelTrait, EntityTrait, ModelTrait, Set};
 use tracing::info;
@@ -28,9 +29,9 @@ impl NavigationService {
         let mut visible = Vec::new();
 
         for sway_ws in sway_workspaces.iter().filter(|w| w.output == output_name) {
-            let ws_name = &sway_ws.name;
+            let ws_name = strip_legacy_suffix(&sway_ws.name);
 
-            if let Some(workspace) = WorkspaceEntity::find_by_name(ws_name)
+            if let Some(workspace) = WorkspaceEntity::find_by_name(&ws_name)
                 .one(self.db.conn())
                 .await?
             {
@@ -80,8 +81,9 @@ impl NavigationService {
     pub async fn next_workspace(&self, output: &str, wrap: bool) -> Result<Option<String>> {
         let visible = self.get_visible_workspaces(output).await?;
         let current = self.ipc_client.get_focused_workspace()?;
+        let current_base = strip_legacy_suffix(&current.name);
 
-        let next = find_next(&visible, &current.name, wrap);
+        let next = find_next(&visible, &current_base, wrap);
         if let Some(ref target) = next {
             self.navigate_to_workspace(target).await?;
         }
@@ -91,8 +93,9 @@ impl NavigationService {
     pub async fn next_workspace_global(&self, wrap: bool) -> Result<Option<String>> {
         let visible = self.get_visible_workspaces_global().await?;
         let current = self.ipc_client.get_focused_workspace()?;
+        let current_base = strip_legacy_suffix(&current.name);
 
-        let next = find_next(&visible, &current.name, wrap);
+        let next = find_next(&visible, &current_base, wrap);
         if let Some(ref target) = next {
             self.navigate_to_workspace(target).await?;
         }
@@ -102,8 +105,9 @@ impl NavigationService {
     pub async fn prev_workspace(&self, output: &str, wrap: bool) -> Result<Option<String>> {
         let visible = self.get_visible_workspaces(output).await?;
         let current = self.ipc_client.get_focused_workspace()?;
+        let current_base = strip_legacy_suffix(&current.name);
 
-        let prev = find_prev(&visible, &current.name, wrap);
+        let prev = find_prev(&visible, &current_base, wrap);
         if let Some(ref target) = prev {
             self.navigate_to_workspace(target).await?;
         }
@@ -113,8 +117,9 @@ impl NavigationService {
     pub async fn prev_workspace_global(&self, wrap: bool) -> Result<Option<String>> {
         let visible = self.get_visible_workspaces_global().await?;
         let current = self.ipc_client.get_focused_workspace()?;
+        let current_base = strip_legacy_suffix(&current.name);
 
-        let prev = find_prev(&visible, &current.name, wrap);
+        let prev = find_prev(&visible, &current_base, wrap);
         if let Some(ref target) = prev {
             self.navigate_to_workspace(target).await?;
         }
@@ -145,8 +150,9 @@ impl NavigationService {
 
     pub async fn go_back(&self) -> Result<Option<String>> {
         let current = self.ipc_client.get_focused_workspace()?;
+        let current_base = strip_legacy_suffix(&current.name);
 
-        let last = FocusHistoryEntity::find_last_focused(&current.name)
+        let last = FocusHistoryEntity::find_last_focused(&current_base)
             .one(self.db.conn())
             .await?;
 
@@ -199,7 +205,8 @@ impl NavigationService {
 
         if let Some(result) = results.first() {
             if result.success {
-                self.record_focus(&sway_name).await?;
+                let base = strip_legacy_suffix(&sway_name);
+                self.record_focus(&base).await?;
                 info!("Navigated to workspace '{}'", sway_name);
                 Ok(())
             } else {
@@ -217,6 +224,12 @@ impl NavigationService {
 
         for ws in &sway_workspaces {
             if ws.name == workspace_name {
+                return Ok(ws.name.clone());
+            }
+        }
+
+        for ws in &sway_workspaces {
+            if strip_legacy_suffix(&ws.name) == workspace_name {
                 return Ok(ws.name.clone());
             }
         }

@@ -288,13 +288,15 @@ impl GroupService {
     }
 
     /// Switch focus to a workspace via sway IPC.
+    /// Resolves base names to actual sway workspace names (handles legacy suffixes).
     fn focus_workspace(&self, workspace_name: &str) -> Result<()> {
-        let command = format!("workspace \"{}\"", workspace_name);
+        let sway_name = self.resolve_sway_name(workspace_name);
+        let command = format!("workspace \"{}\"", sway_name);
         let results = self.ipc_client.run_command(&command)?;
 
         if let Some(result) = results.first() {
             if result.success {
-                info!("Focused workspace '{}'", workspace_name);
+                info!("Focused workspace '{}'", sway_name);
                 return Ok(());
             } else {
                 return Err(Error::SwayIpc(
@@ -303,6 +305,23 @@ impl GroupService {
             }
         }
         Err(Error::SwayIpc("Empty response from sway".to_string()))
+    }
+
+    /// Resolve a base name to the actual sway workspace name (handles legacy suffixes).
+    fn resolve_sway_name(&self, name: &str) -> String {
+        if let Ok(workspaces) = self.ipc_client.get_workspaces() {
+            for ws in &workspaces {
+                if ws.name == name {
+                    return ws.name.clone();
+                }
+            }
+            for ws in &workspaces {
+                if crate::strip_legacy_suffix(&ws.name) == name {
+                    return ws.name.clone();
+                }
+            }
+        }
+        name.to_string()
     }
 
     /// Get workspaces belonging to a group on a specific output, sorted alphabetically.

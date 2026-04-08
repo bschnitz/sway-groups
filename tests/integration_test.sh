@@ -47,7 +47,7 @@ skip() { echo -e "  ${YELLOW}SKIP${NC} $1"; SKIP=$((SKIP + 1)); }
 # Run swayg, strip info log lines from stdout
 sg() { command swayg "$@" 2>&1 | sed '/^\x1b\[[0-9;]*m.*INFO/d'; }
 
-# Get the base name of the currently focused workspace (strips suffixes)
+# Get the base name of the currently focused workspace (strips legacy suffixes)
 focused_ws() {
     swaymsg -t get_workspaces 2>/dev/null | python3 -c "
 import json, sys
@@ -130,20 +130,20 @@ echo ""
 # ============ 1. Group CRUD ============
 echo -e "${BOLD}--- 1. Group CRUD ---${NC}"
 
-OUT=$(sg group create T_one)
-echo "$OUT" | grep -q 'Created group "T_one"' && pass "create group" || fail "create group" "$OUT"
+OUT=$(sg group create zz_one)
+echo "$OUT" | grep -q 'Created group "zz_one"' && pass "create group" || fail "create group" "$OUT"
 
 OUT=$(sg group list)
-echo "$OUT" | grep -q 'T_one' && pass "list shows created group" || fail "list shows created group"
+echo "$OUT" | grep -q 'zz_one' && pass "list shows created group" || fail "list shows created group"
 
-OUT=$(sg group create T_one 2>&1)
+OUT=$(sg group create zz_one 2>&1)
 echo "$OUT" | grep -qi 'already exists' && pass "reject duplicate group" || fail "reject duplicate group" "$OUT"
 
-OUT=$(sg group rename T_one T_renamed 2>&1)
-echo "$OUT" | grep -q 'Renamed group "T_one" to "T_renamed"' && pass "rename group" || fail "rename group" "$OUT"
+OUT=$(sg group rename zz_one zz_renamed 2>&1)
+echo "$OUT" | grep -q 'Renamed group "zz_one" to "zz_renamed"' && pass "rename group" || fail "rename group" "$OUT"
 
 OUT=$(sg group list)
-echo "$OUT" | grep -q 'T_renamed' && pass "list shows renamed group" || fail "list shows renamed group" "$OUT"
+echo "$OUT" | grep -q 'zz_renamed' && pass "list shows renamed group" || fail "list shows renamed group" "$OUT"
 
 OUT=$(sg group delete 0 2>&1)
 echo "$OUT" | grep -qi "cannot delete" && pass "reject deleting default group" || fail "reject deleting default group" "$OUT"
@@ -151,37 +151,37 @@ echo "$OUT" | grep -qi "cannot delete" && pass "reject deleting default group" |
 OUT=$(sg group rename 0 badname 2>&1)
 echo "$OUT" | grep -qi "cannot rename" && pass "reject renaming default group" || fail "reject renaming default group" "$OUT"
 
-sg group create T_dup >/dev/null
-sg workspace add "$WS_A" -g T_dup >/dev/null
-OUT=$(sg group delete T_dup 2>&1)
+sg group create zz_dup >/dev/null
+sg workspace add "$WS_A" -g zz_dup >/dev/null
+OUT=$(sg group delete zz_dup 2>&1)
 echo "$OUT" | grep -q 'workspaces' && pass "reject delete non-empty group" || fail "reject delete non-empty group" "$OUT"
 
-OUT=$(sg group delete T_dup --force)
-echo "$OUT" | grep -q 'Deleted group "T_dup"' && pass "force delete non-empty group" || fail "force delete non-empty group" "$OUT"
+OUT=$(sg group delete zz_dup --force)
+echo "$OUT" | grep -q 'Deleted group "zz_dup"' && pass "force delete non-empty group" || fail "force delete non-empty group" "$OUT"
 
-OUT=$(sg group delete T_renamed)
-echo "$OUT" | grep -q 'Deleted group "T_renamed"' && pass "delete empty group" || fail "delete empty group" "$OUT"
+OUT=$(sg group delete zz_renamed)
+echo "$OUT" | grep -q 'Deleted group "zz_renamed"' && pass "delete empty group" || fail "delete empty group" "$OUT"
 
 echo ""
 
 # ============ 2. Workspace Management ============
 echo -e "${BOLD}--- 2. Workspace Management ---${NC}"
 
-sg group create T_one >/dev/null
+sg group create zz_one >/dev/null
 
-OUT=$(sg workspace add "$WS_A" -g T_one)
-echo "$OUT" | grep -q "Added workspace \"$WS_A\" to group \"T_one\"" && pass "add workspace to group" || fail "add workspace to group" "$OUT"
+OUT=$(sg workspace add "$WS_A" -g zz_one)
+echo "$OUT" | grep -q "Added workspace \"$WS_A\" to group \"zz_one\"" && pass "add workspace to group" || fail "add workspace to group" "$OUT"
 
 OUT=$(sg workspace groups "$WS_A")
-echo "$OUT" | grep -q '"T_one"' && pass "groups shows membership" || fail "groups shows membership" "$OUT"
+echo "$OUT" | grep -q '"zz_one"' && pass "groups shows membership" || fail "groups shows membership" "$OUT"
 
-OUT=$(sg workspace add "$WS_A" -g T_one 2>&1)
+OUT=$(sg workspace add "$WS_A" -g zz_one 2>&1)
 echo "$OUT" | grep -qi 'already in group' && pass "reject duplicate membership" || fail "reject duplicate membership" "$OUT"
 
-OUT=$(sg workspace remove "$WS_A" -g T_one)
-echo "$OUT" | grep -q "Removed workspace \"$WS_A\" from group \"T_one\"" && pass "remove workspace from group" || fail "remove workspace from group" "$OUT"
+OUT=$(sg workspace remove "$WS_A" -g zz_one)
+echo "$OUT" | grep -q "Removed workspace \"$WS_A\" from group \"zz_one\"" && pass "remove workspace from group" || fail "remove workspace from group" "$OUT"
 
-OUT=$(sg workspace remove "$WS_A" -g T_one 2>&1)
+OUT=$(sg workspace remove "$WS_A" -g zz_one 2>&1)
 echo "$OUT" | grep -qi 'not in group' && pass "reject remove from wrong group" || fail "reject remove from wrong group" "$OUT"
 
 OUT=$(sg workspace add __nonexistent__ 2>&1)
@@ -196,56 +196,56 @@ echo "$OUT" | grep -q "Global" && echo "$OUT" | grep -q "$WS_A" && pass "status 
 OUT=$(sg workspace unglobal "$WS_A")
 echo "$OUT" | grep -q "global" && pass "unglobal workspace" || fail "unglobal workspace" "$OUT"
 
-sg group delete T_one --force >/dev/null
+sg group delete zz_one --force >/dev/null
 
 echo ""
 
 # ============ 3. Group Switch: Fall 2 (First Visit) ============
 echo -e "${BOLD}--- 3. Group Switch: Fall 2 (First Visit) ---${NC}"
 
-sg group create T_a >/dev/null
-sg group create T_b >/dev/null
-sg workspace add "$WS_B" -g T_a >/dev/null
-sg workspace add "$WS_A" -g T_a >/dev/null
-sg workspace add "$WS_C" -g T_b >/dev/null
+sg group create zz_a >/dev/null
+sg group create zz_b >/dev/null
+sg workspace add "$WS_B" -g zz_a >/dev/null
+sg workspace add "$WS_A" -g zz_a >/dev/null
+sg workspace add "$WS_C" -g zz_b >/dev/null
 
 sg group select "$ORIG_OUT" 0 >/dev/null
 sleep 0.3
 
-# First visit to T_a: should focus alphabetically first workspace in group
+# First visit to zz_a: should focus alphabetically first workspace in group
 # WS_A (__test_alpha__) < WS_B (__test_beta__) alphabetically
-sg group select "$ORIG_OUT" T_a >/dev/null
+sg group select "$ORIG_OUT" zz_a >/dev/null
 sleep 0.5
 FW=$(focused_ws)
-[ "$FW" = "$WS_A" ] && pass "first visit focuses first alphabetical (T_a -> $WS_A)" || fail "first visit focuses first alphabetical (T_a)" "expected $WS_A, got $FW"
+[ "$FW" = "$WS_A" ] && pass "first visit focuses first alphabetical (zz_a -> $WS_A)" || fail "first visit focuses first alphabetical (zz_a)" "expected $WS_A, got $FW"
 
 echo ""
 
 # ============ 4. Group Switch: Fall 3 (Revisit) ============
 echo -e "${BOLD}--- 4. Group Switch: Fall 3 (Revisit) ---${NC}"
 
-# Navigate to second workspace (WS_B) within T_a
+# Navigate to second workspace (WS_B) within zz_a
 sg nav go "$WS_B" >/dev/null
 sleep 0.3
 
-# Switch to T_b
-sg group select "$ORIG_OUT" T_b >/dev/null
+# Switch to zz_b
+sg group select "$ORIG_OUT" zz_b >/dev/null
 sleep 0.5
-[ "$(focused_ws)" = "$WS_C" ] && pass "first visit focuses first in T_b" || fail "first visit focuses first in T_b" "expected $WS_C, got $(focused_ws)"
+[ "$(focused_ws)" = "$WS_C" ] && pass "first visit focuses first in zz_b" || fail "first visit focuses first in zz_b" "expected $WS_C, got $(focused_ws)"
 
-# Switch back to T_a -> should restore WS_B
-sg group select "$ORIG_OUT" T_a >/dev/null
+# Switch back to zz_a -> should restore WS_B
+sg group select "$ORIG_OUT" zz_a >/dev/null
 sleep 0.5
 FW=$(focused_ws)
-[ "$FW" = "$WS_B" ] && pass "revisit restores last focused (T_a -> $WS_B)" || fail "revisit restores last focused (T_a)" "expected $WS_B, got $FW"
+[ "$FW" = "$WS_B" ] && pass "revisit restores last focused (zz_a -> $WS_B)" || fail "revisit restores last focused (zz_a)" "expected $WS_B, got $FW"
 
 echo ""
 
 # ============ 5. Group Switch: Fall 1 (Empty Group) ============
 echo -e "${BOLD}--- 5. Group Switch: Fall 1 (Empty Group) ---${NC}"
 
-sg group create T_empty >/dev/null
-sg group select "$ORIG_OUT" T_empty >/dev/null
+sg group create zz_empty >/dev/null
+sg group select "$ORIG_OUT" zz_empty >/dev/null
 sleep 0.5
 FW=$(focused_ws)
 [ "$FW" = "0" ] && pass "empty group focuses workspace 0" || fail "empty group focuses workspace 0" "expected 0, got $FW"
@@ -255,24 +255,39 @@ echo ""
 # ============ 6. Group next/prev (all groups) ============
 echo -e "${BOLD}--- 6. Group next/prev (all groups) ---${NC}"
 
-# Alphabetical order: 0 < T_a < T_b < T_empty
-# Start from 0 (first)
+# Save user groups (non-test, non-0) and their workspace memberships to restore later
+DB_PATH_TESTS=~/.local/share/swayg/swayg.db
+SAVED_USER_GROUPS=$(sqlite3 "$DB_PATH_TESTS" "SELECT name FROM groups WHERE name NOT LIKE 'zz_%' AND name != '0' ORDER BY name;" 2>/dev/null)
+SAVED_USER_MEMBERSHIPS=""
+if [ -n "$SAVED_USER_GROUPS" ]; then
+    SAVED_USER_MEMBERSHIPS=$(sqlite3 "$DB_PATH_TESTS" "
+        SELECT wg.workspace_id || '|' || g.name
+        FROM workspace_groups wg
+        JOIN groups g ON g.id = wg.group_id
+        WHERE g.name NOT LIKE 'zz_%' AND g.name != '0'
+        ORDER BY wg.workspace_id, g.name;
+    " 2>/dev/null)
+    # Remove user groups (cascade removes memberships)
+    sqlite3 "$DB_PATH_TESTS" "DELETE FROM groups WHERE name NOT LIKE 'zz_%' AND name != '0';" 2>/dev/null
+fi
+
+# Alphabetical order: 0 < zz_a < zz_b < zz_empty
 sg group select "$ORIG_OUT" 0 >/dev/null
 
 OUT=$(sg group next -o "$ORIG_OUT")
-echo "$OUT" | grep -q 'T_a' && pass "group next from 0 -> T_a" || fail "group next from 0" "$OUT"
+echo "$OUT" | grep -q 'zz_a' && pass "group next from 0 -> zz_a" || fail "group next from 0" "$OUT"
 
 OUT=$(sg group next -o "$ORIG_OUT")
-echo "$OUT" | grep -q 'T_b' && pass "group next from T_a -> T_b" || fail "group next from T_a" "$OUT"
+echo "$OUT" | grep -q 'zz_b' && pass "group next from zz_a -> zz_b" || fail "group next from zz_a" "$OUT"
 
-# prev from T_a -> 0
-sg group select "$ORIG_OUT" T_a >/dev/null
+# prev from zz_a -> 0
+sg group select "$ORIG_OUT" zz_a >/dev/null
 OUT=$(sg group prev -o "$ORIG_OUT")
-echo "$OUT" | grep -q '0' && pass "group prev from T_a -> 0" || fail "group prev from T_a" "$OUT"
+echo "$OUT" | grep -q '0' && pass "group prev from zz_a -> 0" || fail "group prev from zz_a" "$OUT"
 
-# no-wrap: at end (T_empty), next should not switch
-sg group create T_empty >/dev/null
-sg group select "$ORIG_OUT" T_empty >/dev/null
+# no-wrap: at end (zz_empty), next should not switch
+sg group create zz_empty >/dev/null
+sg group select "$ORIG_OUT" zz_empty >/dev/null
 OUT=$(sg group next -o "$ORIG_OUT" 2>&1)
 [ -z "$OUT" ] && pass "group next at end without wrap does nothing" || fail "group next at end" "$OUT"
 
@@ -281,36 +296,64 @@ sg group select "$ORIG_OUT" 0 >/dev/null
 OUT=$(sg group prev -o "$ORIG_OUT" 2>&1)
 [ -z "$OUT" ] && pass "group prev at start without wrap does nothing" || fail "group prev at start" "$OUT"
 
-# wrap: from T_empty (last), next wraps to 0
-sg group create T_empty >/dev/null
-sg group select "$ORIG_OUT" T_empty >/dev/null
+# wrap: from zz_empty (last), next wraps to 0
+sg group create zz_empty >/dev/null
+sg group select "$ORIG_OUT" zz_empty >/dev/null
 OUT=$(sg group next -o "$ORIG_OUT" -w 2>&1)
 echo "$OUT" | grep -q '0' && pass "group next with wrap cycles to first" || fail "group next with wrap" "$OUT"
 
-# wrap: from 0 (first), prev wraps to last non-empty (T_b, since T_empty was auto-deleted)
+# wrap: from 0 (first), prev wraps to last non-empty (zz_b, since zz_empty was auto-deleted)
 OUT=$(sg group prev -o "$ORIG_OUT" -w 2>&1)
-echo "$OUT" | grep -q 'T_b' && pass "group prev with wrap cycles to last (T_empty auto-deleted)" || fail "group prev with wrap" "$OUT"
+echo "$OUT" | grep -q 'zz_b' && pass "group prev with wrap cycles to last (zz_empty auto-deleted)" || fail "group prev with wrap" "$OUT"
+
+# Restore user groups and memberships
+if [ -n "$SAVED_USER_GROUPS" ]; then
+    for g in $SAVED_USER_GROUPS; do
+        sqlite3 "$DB_PATH_TESTS" "INSERT OR IGNORE INTO groups (name, created_at, updated_at) VALUES ('$g', datetime('now'), datetime('now'));" 2>/dev/null
+    done
+    for entry in $SAVED_USER_MEMBERSHIPS; do
+        ws_id=$(echo "$entry" | cut -d'|' -f1)
+        g_name=$(echo "$entry" | cut -d'|' -f2)
+        g_id=$(sqlite3 "$DB_PATH_TESTS" "SELECT id FROM groups WHERE name = '$g_name';" 2>/dev/null)
+        if [ -n "$g_id" ] && [ -n "$ws_id" ]; then
+            sqlite3 "$DB_PATH_TESTS" "INSERT OR IGNORE INTO workspace_groups (workspace_id, group_id, created_at) VALUES ($ws_id, $g_id, datetime('now'));" 2>/dev/null
+        fi
+    done
+fi
 
 echo ""
 
 # ============ 7. Group next-on-output / prev-on-output ============
 echo -e "${BOLD}--- 7. Group next-on-output / prev-on-output ---${NC}"
 
-# Non-empty groups on output: 0, T_a, T_b. T_empty is empty.
-# From 0 (first non-empty), next-on-output -> T_a
+# Save user groups again for test 7 (test 6 may have been interrupted)
+SAVED_USER_GROUPS_7=$(sqlite3 "$DB_PATH_TESTS" "SELECT name FROM groups WHERE name NOT LIKE 'zz_%' AND name != '0' ORDER BY name;" 2>/dev/null)
+SAVED_USER_MEMBERSHIPS_7=""
+if [ -n "$SAVED_USER_GROUPS_7" ]; then
+    SAVED_USER_MEMBERSHIPS_7=$(sqlite3 "$DB_PATH_TESTS" "
+        SELECT wg.workspace_id || '|' || g.name
+        FROM workspace_groups wg
+        JOIN groups g ON g.id = wg.group_id
+        WHERE g.name NOT LIKE 'zz_%' AND g.name != '0'
+        ORDER BY wg.workspace_id, g.name;
+    " 2>/dev/null)
+    sqlite3 "$DB_PATH_TESTS" "DELETE FROM groups WHERE name NOT LIKE 'zz_%' AND name != '0';" 2>/dev/null
+fi
+
+# Non-empty groups on output: 0, zz_a, zz_b. zz_empty is empty.
 sg group select "$ORIG_OUT" 0 >/dev/null
 
 OUT=$(sg group next-on-output -o "$ORIG_OUT")
-echo "$OUT" | grep -q 'T_a' && pass "next-on-output from 0 -> T_a" || fail "next-on-output from 0" "$OUT"
+echo "$OUT" | grep -q 'zz_a' && pass "next-on-output from 0 -> zz_a" || fail "next-on-output from 0" "$OUT"
 
 OUT=$(sg group next-on-output -o "$ORIG_OUT")
-echo "$OUT" | grep -q 'T_b' && pass "next-on-output from T_a -> T_b" || fail "next-on-output from T_a" "$OUT"
+echo "$OUT" | grep -q 'zz_b' && pass "next-on-output from zz_a -> zz_b" || fail "next-on-output from zz_a" "$OUT"
 
-# From T_b, next-on-output without wrap -> nothing (T_empty skipped, at end)
+# From zz_b, next-on-output without wrap -> nothing (zz_empty skipped, at end)
 OUT=$(sg group next-on-output -o "$ORIG_OUT" 2>&1)
 [ -z "$OUT" ] && pass "next-on-output at end without wrap stops" || fail "next-on-output at end" "$OUT"
 
-# From T_b, next-on-output with wrap -> 0 (skip T_empty)
+# From zz_b, next-on-output with wrap -> 0 (skip zz_empty)
 OUT=$(sg group next-on-output -o "$ORIG_OUT" -w)
 echo "$OUT" | grep -q '0' && pass "next-on-output with wrap skips empty, goes to 0" || fail "next-on-output with wrap" "$OUT"
 
@@ -318,28 +361,43 @@ echo "$OUT" | grep -q '0' && pass "next-on-output with wrap skips empty, goes to
 OUT=$(sg group prev-on-output -o "$ORIG_OUT" 2>&1)
 [ -z "$OUT" ] && pass "prev-on-output at start without wrap stops" || fail "prev-on-output at start" "$OUT"
 
-# prev-on-output from 0 with wrap -> T_b (last non-empty alphabetically)
+# prev-on-output from 0 with wrap -> zz_b (last non-empty alphabetically)
 OUT=$(sg group prev-on-output -o "$ORIG_OUT" -w)
-echo "$OUT" | grep -q 'T_b' && pass "prev-on-output with wrap goes to T_b" || fail "prev-on-output with wrap" "$OUT"
+echo "$OUT" | grep -q 'zz_b' && pass "prev-on-output with wrap goes to zz_b" || fail "prev-on-output with wrap" "$OUT"
+
+# Restore user groups
+if [ -n "$SAVED_USER_GROUPS_7" ]; then
+    for g in $SAVED_USER_GROUPS_7; do
+        sqlite3 "$DB_PATH_TESTS" "INSERT OR IGNORE INTO groups (name, created_at, updated_at) VALUES ('$g', datetime('now'), datetime('now'));" 2>/dev/null
+    done
+    for entry in $SAVED_USER_MEMBERSHIPS_7; do
+        ws_id=$(echo "$entry" | cut -d'|' -f1)
+        g_name=$(echo "$entry" | cut -d'|' -f2)
+        g_id=$(sqlite3 "$DB_PATH_TESTS" "SELECT id FROM groups WHERE name = '$g_name';" 2>/dev/null)
+        if [ -n "$g_id" ] && [ -n "$ws_id" ]; then
+            sqlite3 "$DB_PATH_TESTS" "INSERT OR IGNORE INTO workspace_groups (workspace_id, group_id, created_at) VALUES ($ws_id, $g_id, datetime('now'));" 2>/dev/null
+        fi
+    done
+fi
 
 echo ""
 
 # ============ 8. Workspace Navigation ============
 echo -e "${BOLD}--- 8. Workspace Navigation ---${NC}"
 
-# Reset to T_a, first visit restores WS_B (revisit from test 4)
-sg group select "$ORIG_OUT" T_a >/dev/null
+# Reset to zz_a, first visit restores WS_B (revisit from test 4)
+sg group select "$ORIG_OUT" zz_a >/dev/null
 sleep 0.5
 
 # Navigate to WS_A first, so nav next can go to WS_B
 OUT=$(sg nav go "$WS_A" 2>&1)
-echo "$OUT" | grep -q "Navigated to \"$WS_A\"" && pass "nav go resets position in T_a" || fail "nav go reset" "$OUT"
+echo "$OUT" | grep -q "Navigated to \"$WS_A\"" && pass "nav go resets position in zz_a" || fail "nav go reset" "$OUT"
 
 OUT=$(sg nav next -o "$ORIG_OUT" 2>&1)
-echo "$OUT" | grep -q "Navigated to \"$WS_B\"" && pass "nav next within group (T_a: $WS_A -> $WS_B)" || fail "nav next" "$OUT"
+echo "$OUT" | grep -q "Navigated to \"$WS_B\"" && pass "nav next within group (zz_a: $WS_A -> $WS_B)" || fail "nav next" "$OUT"
 
 OUT=$(sg nav prev -o "$ORIG_OUT" 2>&1)
-echo "$OUT" | grep -q "Navigated to \"$WS_A\"" && pass "nav prev within group (T_a: $WS_B -> $WS_A)" || fail "nav prev" "$OUT"
+echo "$OUT" | grep -q "Navigated to \"$WS_A\"" && pass "nav prev within group (zz_a: $WS_B -> $WS_A)" || fail "nav prev" "$OUT"
 
 OUT=$(sg nav back 2>&1)
 echo "$OUT" | grep -q "Navigated back to \"$WS_B\"" && pass "nav back ($WS_A -> $WS_B)" || fail "nav back" "$OUT"
@@ -379,20 +437,20 @@ echo ""
 # ============ 11. Prune ============
 echo -e "${BOLD}--- 11. Prune ---${NC}"
 
-sg group create T_prune_me >/dev/null
+sg group create zz_prune_me >/dev/null
 OUT=$(sg group prune 2>&1)
 echo "$OUT" | grep -q 'Pruned' && pass "prune removes empty groups" || fail "prune" "$OUT"
 
-# T_prune_me should be gone
+# zz_prune_me should be gone
 OUT=$(sg group list 2>&1)
-echo "$OUT" | grep -q 'T_prune_me' && fail "prune did not remove T_prune_me" "" || pass "pruned group no longer listed"
+echo "$OUT" | grep -q 'zz_prune_me' && fail "prune did not remove zz_prune_me" "" || pass "pruned group no longer listed"
 
 # --keep should preserve
-sg group create T_keep_me >/dev/null
-OUT=$(sg group prune --keep T_keep_me 2>&1)
+sg group create zz_keep_me >/dev/null
+OUT=$(sg group prune --keep zz_keep_me 2>&1)
 OUT=$(sg group list 2>&1)
-echo "$OUT" | grep -q 'T_keep_me' && pass "prune --keep preserves group" || fail "prune --keep" "$OUT"
-sg group delete T_keep_me --force >/dev/null
+echo "$OUT" | grep -q 'zz_keep_me' && pass "prune --keep preserves group" || fail "prune --keep" "$OUT"
+sg group delete zz_keep_me --force >/dev/null
 
 echo ""
 
@@ -415,12 +473,12 @@ sleep 0.3
 OUT=$(sg group active "$ORIG_OUT" 2>&1)
 echo "$OUT" | grep -q '0' && pass "group active returns current group" || fail "group active" "$OUT"
 
-sg group create T_move_active_test >/dev/null
-sg group select "$ORIG_OUT" T_move_active_test >/dev/null
+sg group create zz_move_active_test >/dev/null
+sg group select "$ORIG_OUT" zz_move_active_test >/dev/null
 OUT=$(sg group active "$ORIG_OUT" 2>&1)
-echo "$OUT" | grep -q 'T_move_active_test' && pass "group active reflects group switch" || fail "group active after switch" "$OUT"
+echo "$OUT" | grep -q 'zz_move_active_test' && pass "group active reflects group switch" || fail "group active after switch" "$OUT"
 sg group select "$ORIG_OUT" 0 >/dev/null
-sg group delete T_move_active_test --force >/dev/null
+sg group delete zz_move_active_test --force >/dev/null
 
 OUT=$(sg group list --output "$ORIG_OUT" 2>&1)
 echo "$OUT" | grep -q "Group" && pass "group list --output returns groups" || fail "group list --output" "$OUT"
@@ -432,34 +490,34 @@ echo -e "${BOLD}--- 14. Workspace Move ---${NC}"
 
 sg workspace add "$WS_A" -g 0 >/dev/null
 
-OUT=$(sg workspace move "$WS_A" --groups T_move_x 2>&1)
-echo "$OUT" | grep -q "Moved workspace \"$WS_A\" to group(s): T_move_x" && pass "workspace move to single group" || fail "workspace move single" "$OUT"
+OUT=$(sg workspace move "$WS_A" --groups zz_move_x 2>&1)
+echo "$OUT" | grep -q "Moved workspace \"$WS_A\" to group(s): zz_move_x" && pass "workspace move to single group" || fail "workspace move single" "$OUT"
 
 OUT=$(sg workspace groups "$WS_A" 2>&1)
-echo "$OUT" | grep -q 'T_move_x' && pass "move removed from old group (0), now only in T_move_x" || fail "move removed old" "$OUT"
+echo "$OUT" | grep -q 'zz_move_x' && pass "move removed from old group (0), now only in zz_move_x" || fail "move removed old" "$OUT"
 ! echo "$OUT" | grep -q '"0"' && pass "move no longer in group 0" || fail "move still in 0" "$OUT"
 
-# Verify T_move_x was auto-created (not pre-existing)
+# Verify zz_move_x was auto-created (not pre-existing)
 OUT=$(sg group list 2>&1)
-echo "$OUT" | grep -q 'T_move_x' && pass "move auto-created group T_move_x" || fail "auto-created T_move_x" "$OUT"
+echo "$OUT" | grep -q 'zz_move_x' && pass "move auto-created group zz_move_x" || fail "auto-created zz_move_x" "$OUT"
 
-OUT=$(sg workspace move "$WS_A" --groups T_move_x,T_move_y 2>&1)
+OUT=$(sg workspace move "$WS_A" --groups zz_move_x,zz_move_y 2>&1)
 echo "$OUT" | grep -q "Moved workspace" && pass "workspace move to multiple groups" || fail "workspace move multiple" "$OUT"
 
 OUT=$(sg workspace groups "$WS_A" 2>&1)
-echo "$OUT" | grep -q 'T_move_x' && echo "$OUT" | grep -q 'T_move_y' && pass "workspace is in both target groups after move" || fail "move both groups" "$OUT"
+echo "$OUT" | grep -q 'zz_move_x' && echo "$OUT" | grep -q 'zz_move_y' && pass "workspace is in both target groups after move" || fail "move both groups" "$OUT"
 
-# Verify T_move_y was also auto-created
+# Verify zz_move_y was also auto-created
 OUT=$(sg group list 2>&1)
-echo "$OUT" | grep -q 'T_move_y' && pass "move auto-created group T_move_y" || fail "auto-created T_move_y" "$OUT"
+echo "$OUT" | grep -q 'zz_move_y' && pass "move auto-created group zz_move_y" || fail "auto-created zz_move_y" "$OUT"
 
-OUT=$(sg workspace move __nonexistent__ --groups T_move_x 2>&1)
+OUT=$(sg workspace move __nonexistent__ --groups zz_move_x 2>&1)
 echo "$OUT" | grep -qi 'not found' && pass "workspace move rejects non-existent workspace" || fail "move nonexistent ws" "$OUT"
 
 # Move back to 0 for cleanup
 sg workspace move "$WS_A" --groups 0 >/dev/null
-sg group delete T_move_x --force >/dev/null
-sg group delete T_move_y --force >/dev/null
+sg group delete zz_move_x --force >/dev/null
+sg group delete zz_move_y --force >/dev/null
 
 echo ""
 
@@ -480,13 +538,13 @@ echo ""
 # ============ 17. Workspace List --visible --plain ============
 echo -e "${BOLD}--- 17. Workspace List --visible --plain ---${NC}"
 
-sg group create T_vis_a >/dev/null
-sg group create T_vis_b >/dev/null
-sg workspace add "$WS_A" -g T_vis_a >/dev/null
-sg workspace add "$WS_B" -g T_vis_b >/dev/null
+sg group create zz_vis_a >/dev/null
+sg group create zz_vis_b >/dev/null
+sg workspace add "$WS_A" -g zz_vis_a >/dev/null
+sg workspace add "$WS_B" -g zz_vis_b >/dev/null
 
-# Switch to T_vis_a: only WS_A should be visible
-sg group select "$ORIG_OUT" T_vis_a >/dev/null
+# Switch to zz_vis_a: only WS_A should be visible
+sg group select "$ORIG_OUT" zz_vis_a >/dev/null
 sleep 0.3
 
 OUT=$(sg workspace list --visible --plain 2>&1)
@@ -502,8 +560,8 @@ OUT=$(sg workspace list --visible 2>&1)
 echo "$OUT" | grep -q "$WS_A" && pass "visible list without plain shows workspace" || fail "visible list no plain" "$OUT"
 
 sg group select "$ORIG_OUT" 0 >/dev/null
-sg group delete T_vis_a --force >/dev/null
-sg group delete T_vis_b --force >/dev/null
+sg group delete zz_vis_a --force >/dev/null
+sg group delete zz_vis_b --force >/dev/null
 
 echo ""
 
@@ -570,6 +628,7 @@ echo ""
 # ============ 20. Global Workspace Navigation ============
 echo -e "${BOLD}--- 20. Global Workspace Navigation ---${NC}"
 
+sg sync --all >/dev/null
 sg group select "$ORIG_OUT" 0 >/dev/null
 sleep 0.3
 
@@ -578,33 +637,16 @@ sg workspace global "$WS_A" >/dev/null
 OUT=$(sg status 2>&1)
 echo "$OUT" | grep -q "Global" && echo "$OUT" | grep -q "$WS_A" && pass "WS_A is now global" || fail "WS_A is global" "$OUT"
 
-# Sync to apply _class_global suffix
-sg sync --all >/dev/null
-sleep 0.3
-
-# Verify the suffix is applied in sway
-WS_A_SWAY=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
-import json, sys
-for w in json.load(sys.stdin):
-    if w['name'].startswith('$WS_A'):
-        print(w['name'])
-        break
-")
-echo "$WS_A_SWAY" | grep -q '_class_global' && pass "sway has _class_global suffix on $WS_A" || fail "_class_global suffix" "got: $WS_A_SWAY"
-
-# Navigate to WS_A (which has _class_global suffix) — must not create duplicate
+# Navigate to WS_A (global) — must not create duplicate
 sg nav go "$WS_A" >/dev/null
 sleep 0.3
 
-# Verify only one workspace starting with WS_A exists
+# Verify only one workspace with name WS_A exists
 WS_A_COUNT=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
 import json, sys
 count = 0
 for w in json.load(sys.stdin):
-    base = w['name']
-    for s in ('_class_hidden', '_class_global'):
-        base = base.removesuffix(s)
-    if base == '$WS_A':
+    if w['name'] == '$WS_A':
         count += 1
 print(count)
 ")
@@ -622,10 +664,7 @@ WS_A_COUNT2=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
 import json, sys
 count = 0
 for w in json.load(sys.stdin):
-    base = w['name']
-    for s in ('_class_hidden', '_class_global'):
-        base = base.removesuffix(s)
-    if base == '$WS_A':
+    if w['name'] == '$WS_A':
         count += 1
 print(count)
 ")
@@ -640,18 +679,13 @@ WS_A_COUNT3=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
 import json, sys
 count = 0
 for w in json.load(sys.stdin):
-    base = w['name']
-    for s in ('_class_hidden', '_class_global'):
-        base = base.removesuffix(s)
-    if base == '$WS_A':
+    if w['name'] == '$WS_A':
         count += 1
 print(count)
 ")
 [ "$WS_A_COUNT3" = "1" ] && pass "no duplicate after returning to global" || fail "no dup after return" "count: $WS_A_COUNT3"
 
 # Test nav prev/next through global workspace
-# First navigate to a workspace that is NOT the first in the sorted list
-# so nav prev will have a target
 sg nav go "$WS_B" >/dev/null
 sleep 0.3
 
@@ -663,10 +697,7 @@ WS_A_COUNT4=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
 import json, sys
 count = 0
 for w in json.load(sys.stdin):
-    base = w['name']
-    for s in ('_class_hidden', '_class_global'):
-        base = base.removesuffix(s)
-    if base == '$WS_A':
+    if w['name'] == '$WS_A':
         count += 1
 print(count)
 ")
@@ -685,8 +716,8 @@ echo ""
 # ============ 21. New workspace inherits active group ============
 echo -e "${BOLD}--- 21. New workspace inherits active group ---${NC}"
 
-sg group create T_sync_group >/dev/null
-sg group select "$ORIG_OUT" T_sync_group >/dev/null
+sg group create zz_sync_group >/dev/null
+sg group select "$ORIG_OUT" zz_sync_group >/dev/null
 sleep 0.3
 
 sg nav go "$WS_A" >/dev/null
@@ -698,12 +729,12 @@ sleep 0.5
 sg sync --all >/dev/null
 
 OUT=$(sg workspace groups __test_inherit_ws__ 2>&1)
-echo "$OUT" | grep -q 'T_sync_group' && pass "new workspace added to active group (T_sync_group)" || fail "new workspace in active group" "$OUT"
+echo "$OUT" | grep -q 'zz_sync_group' && pass "new workspace added to active group (zz_sync_group)" || fail "new workspace in active group" "$OUT"
 ! echo "$OUT" | grep -q '"0"' && pass "new workspace NOT in group 0" || fail "new workspace not in group 0" "$OUT"
 
 sg group select "$ORIG_OUT" 0 >/dev/null
 sleep 0.3
-sg group delete T_sync_group --force >/dev/null
+sg group delete zz_sync_group --force >/dev/null
 swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
 sleep 0.3
 
@@ -712,34 +743,34 @@ echo ""
 # ============ 22. Auto-delete empty group on switch ============
 echo -e "${BOLD}--- 22. Auto-delete empty group on switch ---${NC}"
 
-sg group create T_auto_del >/dev/null
-sg group select "$ORIG_OUT" T_auto_del >/dev/null
+sg group create zz_auto_del >/dev/null
+sg group select "$ORIG_OUT" zz_auto_del >/dev/null
 sleep 0.3
 
 OUT=$(sg group list 2>&1)
-echo "$OUT" | grep -q 'T_auto_del' && pass "T_auto_del exists after creation" || fail "T_auto_del exists" "$OUT"
+echo "$OUT" | grep -q 'zz_auto_del' && pass "zz_auto_del exists after creation" || fail "zz_auto_del exists" "$OUT"
 
-# Switch away — T_auto_del should be auto-deleted because it's empty
+# Switch away — zz_auto_del should be auto-deleted because it's empty
 sg group select "$ORIG_OUT" 0 >/dev/null
 sleep 0.3
 
 OUT=$(sg group list 2>&1)
-! echo "$OUT" | grep -q 'T_auto_del' && pass "T_auto_del auto-deleted after switch" || fail "T_auto_del auto-deleted" "$OUT"
+! echo "$OUT" | grep -q 'zz_auto_del' && pass "zz_auto_del auto-deleted after switch" || fail "zz_auto_del auto-deleted" "$OUT"
 
 # Non-empty group should NOT be auto-deleted
-sg group create T_no_del >/dev/null
-sg workspace add "$WS_A" -g T_no_del >/dev/null
-sg group select "$ORIG_OUT" T_no_del >/dev/null
+sg group create zz_no_del >/dev/null
+sg workspace add "$WS_A" -g zz_no_del >/dev/null
+sg group select "$ORIG_OUT" zz_no_del >/dev/null
 sleep 0.3
 
 sg group select "$ORIG_OUT" 0 >/dev/null
 sleep 0.3
 
 OUT=$(sg group list 2>&1)
-echo "$OUT" | grep -q 'T_no_del' && pass "non-empty group T_no_del NOT auto-deleted" || fail "T_no_del not deleted" "$OUT"
+echo "$OUT" | grep -q 'zz_no_del' && pass "non-empty group zz_no_del NOT auto-deleted" || fail "zz_no_del not deleted" "$OUT"
 
-sg workspace remove "$WS_A" -g T_no_del >/dev/null
-sg group delete T_no_del --force >/dev/null
+sg workspace remove "$WS_A" -g zz_no_del >/dev/null
+sg group delete zz_no_del --force >/dev/null
 swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
 sleep 0.3
 
@@ -780,11 +811,11 @@ sleep 0.3
 DB_PATH=~/.local/share/swayg/swayg.db
 sqlite3 "$DB_PATH" "
 DELETE FROM focus_history WHERE workspace_name LIKE '__test_%';
-DELETE FROM group_state WHERE group_name LIKE 'T_%';
+DELETE FROM group_state WHERE group_name LIKE 'zz_%';
 DELETE FROM workspace_groups WHERE workspace_id IN (SELECT id FROM workspaces WHERE name LIKE '__test_%');
-DELETE FROM workspace_groups WHERE group_id IN (SELECT id FROM groups WHERE name LIKE 'T_%');
+DELETE FROM workspace_groups WHERE group_id IN (SELECT id FROM groups WHERE name LIKE 'zz_%');
 DELETE FROM workspaces WHERE name LIKE '__test_%';
-DELETE FROM groups WHERE name LIKE 'T_%';
+DELETE FROM groups WHERE name LIKE 'zz_%';
 UPDATE outputs SET active_group = '0';
 " 2>/dev/null
 
