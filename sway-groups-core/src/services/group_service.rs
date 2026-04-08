@@ -419,6 +419,14 @@ impl GroupService {
 
         info!("Set active group for {} to '{}'", output, group);
 
+        if old_group != "0" && old_group != group {
+            let groups = self.list_groups(None).await?;
+            if let Some(g) = groups.iter().find(|g| g.name == old_group) && g.workspace_count == 0 {
+                self.delete_group(&old_group, true).await?;
+                info!("Auto-removed empty group '{}' after switch", old_group);
+            }
+        }
+
         Ok(())
     }
 

@@ -268,6 +268,7 @@ OUT=$(sg group prev -o "$ORIG_OUT")
 echo "$OUT" | grep -q '0' && pass "group prev from T_a -> 0" || fail "group prev from T_a" "$OUT"
 
 # no-wrap: at end (T_empty), next should not switch
+sg group create T_empty >/dev/null
 sg group select "$ORIG_OUT" T_empty >/dev/null
 OUT=$(sg group next -o "$ORIG_OUT" 2>&1)
 [ -z "$OUT" ] && pass "group next at end without wrap does nothing" || fail "group next at end" "$OUT"
@@ -278,13 +279,14 @@ OUT=$(sg group prev -o "$ORIG_OUT" 2>&1)
 [ -z "$OUT" ] && pass "group prev at start without wrap does nothing" || fail "group prev at start" "$OUT"
 
 # wrap: from T_empty (last), next wraps to 0
+sg group create T_empty >/dev/null
 sg group select "$ORIG_OUT" T_empty >/dev/null
 OUT=$(sg group next -o "$ORIG_OUT" -w 2>&1)
 echo "$OUT" | grep -q '0' && pass "group next with wrap cycles to first" || fail "group next with wrap" "$OUT"
 
-# wrap: from 0 (first), prev wraps to T_empty
+# wrap: from 0 (first), prev wraps to last non-empty (T_b, since T_empty was auto-deleted)
 OUT=$(sg group prev -o "$ORIG_OUT" -w 2>&1)
-echo "$OUT" | grep -q 'T_empty' && pass "group prev with wrap cycles to last" || fail "group prev with wrap" "$OUT"
+echo "$OUT" | grep -q 'T_b' && pass "group prev with wrap cycles to last (T_empty auto-deleted)" || fail "group prev with wrap" "$OUT"
 
 echo ""
 
@@ -699,6 +701,42 @@ echo "$OUT" | grep -q 'T_sync_group' && pass "new workspace added to active grou
 sg group select "$ORIG_OUT" 0 >/dev/null
 sleep 0.3
 sg group delete T_sync_group --force >/dev/null
+swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
+sleep 0.3
+
+echo ""
+
+# ============ 22. Auto-delete empty group on switch ============
+echo -e "${BOLD}--- 22. Auto-delete empty group on switch ---${NC}"
+
+sg group create T_auto_del >/dev/null
+sg group select "$ORIG_OUT" T_auto_del >/dev/null
+sleep 0.3
+
+OUT=$(sg group list 2>&1)
+echo "$OUT" | grep -q 'T_auto_del' && pass "T_auto_del exists after creation" || fail "T_auto_del exists" "$OUT"
+
+# Switch away — T_auto_del should be auto-deleted because it's empty
+sg group select "$ORIG_OUT" 0 >/dev/null
+sleep 0.3
+
+OUT=$(sg group list 2>&1)
+! echo "$OUT" | grep -q 'T_auto_del' && pass "T_auto_del auto-deleted after switch" || fail "T_auto_del auto-deleted" "$OUT"
+
+# Non-empty group should NOT be auto-deleted
+sg group create T_no_del >/dev/null
+sg workspace add "$WS_A" -g T_no_del >/dev/null
+sg group select "$ORIG_OUT" T_no_del >/dev/null
+sleep 0.3
+
+sg group select "$ORIG_OUT" 0 >/dev/null
+sleep 0.3
+
+OUT=$(sg group list 2>&1)
+echo "$OUT" | grep -q 'T_no_del' && pass "non-empty group T_no_del NOT auto-deleted" || fail "T_no_del not deleted" "$OUT"
+
+sg workspace remove "$WS_A" -g T_no_del >/dev/null
+sg group delete T_no_del --force >/dev/null
 swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
 sleep 0.3
 
