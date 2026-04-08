@@ -741,3 +741,48 @@ swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
 sleep 0.3
 
 echo ""
+
+# ============ Cleanup ============
+echo -e "${BOLD}--- Cleanup ---${NC}"
+
+# 1. Kill all test kitty processes (app_id starts with __test_)
+TEST_KITTY_PIDS=$(swaymsg -t get_tree 2>/dev/null | python3 -c "
+import json, sys
+pids = set()
+def collect(node):
+    app_id = node.get('app_id', '')
+    if app_id.startswith('__test_') and node.get('pid'):
+        pids.add(node['pid'])
+    for c in node.get('nodes', []) + node.get('floating_nodes', []):
+        collect(c)
+collect(json.load(sys.stdin))
+print(' '.join(str(p) for p in pids))
+" 2>/dev/null)
+if [ -n "$TEST_KITTY_PIDS" ]; then
+    for pid in $TEST_KITTY_PIDS; do
+        kill -- -"$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
+    done
+    sleep 0.5
+fi
+
+# 2. Remove test workspaces from sway (navigate to each, sway auto-cleans empty ones)
+for ws in "$WS_A" "$WS_B" "$WS_C" __test_lazy_ws__ __test_inherit_ws__; do
+    swaymsg workspace "$ws" >/dev/null 2>&1 || true
+    sleep 0.1
+done
+swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
+sleep 0.3
+
+# 3. Remove all test groups (T_*) and test workspace entries from DB
+DB_PATH=~/.local/share/swayg/swayg.db
+sqlite3 "$DB_PATH" "
+DELETE FROM focus_history WHERE workspace_name LIKE '__test_%';
+DELETE FROM group_state WHERE group_name LIKE 'T_%';
+DELETE FROM workspace_groups WHERE workspace_id IN (SELECT id FROM workspaces WHERE name LIKE '__test_%');
+DELETE FROM workspace_groups WHERE group_id IN (SELECT id FROM groups WHERE name LIKE 'T_%');
+DELETE FROM workspaces WHERE name LIKE '__test_%';
+DELETE FROM groups WHERE name LIKE 'T_%';
+UPDATE outputs SET active_group = '0';
+" 2>/dev/null
+
+pass "cleanup done"
