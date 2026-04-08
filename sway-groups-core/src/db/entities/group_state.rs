@@ -23,4 +23,10 @@ impl Entity {
             .filter(Column::Output.eq(output))
             .filter(Column::GroupName.eq(group_name))
     }
+
+    pub fn find_by_group_name(group_name: &str) -> Select<Self> {
+        use sea_orm::{ColumnTrait, QueryFilter};
+        Self::find()
+            .filter(Column::GroupName.eq(group_name))
+    }
 }

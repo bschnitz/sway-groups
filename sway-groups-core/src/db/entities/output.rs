@@ -24,3 +24,11 @@ pub struct Model {
 
 /// Active model for output.
 impl ActiveModelBehavior for ActiveModel {}
+
+impl Entity {
+    pub fn find_by_active_group(active_group: &str) -> Select<Self> {
+        use sea_orm::{ColumnTrait, QueryFilter};
+        Self::find()
+            .filter(Column::ActiveGroup.eq(active_group))
+    }
+}

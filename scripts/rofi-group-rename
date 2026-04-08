@@ -1,0 +1,30 @@
+#!/bin/sh
+# Rename the currently active group using rofi text input.
+
+output=$(swaymsg -t get_outputs -r | jq -r '.[] | select(.focused==true) | .name')
+current=$($HOME/.cargo/bin/swayg group active "$output" 2>&1 | tail -1)
+
+if [ -z "$current" ]; then
+    notify-send "swayg" "Could not determine current group."
+    exit 1
+fi
+
+new_name=$(echo "$current" | rofi -dmenu -p "Rename group '$current' to:")
+if [ -z "$new_name" ]; then
+    notify-send "swayg" "Rename cancelled."
+    exit 0
+fi
+
+if [ "$new_name" = "$current" ]; then
+    notify-send "swayg" "Name unchanged."
+    exit 0
+fi
+
+result=$($HOME/.cargo/bin/swayg group rename "$current" "$new_name" 2>&1)
+if [ $? -ne 0 ]; then
+    err=$(echo "$result" | sed 's/.*INFO.*//;s/.*ERROR.*//;s/.*WARN.*//' | xargs)
+    notify-send "swayg" "Rename failed: $err"
+    exit 1
+fi
+
+notify-send "swayg" "Renamed group '$current' -> '$new_name'."

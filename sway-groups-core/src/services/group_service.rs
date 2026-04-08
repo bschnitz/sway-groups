@@ -213,6 +213,27 @@ impl GroupService {
         group.updated_at = Set(Some(chrono::Utc::now().naive_utc()));
         group.update(self.db.conn()).await?;
 
+        // Update outputs that reference the old group name
+        let affected_outputs = OutputEntity::find_by_active_group(old_name)
+            .all(self.db.conn())
+            .await?;
+        for output in affected_outputs {
+            let mut active = output.into_active_model();
+            active.active_group = Set(new_name.to_string());
+            active.updated_at = Set(Some(chrono::Utc::now().naive_utc()));
+            active.update(self.db.conn()).await?;
+        }
+
+        // Update group_state entries that reference the old group name
+        let affected_states = GroupStateEntity::find_by_group_name(old_name)
+            .all(self.db.conn())
+            .await?;
+        for state in affected_states {
+            let mut active = state.into_active_model();
+            active.group_name = Set(new_name.to_string());
+            active.update(self.db.conn()).await?;
+        }
+
         info!("Renamed group: {} -> {}", old_name, new_name);
         Ok(())
     }
