@@ -26,9 +26,7 @@
 #      (kitty) on test workspaces to keep them alive
 #   6. After "sg sync --all" the DB is reset – all group assignments are lost.
 #      If you need sync in the middle of the test suite, backup/restore the DB
-#   7. The daemon (swaygd) is stopped/started during tests. Tests 16 and 19
-#      manage the daemon lifecycle – don't add daemon-dependent tests elsewhere
-#      without checking daemon state
+#   7. There is no daemon – all operations happen synchronously in the CLI
 
 set -uo pipefail
 
@@ -346,7 +344,7 @@ echo ""
 # ============ 9. Sync ============
 echo -e "${BOLD}--- 9. Sync ---${NC}"
 
-# Test sync on a copy: backup DB, sync fresh, verify, restore
+# Test sync from clean state: backup DB, remove, sync fresh, verify, restore
 DB_PATH=~/.local/share/swayg/swayg.db
 cp "$DB_PATH" "${DB_PATH}.bak" 2>/dev/null || true
 rm -f "$DB_PATH"
@@ -358,7 +356,7 @@ echo "$OUT" | grep -q 'Group "0"' && pass "sync creates default group" || fail "
 
 # Restore original DB to not break subsequent tests
 cp "${DB_PATH}.bak" "$DB_PATH" 2>/dev/null || true
-rm -f "${DB_PATH}.bak" 2>/dev/null || true
+rm -f "${DB_PATH}.bak" "${DB_PATH}-journal" 2>/dev/null || true
 
 echo ""
 
@@ -474,30 +472,6 @@ echo "$OUT" | grep -q 'Navigated' && pass "nav prev-on-output navigates" || fail
 
 echo ""
 
-# ============ 16. Daemon ====
-echo -e "${BOLD}--- 16. Daemon ---${NC}"
-
-DAEMON_WAS_RUNNING=false
-if systemctl --user is-active --quiet swaygd 2>/dev/null; then
-    DAEMON_WAS_RUNNING=true
-    systemctl --user stop swaygd
-    sleep 1
-fi
-
-OUT=$(systemctl --user is-active swaygd 2>&1)
-echo "$OUT" | grep -q 'inactive\|unknown' && pass "daemon not running after stop" || fail "daemon not running" "$OUT"
-
-systemctl --user start swaygd
-sleep 2
-
-OUT=$(systemctl --user is-active swaygd 2>&1)
-echo "$OUT" | grep -q 'active' && pass "daemon running after start" || fail "daemon running" "$OUT"
-
-OUT=$(sg daemon status 2>&1)
-echo "$OUT" | grep -q 'running' && pass "sg daemon status agrees" || fail "sg daemon status" "$OUT"
-
-echo ""
-
 # ============ 17. Workspace List --visible --plain ============
 echo -e "${BOLD}--- 17. Workspace List --visible --plain ---${NC}"
 
@@ -553,24 +527,24 @@ sleep 0.3
 
 echo ""
 
-# ============ 19. Daemon Syncs New Workspaces ============
-echo -e "${BOLD}--- 19. Daemon Syncs New Workspaces ---${NC}"
-
-# Restart daemon to get a clean event subscription
-systemctl --user restart swaygd
-sleep 2
+# ============ 19. Lazy Sync: New Workspaces ============
+echo -e "${BOLD}--- 19. Lazy Sync: New Workspaces ---${NC}"
 
 # Create a new workspace via sway (open a kitty so sway won't garbage-collect it)
-T_NEW_WS="__test_daemon_ws__"
+T_NEW_WS="__test_lazy_ws__"
 kitty --class "__test_${T_NEW_WS}" -e sleep 300 >/dev/null 2>&1 &
 sleep 0.3
-sleep 0.3
 swaymsg workspace "$T_NEW_WS" >/dev/null 2>&1
-sleep 1
+sleep 0.3
 
-# Verify the daemon synced the new workspace to the DB (via event, not manual sync)
+# Before sync: workspace should NOT be in DB
 OUT=$(sg workspace list --plain 2>&1)
-echo "$OUT" | grep -q "$T_NEW_WS" && pass "daemon syncs new workspace to DB" || fail "daemon syncs new workspace" "DB: $OUT"
+! echo "$OUT" | grep -q "$T_NEW_WS" && pass "workspace not in DB before sync" || fail "workspace not in DB before sync" "$OUT"
+
+# After sync: workspace should be in DB
+sg sync --all >/dev/null
+OUT=$(sg workspace list --plain 2>&1)
+echo "$OUT" | grep -q "$T_NEW_WS" && pass "lazy sync picks up new workspace" || fail "lazy sync picks up new workspace" "DB: $OUT"
 
 # Verify nav next/prev can navigate to the new workspace
 sg nav go "$WS_A" >/dev/null
@@ -710,15 +684,13 @@ sg group create T_sync_group >/dev/null
 sg group select "$ORIG_OUT" T_sync_group >/dev/null
 sleep 0.3
 
-systemctl --user restart swaygd
-sleep 2
-
 sg nav go "$WS_A" >/dev/null
 sleep 0.3
 kitty --class __test_inherit__ -e sleep 5 >/dev/null 2>&1 &
 sleep 0.5
 sg nav move-to "__test_inherit_ws__" >/dev/null
-sleep 1
+sleep 0.5
+sg sync --all >/dev/null
 
 OUT=$(sg workspace groups __test_inherit_ws__ 2>&1)
 echo "$OUT" | grep -q 'T_sync_group' && pass "new workspace added to active group (T_sync_group)" || fail "new workspace in active group" "$OUT"
