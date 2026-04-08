@@ -1,15 +1,13 @@
 //! CLI commands for swayg.
 
 use clap::{Parser, Subcommand};
-use sway_groups_core::services::{GroupService, NavigationService, SuffixService, WorkspaceService};
+use sway_groups_core::services::{GroupService, NavigationService, WaybarSyncService, WorkspaceService};
 use sway_groups_core::sway::SwayIpcClient;
 
-/// Sway workspace groups management CLI.
 #[derive(Parser)]
 #[command(name = "swayg")]
 #[command(author, version, about = "Sway workspace groups management CLI")]
 pub struct Cli {
-    /// Enable verbose output.
     #[arg(short, long)]
     pub verbose: bool,
 
@@ -17,279 +15,181 @@ pub struct Cli {
     command: Command,
 }
 
-/// Available commands.
 #[derive(Subcommand)]
 enum Command {
-    /// Group management commands.
     Group {
         #[command(subcommand)]
         action: GroupAction,
     },
-    /// Workspace management commands.
     Workspace {
         #[command(subcommand)]
         action: WorkspaceAction,
     },
-    /// Navigation commands.
     Nav {
         #[command(subcommand)]
         action: NavAction,
     },
-    /// Sync database with sway state.
     Sync {
-        /// Sync everything.
         #[arg(short, long)]
         all: bool,
 
-        /// Sync only workspaces.
         #[arg(short, long)]
         workspaces: bool,
 
-        /// Sync only groups.
         #[arg(short, long)]
         groups: bool,
 
-        /// Sync only outputs.
         #[arg(short, long)]
         outputs: bool,
     },
-    /// Show current status.
     Status,
 }
 
-/// Group subcommands.
 #[derive(Subcommand)]
 enum GroupAction {
-    /// List all groups.
     List {
-        /// Filter by output name.
         #[arg(short, long)]
         output: Option<String>,
     },
-    /// Create a new group.
     Create {
-        /// Group name.
         name: String,
     },
-    /// Delete a group.
     Delete {
-        /// Group name.
         name: String,
-
-        /// Force delete even with workspaces.
         #[arg(short, long)]
         force: bool,
     },
-    /// Rename a group.
     Rename {
-        /// Current name.
         old_name: String,
-
-        /// New name.
         new_name: String,
     },
-    /// Set active group for an output.
     Select {
-        /// Output name.
         output: String,
-
-        /// Group name.
         group: String,
     },
-    /// Show active group for an output.
     Active {
-        /// Output name.
         output: String,
     },
-    /// Switch to next group (all groups).
     Next {
-        /// Output name.
         #[arg(short, long)]
         output: Option<String>,
-
-        /// Wrap around.
         #[arg(short, long)]
         wrap: bool,
     },
-    /// Switch to next non-empty group on the output.
     NextOnOutput {
-        /// Output name.
         #[arg(short, long)]
         output: Option<String>,
-
-        /// Wrap around.
         #[arg(short, long)]
         wrap: bool,
     },
-    /// Switch to previous group (all groups).
     Prev {
-        /// Output name.
         #[arg(short, long)]
         output: Option<String>,
-
-        /// Wrap around.
         #[arg(short, long)]
         wrap: bool,
     },
-    /// Switch to previous non-empty group on the output.
     PrevOnOutput {
-        /// Output name.
         #[arg(short, long)]
         output: Option<String>,
-
-        /// Wrap around.
         #[arg(short, long)]
         wrap: bool,
     },
-    /// Remove empty groups.
     Prune {
-        /// Groups to keep.
         #[arg(long)]
         keep: Vec<String>,
     },
 }
 
-/// Workspace subcommands.
 #[derive(Subcommand)]
 enum WorkspaceAction {
-    /// List workspaces.
     List {
-        /// Filter by output.
         #[arg(short, long)]
         output: Option<String>,
-
-        /// Filter by group.
         #[arg(short, long)]
         group: Option<String>,
-
-        /// Show only workspaces visible in the active group.
         #[arg(long)]
         visible: bool,
-
-        /// Plain output: workspace names only, one per line.
         #[arg(long)]
         plain: bool,
     },
-    /// Add workspace to group.
     Add {
-        /// Workspace name or number.
         workspace: String,
-
-        /// Target group.
         #[arg(short, long)]
         group: Option<String>,
-
-        /// Output.
         #[arg(short, long)]
         output: Option<String>,
     },
-    /// Move workspace to groups (comma-separated), removing from all other groups.
-    /// Groups are created automatically if they don't exist.
     Move {
-        /// Workspace name or number.
         workspace: String,
-
-        /// Target groups (comma-separated).
         #[arg(short, long)]
         groups: String,
     },
-    /// Remove workspace from group.
     Remove {
-        /// Workspace name.
         workspace: String,
-
-        /// Source group.
         #[arg(short, long)]
         group: Option<String>,
     },
-    /// Mark workspace as global.
     Global {
-        /// Workspace name.
         workspace: String,
     },
-    /// Remove global status.
     Unglobal {
-        /// Workspace name.
         workspace: String,
     },
-    /// Show groups for workspace.
     Groups {
-        /// Workspace name.
         workspace: String,
     },
 }
 
-/// Navigation subcommands.
 #[derive(Subcommand)]
 enum NavAction {
-    /// Go to next workspace in active group on output.
     Next {
-        /// Output name.
         #[arg(short, long)]
         output: Option<String>,
-
-        /// Wrap around.
         #[arg(short, long)]
         wrap: bool,
     },
-    /// Go to next workspace globally (across all outputs).
     NextOnOutput {
-        /// Wrap around.
         #[arg(short, long)]
         wrap: bool,
     },
-    /// Go to previous workspace in active group on output.
     Prev {
-        /// Output name.
         #[arg(short, long)]
         output: Option<String>,
-
-        /// Wrap around.
         #[arg(short, long)]
         wrap: bool,
     },
-    /// Go to previous workspace globally (across all outputs).
     PrevOnOutput {
-        /// Wrap around.
         #[arg(short, long)]
         wrap: bool,
     },
-    /// Go to specific workspace.
     Go {
-        /// Workspace name or number.
         workspace: String,
-
-        /// Output name.
         #[arg(short, long)]
         output: Option<String>,
     },
-    /// Move focused container to a specific workspace.
     MoveTo {
-        /// Workspace name or number.
         workspace: String,
     },
-    /// Go back to previous workspace.
     Back,
 }
 
-/// Run the CLI commands.
 pub async fn run(
     cli: Cli,
     group_service: &GroupService,
     workspace_service: &WorkspaceService,
-    suffix_service: &SuffixService,
+    waybar_sync: &WaybarSyncService,
     nav_service: &NavigationService,
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match cli.command {
-        Command::Group { action } => run_group(action, group_service, ipc_client).await?,
-        Command::Workspace { action } => run_workspace(action, workspace_service, group_service, suffix_service, ipc_client).await?,
-        Command::Nav { action } => run_nav(action, nav_service, suffix_service, ipc_client).await?,
+        Command::Group { action } => run_group(action, group_service, waybar_sync, ipc_client).await?,
+        Command::Workspace { action } => run_workspace(action, workspace_service, group_service, waybar_sync, ipc_client).await?,
+        Command::Nav { action } => run_nav(action, nav_service, waybar_sync, ipc_client).await?,
         Command::Sync { all, workspaces, groups, outputs } => {
-            run_sync(all, workspaces, groups, outputs, workspace_service, suffix_service).await?;
+            run_sync(all, workspaces, groups, outputs, workspace_service, waybar_sync).await?;
         }
         Command::Status => {
-            run_status(group_service, suffix_service, ipc_client).await?;
+            run_status(group_service, workspace_service, waybar_sync, ipc_client).await?;
         }
     }
     Ok(())
@@ -308,6 +208,7 @@ fn resolve_output(output: Option<&str>, ipc_client: &SwayIpcClient) -> anyhow::R
 async fn run_group(
     action: GroupAction,
     group_service: &GroupService,
+    waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
@@ -342,6 +243,7 @@ async fn run_group(
         }
         GroupAction::Select { output, group } => {
             group_service.set_active_group(&output, &group).await?;
+            waybar_sync.update_waybar().await?;
             println!("Set active group for \"{}\" to \"{}\"", output, group);
         }
         GroupAction::Active { output } => {
@@ -351,24 +253,28 @@ async fn run_group(
         GroupAction::Next { output, wrap } => {
             let output = resolve_output(output.as_deref(), ipc_client)?;
             if let Some(next) = group_service.next_group(&output, wrap).await? {
+                waybar_sync.update_waybar().await?;
                 println!("Switched from active group to \"{}\"", next);
             }
         }
         GroupAction::NextOnOutput { output, wrap } => {
             let output = resolve_output(output.as_deref(), ipc_client)?;
             if let Some(next) = group_service.next_group_on_output(&output, wrap).await? {
+                waybar_sync.update_waybar().await?;
                 println!("Switched from active group to \"{}\"", next);
             }
         }
         GroupAction::Prev { output, wrap } => {
             let output = resolve_output(output.as_deref(), ipc_client)?;
             if let Some(prev) = group_service.prev_group(&output, wrap).await? {
+                waybar_sync.update_waybar().await?;
                 println!("Switched from active group to \"{}\"", prev);
             }
         }
         GroupAction::PrevOnOutput { output, wrap } => {
             let output = resolve_output(output.as_deref(), ipc_client)?;
             if let Some(prev) = group_service.prev_group_on_output(&output, wrap).await? {
+                waybar_sync.update_waybar().await?;
                 println!("Switched from active group to \"{}\"", prev);
             }
         }
@@ -388,7 +294,7 @@ async fn run_workspace(
     action: WorkspaceAction,
     workspace_service: &WorkspaceService,
     group_service: &GroupService,
-    suffix_service: &SuffixService,
+    waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
@@ -469,7 +375,7 @@ async fn run_workspace(
                 }
             };
             workspace_service.add_to_group(&workspace, &target_group).await?;
-            suffix_service.sync_all_suffixes().await?;
+            waybar_sync.update_waybar().await?;
             println!("Added workspace \"{}\" to group \"{}\"", workspace, target_group);
         }
         WorkspaceAction::Move { workspace, groups } => {
@@ -478,7 +384,7 @@ async fn run_workspace(
                 anyhow::bail!("No groups specified for move. Use --groups <group1,group2,...>");
             }
             workspace_service.move_to_groups(&workspace, &target_groups).await?;
-            suffix_service.sync_all_suffixes().await?;
+            waybar_sync.update_waybar().await?;
             println!("Moved workspace \"{}\" to group(s): {}", workspace, target_groups.join(", "));
         }
         WorkspaceAction::Remove { workspace, group } => {
@@ -493,17 +399,17 @@ async fn run_workspace(
                 }
             };
             workspace_service.remove_from_group(&workspace, &source_group).await?;
-            suffix_service.sync_all_suffixes().await?;
+            waybar_sync.update_waybar().await?;
             println!("Removed workspace \"{}\" from group \"{}\"", workspace, source_group);
         }
         WorkspaceAction::Global { workspace } => {
             workspace_service.set_global(&workspace, true).await?;
-            suffix_service.sync_all_suffixes().await?;
+            waybar_sync.update_waybar().await?;
             println!("Marked workspace \"{}\" as global", workspace);
         }
         WorkspaceAction::Unglobal { workspace } => {
             workspace_service.set_global(&workspace, false).await?;
-            suffix_service.sync_all_suffixes().await?;
+            waybar_sync.update_waybar().await?;
             println!("Removed global status from workspace \"{}\"", workspace);
         }
         WorkspaceAction::Groups { workspace } => {
@@ -522,50 +428,55 @@ async fn run_workspace(
 async fn run_nav(
     action: NavAction,
     nav_service: &NavigationService,
-    suffix_service: &SuffixService,
+    waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
-    suffix_service.sync_all_suffixes().await?;
     match action {
         NavAction::Next { output, wrap } => {
             let output = resolve_output(output.as_deref(), ipc_client)?;
             if let Some(target) = nav_service.next_workspace(&output, wrap).await? {
+                waybar_sync.update_waybar().await?;
                 println!("Navigated to \"{}\"", target);
             }
         }
         NavAction::NextOnOutput { wrap } => {
             if let Some(target) = nav_service.next_workspace_global(wrap).await? {
+                waybar_sync.update_waybar().await?;
                 println!("Navigated to \"{}\"", target);
             }
         }
         NavAction::Prev { output, wrap } => {
             let output = resolve_output(output.as_deref(), ipc_client)?;
             if let Some(target) = nav_service.prev_workspace(&output, wrap).await? {
+                waybar_sync.update_waybar().await?;
                 println!("Navigated to \"{}\"", target);
             }
         }
         NavAction::PrevOnOutput { wrap } => {
             if let Some(target) = nav_service.prev_workspace_global(wrap).await? {
+                waybar_sync.update_waybar().await?;
                 println!("Navigated to \"{}\"", target);
             }
         }
         NavAction::Go { workspace, output: _ } => {
             nav_service.go_workspace(&workspace).await?;
+            waybar_sync.update_waybar().await?;
             println!("Navigated to \"{}\"", workspace);
         }
         NavAction::MoveTo { workspace } => {
             nav_service.move_to_workspace(&workspace).await?;
+            waybar_sync.update_waybar().await?;
             println!("Moved container to \"{}\"", workspace);
         }
         NavAction::Back => {
             if let Some(target) = nav_service.go_back().await? {
+                waybar_sync.update_waybar().await?;
                 println!("Navigated back to \"{}\"", target);
             } else {
                 println!("No previous workspace found.");
             }
         }
     }
-    suffix_service.sync_all_suffixes().await?;
     Ok(())
 }
 
@@ -575,7 +486,7 @@ async fn run_sync(
     groups: bool,
     outputs: bool,
     workspace_service: &WorkspaceService,
-    suffix_service: &SuffixService,
+    waybar_sync: &WaybarSyncService,
 ) -> anyhow::Result<()> {
     let mut synced_ws = false;
     let mut synced_gr = false;
@@ -599,7 +510,7 @@ async fn run_sync(
         synced_out = true;
     }
 
-    suffix_service.sync_all_suffixes().await?;
+    waybar_sync.update_waybar().await?;
 
     let mut parts = Vec::new();
     if synced_ws {
@@ -618,41 +529,65 @@ async fn run_sync(
 
 async fn run_status(
     group_service: &GroupService,
-    suffix_service: &SuffixService,
+    workspace_service: &WorkspaceService,
+    _waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     let outputs = ipc_client.get_outputs()?;
-    let sway_workspaces = ipc_client.get_workspaces()?;
 
     for output in &outputs {
         let active_group = group_service.get_active_group(&output.name).await
             .unwrap_or_else(|_| "0".to_string());
         println!("{}: active group = \"{}\"", output.name, active_group);
 
-        let output_workspaces: Vec<_> = sway_workspaces.iter()
-            .filter(|w| w.output == output.name)
-            .collect();
+        let visible = workspace_service.list_visible_workspaces(&output.name).await?;
 
-        let mut visible = Vec::new();
+        let all_ws = workspace_service.list_workspaces(Some(&output.name), None).await?;
+
         let mut hidden = Vec::new();
         let mut global_ws = Vec::new();
+        let mut visible_names = Vec::new();
 
-        for ws in &output_workspaces {
-            let base_name = suffix_service.get_base_name(&ws.name);
-            if suffix_service.is_global(&ws.name) {
-                global_ws.push(base_name);
-            } else if suffix_service.is_hidden(&ws.name) {
-                hidden.push(base_name);
-            } else {
-                visible.push(base_name);
+        for ws in &all_ws {
+            if ws.is_global {
+                global_ws.push(ws.name.clone());
             }
         }
 
-        visible.sort();
+        for ws in &visible {
+            if all_ws.iter().any(|w| w.name == *ws) {
+                if all_ws.iter().any(|w| w.name == *ws && w.is_global) {
+                    global_ws.push(ws.clone());
+                } else {
+                    visible_names.push(ws.clone());
+                }
+            }
+        }
+
+        let sway_workspaces = ipc_client.get_workspaces()?;
+        let sway_names: std::collections::HashSet<String> = sway_workspaces.iter()
+            .filter(|w| w.output == output.name)
+            .map(|w| w.name.clone())
+            .collect();
+
+        for ws in &all_ws {
+            if ws.is_global {
+                continue;
+            }
+            if visible_names.iter().any(|v| v == &ws.name) {
+                continue;
+            }
+            if sway_names.contains(&ws.name) {
+                hidden.push(ws.name.clone());
+            }
+        }
+
+        visible_names.sort();
         hidden.sort();
         global_ws.sort();
+        global_ws.dedup();
 
-        println!("  Visible: {}", if visible.is_empty() { "(none)".to_string() } else { visible.join(", ") });
+        println!("  Visible: {}", if visible_names.is_empty() { "(none)".to_string() } else { visible_names.join(", ") });
         println!("  Hidden:  {}", if hidden.is_empty() { "(none)".to_string() } else { hidden.join(", ") });
         if !global_ws.is_empty() {
             println!("  Global:  {}", global_ws.join(", "));

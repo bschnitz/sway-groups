@@ -11,8 +11,8 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use sway_groups_core::db::DatabaseManager;
-use sway_groups_core::sway::SwayIpcClient;
-use sway_groups_core::services::{GroupService, NavigationService, SuffixService, WorkspaceService};
+use sway_groups_core::services::{GroupService, NavigationService, WorkspaceService, WaybarSyncService};
+use sway_groups_core::sway::{SwayIpcClient, WaybarClient};
 
 fn get_data_dir() -> PathBuf {
     if let Some(proj_dirs) = ProjectDirs::from("com", "swayg", "swayg") {
@@ -48,14 +48,15 @@ async fn main() -> AnyResult<()> {
 
     let db: DatabaseManager = DatabaseManager::new(db_path).await?;
     let ipc_client = SwayIpcClient::new()?;
-    let suffix_service = SuffixService::new(db.clone(), ipc_client.clone());
-    let group_service = GroupService::new(db.clone(), suffix_service.clone(), ipc_client.clone());
+    let waybar_client = WaybarClient::new();
+    let group_service = GroupService::new(db.clone(), ipc_client.clone());
     let workspace_service = WorkspaceService::new(db.clone(), ipc_client.clone());
-    let nav_service = NavigationService::new(db.clone(), ipc_client.clone(), suffix_service.clone());
+    let waybar_sync = WaybarSyncService::new(db.clone(), ipc_client.clone(), waybar_client);
+    let nav_service = NavigationService::new(db.clone(), ipc_client.clone());
 
     group_service.ensure_default_group().await?;
 
-    commands::run(cli, &group_service, &workspace_service, &suffix_service, &nav_service, &ipc_client).await?;
+    commands::run(cli, &group_service, &workspace_service, &waybar_sync, &nav_service, &ipc_client).await?;
 
     Ok(())
 }

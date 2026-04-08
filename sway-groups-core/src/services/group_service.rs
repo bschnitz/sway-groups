@@ -3,7 +3,6 @@
 use crate::db::entities::{group, group_state, output, GroupEntity, GroupStateEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
-use crate::services::suffix_service::SuffixService;
 use crate::sway::SwayIpcClient;
 use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, ModelTrait, Set};
 use tracing::{info, warn, debug};
@@ -20,14 +19,12 @@ pub struct GroupInfo {
 /// Service for group operations.
 pub struct GroupService {
     db: DatabaseManager,
-    suffix_service: SuffixService,
     ipc_client: SwayIpcClient,
 }
 
 impl GroupService {
-    /// Create a new group service.
-    pub fn new(db: DatabaseManager, suffix_service: SuffixService, ipc_client: SwayIpcClient) -> Self {
-        Self { db, suffix_service, ipc_client }
+    pub fn new(db: DatabaseManager, ipc_client: SwayIpcClient) -> Self {
+        Self { db, ipc_client }
     }
 
     /// List all groups with their workspaces.
@@ -255,7 +252,7 @@ impl GroupService {
             Err(_) => return Ok(()),
         };
 
-        let base_name = self.suffix_service.get_base_name(&current_ws.name);
+        let base_name = current_ws.name;
         let now = chrono::Utc::now().naive_utc();
 
         let existing = GroupStateEntity::find_by_output_and_group(output, group_name)
@@ -378,8 +375,7 @@ impl GroupService {
             active.insert(self.db.conn()).await?;
         }
 
-        // Sync suffixes for all outputs
-        self.suffix_service.sync_all_suffixes().await?;
+        // Note: waybar sync is handled by the caller (commands.rs)
 
         // Handle workspace focus for the new group
         let group_workspaces = self.get_workspaces_for_group_on_output(group, output).await?;
