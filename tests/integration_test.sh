@@ -347,7 +347,7 @@ echo -e "${BOLD}--- 9. Sync ---${NC}"
 # Test sync from clean state: backup DB, remove, sync fresh, verify, restore
 DB_PATH=~/.local/share/swayg/swayg.db
 cp "$DB_PATH" "${DB_PATH}.bak" 2>/dev/null || true
-rm -f "$DB_PATH"
+rm -f "$DB_PATH" "$DB_PATH-wal" "$DB_PATH-shm"
 OUT=$(sg sync --all 2>&1)
 echo "$OUT" | grep -q 'Synced' && pass "sync from clean state" || fail "sync from clean state" "$OUT"
 
@@ -356,7 +356,7 @@ echo "$OUT" | grep -q 'Group "0"' && pass "sync creates default group" || fail "
 
 # Restore original DB to not break subsequent tests
 cp "${DB_PATH}.bak" "$DB_PATH" 2>/dev/null || true
-rm -f "${DB_PATH}.bak" "${DB_PATH}-journal" 2>/dev/null || true
+rm -f "${DB_PATH}.bak" "${DB_PATH}-wal" "${DB_PATH}-shm" "${DB_PATH}-journal" 2>/dev/null || true
 
 echo ""
 

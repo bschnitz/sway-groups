@@ -404,38 +404,16 @@ impl WorkspaceService {
             } else {
                 let ws_output = sway_ws.output.clone();
 
-                // Determine group from focused workspace on same output
+                // Determine group: prefer output's active_group from DB
                 let active_group = {
-                    let focused_ws = self.ipc_client.get_workspaces()?
-                        .iter()
-                        .find(|w| w.output == ws_output && w.focused)
-                        .map(|w| Self::strip_suffix(&w.name));
-
                     let mut group_name = "0".to_string();
-                    if let Some(ref focused_name) = focused_ws {
-                        if let Some(ws_model) = WorkspaceEntity::find_by_name(focused_name)
-                            .one(self.db.conn())
-                            .await
-                            .ok()
-                            .flatten()
-                        {
-                            if let Some(memberships) = WorkspaceGroupEntity::find_by_workspace(ws_model.id)
-                                .all(self.db.conn())
-                                .await
-                                .ok()
-                            {
-                                if let Some(m) = memberships.first() {
-                                    if let Some(group) = GroupEntity::find_by_id(m.group_id)
-                                        .one(self.db.conn())
-                                        .await
-                                        .ok()
-                                        .flatten()
-                                    {
-                                        group_name = group.name;
-                                    }
-                                }
-                            }
-                        }
+                    if let Some(output) = OutputEntity::find_by_name(&ws_output)
+                        .one(self.db.conn())
+                        .await
+                        .ok()
+                        .flatten()
+                    {
+                        group_name = output.active_group;
                     }
 
                     group_name

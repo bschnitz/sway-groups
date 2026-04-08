@@ -127,6 +127,14 @@ impl SuffixService {
 
                 let target_name = self.apply_suffix(&base_name, target_suffix);
                 if target_name != sway_ws.name {
+                    let target_exists = sway_workspaces.iter().any(|w| w.name == target_name);
+                    if target_exists {
+                        info!(
+                            "sync_suffixes: SKIP '{}' -> '{}', target already exists",
+                            sway_ws.name, target_name
+                        );
+                        continue;
+                    }
                     info!("sync_suffixes: RENAME '{}' -> '{}'", sway_ws.name, target_name);
                     self.ipc_client.rename_workspace(&sway_ws.name, &target_name)?;
                 }
