@@ -1,7 +1,7 @@
 //! Workspace management service.
 
 use crate::db::entities::{group, workspace, workspace_group};
-use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
+use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity, FocusHistoryEntity, GroupStateEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
@@ -384,6 +384,11 @@ impl WorkspaceService {
         let sway_workspaces = self.ipc_client.get_workspaces()?;
         let now = chrono::Utc::now().naive_utc();
 
+        let sway_names: std::collections::HashSet<String> = sway_workspaces
+            .iter()
+            .map(|w| Self::strip_suffix(&w.name))
+            .collect();
+
         for sway_ws in sway_workspaces {
             let base_name = Self::strip_suffix(&sway_ws.name);
             let existing = WorkspaceEntity::find_by_name(&base_name)
@@ -428,6 +433,44 @@ impl WorkspaceService {
                     };
                     membership.insert(self.db.conn()).await?;
                 }
+            }
+        }
+
+        // Remove workspaces that no longer exist in sway
+        let db_workspaces = WorkspaceEntity::find()
+            .all(self.db.conn())
+            .await?;
+
+        for ws in &db_workspaces {
+            if !sway_names.contains(&ws.name) {
+                // Remove group memberships
+                let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
+                    .all(self.db.conn())
+                    .await?;
+                for m in memberships {
+                    m.delete(self.db.conn()).await?;
+                }
+                // Remove focus history entries
+                if let Ok(histories) = FocusHistoryEntity::find_by_workspace_name(&ws.name)
+                    .all(self.db.conn())
+                    .await
+                {
+                    for h in histories {
+                        h.delete(self.db.conn()).await.ok();
+                    }
+                }
+                // Remove group_state entries referencing this workspace
+                if let Ok(states) = GroupStateEntity::find_by_last_focused_workspace(&ws.name)
+                    .all(self.db.conn())
+                    .await
+                {
+                    for s in states {
+                        s.delete(self.db.conn()).await.ok();
+                    }
+                }
+                // Remove the workspace itself
+                ws.clone().delete(self.db.conn()).await?;
+                info!("Removed workspace '{}' (no longer in sway)", ws.name);
             }
         }
 

@@ -29,4 +29,10 @@ impl Entity {
         Self::find()
             .filter(Column::GroupName.eq(group_name))
     }
+
+    pub fn find_by_last_focused_workspace(workspace_name: &str) -> Select<Self> {
+        use sea_orm::{ColumnTrait, QueryFilter};
+        Self::find()
+            .filter(Column::LastFocusedWorkspace.eq(workspace_name))
+    }
 }
