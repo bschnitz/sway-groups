@@ -49,6 +49,36 @@ impl DatabaseManager {
         stmt_group_state.if_not_exists();
         conn.execute(&stmt_group_state).await?;
 
+        let backend = conn.get_database_backend();
+        let schema = Schema::new(backend);
+
+        let mut stmt_group = schema.create_table_from_entity(GroupEntity);
+        stmt_group.if_not_exists();
+        conn.execute(&stmt_group).await?;
+
+        let mut stmt_workspace = schema.create_table_from_entity(WorkspaceEntity);
+        stmt_workspace.if_not_exists();
+        conn.execute(&stmt_workspace).await?;
+
+        let mut stmt_wg = schema.create_table_from_entity(WorkspaceGroupEntity);
+        stmt_wg.if_not_exists();
+        conn.execute(&stmt_wg).await?;
+
+        let mut stmt_output = schema.create_table_from_entity(OutputEntity);
+        stmt_output.if_not_exists();
+        conn.execute(&stmt_output).await?;
+
+        let mut stmt_focus_history = schema.create_table_from_entity(FocusHistoryEntity);
+        stmt_focus_history.if_not_exists();
+        conn.execute(&stmt_focus_history).await?;
+
+        let mut stmt_group_state = schema.create_table_from_entity(GroupStateEntity);
+        stmt_group_state.if_not_exists();
+        conn.execute(&stmt_group_state).await?;
+
+        // Enable WAL mode for better concurrent read/write performance
+        conn.execute_unprepared("PRAGMA journal_mode=WAL").await.ok();
+
         Ok(Self { conn })
     }
 
