@@ -402,24 +402,56 @@ impl WorkspaceService {
                 active.updated_at = Set(Some(now));
                 active.update(self.db.conn()).await?;
             } else {
-                let number = sway_ws.num.map(|n| n as i32);
                 let ws_output = sway_ws.output.clone();
+
+                // Determine group from focused workspace on same output
+                let active_group = {
+                    let focused_ws = self.ipc_client.get_workspaces()?
+                        .iter()
+                        .find(|w| w.output == ws_output && w.focused)
+                        .map(|w| Self::strip_suffix(&w.name));
+
+                    let mut group_name = "0".to_string();
+                    if let Some(ref focused_name) = focused_ws {
+                        if let Some(ws_model) = WorkspaceEntity::find_by_name(focused_name)
+                            .one(self.db.conn())
+                            .await
+                            .ok()
+                            .flatten()
+                        {
+                            if let Some(memberships) = WorkspaceGroupEntity::find_by_workspace(ws_model.id)
+                                .all(self.db.conn())
+                                .await
+                                .ok()
+                            {
+                                if let Some(m) = memberships.first() {
+                                    if let Some(group) = GroupEntity::find_by_id(m.group_id)
+                                        .one(self.db.conn())
+                                        .await
+                                        .ok()
+                                        .flatten()
+                                    {
+                                        group_name = group.name;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    group_name
+                };
+
+                let number = sway_ws.num.map(|n| n as i32);
                 let active = workspace::ActiveModel {
                     name: Set(base_name.clone()),
                     number: Set(number),
-                    output: Set(Some(sway_ws.output)),
+                    output: Set(Some(ws_output)),
                     is_global: Set(false),
                     created_at: Set(Some(now)),
                     updated_at: Set(Some(now)),
                     ..Default::default()
                 };
                 let ws = active.insert(self.db.conn()).await?;
-
-                let active_group = OutputEntity::find_by_name(&ws_output)
-                    .one(self.db.conn())
-                    .await?
-                    .map(|o| o.active_group)
-                    .unwrap_or_else(|| "0".to_string());
 
                 if let Some(group) = GroupEntity::find_by_name(&active_group)
                     .one(self.db.conn())
