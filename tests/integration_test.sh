@@ -118,6 +118,9 @@ for ws in "$WS_A" "$WS_B" "$WS_C"; do
     sleep 0.3
 done
 
+# Sync so swayg knows about the new workspaces
+sg sync --all >/dev/null
+
 # Return to user's workspace
 swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
 sleep 0.3

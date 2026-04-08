@@ -47,8 +47,12 @@ impl SuffixService {
             return Some(SUFFIX_HIDDEN);
         }
 
-        // Default: no suffix (treated as in group "0")
-        None
+        // No group membership: visible only in group "0"
+        if active_group == "0" {
+            None
+        } else {
+            Some(SUFFIX_HIDDEN)
+        }
     }
 
     /// Apply a suffix to a workspace name.
