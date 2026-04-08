@@ -525,6 +525,7 @@ async fn run_nav(
     suffix_service: &SuffixService,
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
+    suffix_service.sync_all_suffixes().await?;
     match action {
         NavAction::Next { output, wrap } => {
             let output = resolve_output(output.as_deref(), ipc_client)?;
