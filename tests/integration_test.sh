@@ -571,6 +571,77 @@ sleep 0.3
 
 echo ""
 
+# ============ 18b. Workspace Rename ============
+echo -e "${BOLD}--- 18b. Workspace Rename ---${NC}"
+
+sg group select "$ORIG_OUT" 0 >/dev/null
+sleep 0.3
+
+# Simple rename: workspace exists only in active group
+sg workspace add "$WS_A" -g 0 >/dev/null
+OUT=$(sg workspace rename "$WS_A" "__test_renamed__" 2>&1)
+echo "$OUT" | grep -q "Renamed" && pass "workspace rename succeeds" || fail "workspace rename" "$OUT"
+
+# Verify workspace is in DB with new name
+OUT=$(sg workspace list --plain 2>&1)
+echo "$OUT" | grep -q "__test_renamed__" && pass "renamed workspace in DB" || fail "renamed in DB" "$OUT"
+
+# Verify workspace is in same group (group 0)
+OUT=$(sg workspace groups __test_renamed__ 2>&1)
+echo "$OUT" | grep -q '"0"' && pass "renamed workspace stays in group" || fail "renamed stays in group" "$OUT"
+
+# Rename it back
+sg workspace rename "__test_renamed__" "$WS_A" >/dev/null
+
+# Merge rename: target workspace exists in a different group
+sg group create zz_merge_a >/dev/null
+sg group create zz_merge_b >/dev/null
+sg workspace add "$WS_A" -g zz_merge_a >/dev/null
+sg workspace add "$WS_B" -g zz_merge_b >/dev/null
+
+# Merge WS_A into WS_B — WS_B should now be in both groups
+OUT=$(sg workspace rename "$WS_A" "$WS_B" 2>&1)
+echo "$OUT" | grep -q "Merged" && pass "workspace merge succeeds" || fail "workspace merge" "$OUT"
+
+OUT=$(sg workspace groups "$WS_B" 2>&1)
+echo "$OUT" | grep -q 'zz_merge_a' && echo "$OUT" | grep -q 'zz_merge_b' && pass "merged workspace is in both groups" || fail "merged both groups" "$OUT"
+
+# Cleanup merge groups
+sg workspace remove "$WS_B" -g zz_merge_a >/dev/null
+sg workspace remove "$WS_B" -g zz_merge_b >/dev/null
+sg group delete zz_merge_a --force >/dev/null
+sg group delete zz_merge_b --force >/dev/null
+
+echo ""
+
+# ============ 18c. Nav move-to keeps group ============
+echo -e "${BOLD}--- 18c. Nav move-to keeps group ---${NC}"
+
+sg group create zz_moveto >/dev/null
+sg group select "$ORIG_OUT" zz_moveto >/dev/null
+sleep 0.3
+
+# WS_B is NOT in zz_moveto group — move a container to WS_B
+sg workspace groups "$WS_B" 2>&1 | grep -q 'zz_moveto' && skip "WS_B already in group (pre-condition)" || true
+sg nav go "$WS_A" >/dev/null
+sleep 0.3
+kitty --class __test_moveto__ -e sleep 5 >/dev/null 2>&1 &
+sleep 0.5
+sg nav move-to "$WS_B" >/dev/null
+sleep 0.3
+
+# WS_B should now be in active group zz_moveto
+OUT=$(sg workspace groups "$WS_B" 2>&1)
+echo "$OUT" | grep -q 'zz_moveto' && pass "move-to adds target to active group" || fail "move-to adds to active group" "$OUT"
+
+# Cleanup
+sg workspace remove "$WS_B" -g zz_moveto >/dev/null
+sg group delete zz_moveto --force >/dev/null
+swaymsg workspace "$ORIG_WS" >/dev/null 2>&1 || true
+sleep 0.3
+
+echo ""
+
 # ============ 19. Lazy Sync: New Workspaces ============
 echo -e "${BOLD}--- 19. Lazy Sync: New Workspaces ---${NC}"
 

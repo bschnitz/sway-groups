@@ -129,6 +129,10 @@ enum WorkspaceAction {
         #[arg(short, long)]
         group: Option<String>,
     },
+    Rename {
+        old_name: String,
+        new_name: String,
+    },
     Global {
         workspace: String,
     },
@@ -401,6 +405,11 @@ async fn run_workspace(
             workspace_service.remove_from_group(&workspace, &source_group).await?;
             waybar_sync.update_waybar().await?;
             println!("Removed workspace \"{}\" from group \"{}\"", workspace, source_group);
+        }
+        WorkspaceAction::Rename { old_name, new_name } => {
+            workspace_service.rename_workspace(&old_name, &new_name).await?;
+            waybar_sync.update_waybar().await?;
+            println!("Renamed workspace \"{}\" to \"{}\"", old_name, new_name);
         }
         WorkspaceAction::Global { workspace } => {
             workspace_service.set_global(&workspace, true).await?;

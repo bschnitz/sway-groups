@@ -392,6 +392,111 @@ impl WorkspaceService {
         Ok(())
     }
 
+    /// Rename a workspace. Handles two cases:
+    /// 1. Simple rename: target doesn't exist — sway renames, DB entry updated
+    /// 2. Merge: target exists — containers are moved, groups are merged
+    pub async fn rename_workspace(&self, old_name: &str, new_name: &str) -> Result<()> {
+        let target_exists = WorkspaceEntity::find_by_name(new_name)
+            .one(self.db.conn())
+            .await?
+            .is_some();
+
+        if target_exists {
+            self.merge_workspace(old_name, new_name).await
+        } else {
+            self.simple_rename_workspace(old_name, new_name).await
+        }
+    }
+
+    async fn simple_rename_workspace(&self, old_name: &str, new_name: &str) -> Result<()> {
+        self.ipc_client.rename_workspace(old_name, new_name)?;
+
+        let workspace = WorkspaceEntity::find_by_name(old_name)
+            .one(self.db.conn())
+            .await?
+            .ok_or_else(|| Error::WorkspaceNotFound(old_name.to_string()))?;
+
+        let mut active = workspace.into_active_model();
+        active.name = Set(new_name.to_string());
+        active.updated_at = Set(Some(chrono::Utc::now().naive_utc()));
+        active.update(self.db.conn()).await?;
+
+        info!("Renamed workspace '{}' to '{}'", old_name, new_name);
+        Ok(())
+    }
+
+    async fn merge_workspace(&self, old_name: &str, new_name: &str) -> Result<()> {
+        let old_ws = WorkspaceEntity::find_by_name(old_name)
+            .one(self.db.conn())
+            .await?
+            .ok_or_else(|| Error::WorkspaceNotFound(old_name.to_string()))?;
+
+        let new_ws = WorkspaceEntity::find_by_name(new_name)
+            .one(self.db.conn())
+            .await?
+            .ok_or_else(|| Error::WorkspaceNotFound(new_name.to_string()))?;
+
+        let old_memberships = WorkspaceGroupEntity::find_by_workspace(old_ws.id)
+            .all(self.db.conn())
+            .await?;
+
+        let new_memberships = WorkspaceGroupEntity::find_by_workspace(new_ws.id)
+            .all(self.db.conn())
+            .await?;
+
+        let now = chrono::Utc::now().naive_utc();
+
+        for old_m in &old_memberships {
+            let already = new_memberships.iter().any(|nm| nm.group_id == old_m.group_id);
+            if !already {
+                let membership = workspace_group::ActiveModel {
+                    workspace_id: Set(new_ws.id),
+                    group_id: Set(old_m.group_id),
+                    created_at: Set(Some(now)),
+                    ..Default::default()
+                };
+                membership.insert(self.db.conn()).await?;
+            }
+        }
+
+        let command = format!("rename workspace \"{}\" to \"{}\"", old_name, new_name);
+        let results = self.ipc_client.run_command(&command)?;
+        if let Some(result) = results.first() {
+            if !result.success {
+                return Err(Error::SwayIpc(
+                    result.error.clone().unwrap_or_else(|| "Unknown error".to_string()),
+                ));
+            }
+        }
+
+        for m in old_memberships {
+            m.delete(self.db.conn()).await?;
+        }
+
+        if let Ok(histories) = FocusHistoryEntity::find_by_workspace_name(old_name)
+            .all(self.db.conn())
+            .await
+        {
+            for h in histories {
+                h.delete(self.db.conn()).await.ok();
+            }
+        }
+
+        if let Ok(states) = GroupStateEntity::find_by_last_focused_workspace(old_name)
+            .all(self.db.conn())
+            .await
+        {
+            for s in states {
+                s.delete(self.db.conn()).await.ok();
+            }
+        }
+
+        old_ws.delete(self.db.conn()).await?;
+
+        info!("Merged workspace '{}' into '{}'", old_name, new_name);
+        Ok(())
+    }
+
     /// Sync workspaces from sway.
     pub async fn sync_from_sway(&self) -> Result<()> {
         let sway_workspaces = self.ipc_client.get_workspaces()?;

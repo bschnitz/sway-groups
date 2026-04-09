@@ -1,10 +1,10 @@
 //! Workspace navigation service.
 
-use crate::db::entities::{focus_history, GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity, FocusHistoryEntity};
+use crate::db::entities::{focus_history, workspace_group, GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity, FocusHistoryEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
-use sea_orm::{ActiveModelTrait, EntityTrait, ModelTrait, Set};
+use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, ModelTrait, Set};
 use tracing::info;
 
 pub struct NavigationService {
@@ -141,17 +141,73 @@ impl NavigationService {
         let results = self.ipc_client.run_command(&command)?;
 
         if let Some(result) = results.first() {
-            if result.success {
-                info!("Moved container to workspace '{}'", workspace_name);
-                Ok(())
-            } else {
-                Err(Error::SwayIpc(
+            if !result.success {
+                return Err(Error::SwayIpc(
                     result.error.clone().unwrap_or_else(|| "Unknown error".to_string()),
-                ))
+                ));
             }
         } else {
-            Err(Error::SwayIpc("Empty response from sway".to_string()))
+            return Err(Error::SwayIpc("Empty response from sway".to_string()));
         }
+
+        let target_ws = WorkspaceEntity::find_by_name(workspace_name)
+            .one(self.db.conn())
+            .await?;
+
+        if let Some(ws) = target_ws {
+            let sway_workspaces = self.ipc_client.get_workspaces()?;
+            if let Some(sway_ws) = sway_workspaces.iter().find(|w| w.name == workspace_name) {
+                let mut active = ws.clone().into_active_model();
+                active.output = Set(Some(sway_ws.output.clone()));
+                active.updated_at = Set(Some(chrono::Utc::now().naive_utc()));
+                active.update(self.db.conn()).await?;
+            }
+
+            let active_group = OutputEntity::find_by_name(
+                &self.ipc_client.get_primary_output().unwrap_or_default()
+            )
+                .one(self.db.conn())
+                .await?
+                .map(|o| o.active_group)
+                .unwrap_or_else(|| "0".to_string());
+
+            let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
+                .all(self.db.conn())
+                .await?;
+
+            let mut in_group = false;
+            for m in &memberships {
+                if let Some(group) = GroupEntity::find_by_id(m.group_id)
+                    .one(self.db.conn())
+                    .await?
+                {
+                    if group.name == active_group {
+                        in_group = true;
+                        break;
+                    }
+                }
+            }
+
+            if !in_group {
+                if let Some(group) = GroupEntity::find_by_name(&active_group)
+                    .one(self.db.conn())
+                    .await?
+                {
+                    let now = chrono::Utc::now().naive_utc();
+                    let membership = workspace_group::ActiveModel {
+                        workspace_id: Set(ws.id),
+                        group_id: Set(group.id),
+                        created_at: Set(Some(now)),
+                        ..Default::default()
+                    };
+                    membership.insert(self.db.conn()).await?;
+                    info!("Added workspace '{}' to active group '{}'", workspace_name, active_group);
+                }
+            }
+        }
+
+        info!("Moved container to workspace '{}'", workspace_name);
+        Ok(())
     }
 
     pub async fn go_back(&self) -> Result<Option<String>> {
