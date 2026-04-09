@@ -42,9 +42,14 @@ impl WorkspaceService {
 
         let sway_workspaces = self.ipc_client.get_workspaces()?;
         let mut visible = Vec::new();
+        let mut seen = std::collections::HashSet::new();
 
         for sway_ws in sway_workspaces.iter().filter(|w| w.output == output_name) {
             let base_name = strip_legacy_suffix(&sway_ws.name);
+
+            if seen.contains(&base_name) {
+                continue;
+            }
 
             if let Some(workspace) = WorkspaceEntity::find_by_name(&base_name)
                 .one(self.db.conn())
@@ -52,6 +57,7 @@ impl WorkspaceService {
             {
                 if workspace.is_global {
                     visible.push(base_name.clone());
+                    seen.insert(base_name);
                     continue;
                 }
 
@@ -59,18 +65,25 @@ impl WorkspaceService {
                     .all(self.db.conn())
                     .await?;
 
+                let mut found = false;
                 for m in &memberships {
                     if let Some(group) = GroupEntity::find_by_id(m.group_id)
                         .one(self.db.conn())
                         .await?
                         && group.name == active_group {
                             visible.push(base_name.clone());
+                            found = true;
                             break;
                         }
                 }
 
-                if memberships.is_empty() && active_group == "0" {
-                    visible.push(base_name);
+                if !found && memberships.is_empty() && active_group == "0" {
+                    visible.push(base_name.clone());
+                    found = true;
+                }
+
+                if found {
+                    seen.insert(base_name);
                 }
             }
         }

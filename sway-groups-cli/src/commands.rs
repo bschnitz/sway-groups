@@ -503,7 +503,7 @@ async fn run_sync(
         synced_out = true;
     }
 
-    if all || (!workspaces && !groups && !outputs) {
+    if !all && !workspaces && !groups && !outputs {
         workspace_service.sync_from_sway().await?;
         synced_ws = true;
         synced_gr = true;
