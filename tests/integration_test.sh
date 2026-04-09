@@ -47,16 +47,13 @@ skip() { echo -e "  ${YELLOW}SKIP${NC} $1"; SKIP=$((SKIP + 1)); }
 # Run swayg, strip info log lines from stdout
 sg() { command swayg "$@" 2>&1 | sed '/^\x1b\[[0-9;]*m.*INFO/d'; }
 
-# Get the base name of the currently focused workspace (strips legacy suffixes)
+# Get the name of the currently focused workspace
 focused_ws() {
     swaymsg -t get_workspaces 2>/dev/null | python3 -c "
 import json, sys
 for w in json.load(sys.stdin):
     if w['focused']:
-        n = w['name']
-        for s in ('_class_hidden', '_class_global'):
-            n = n.removesuffix(s)
-        print(n)
+        print(w['name'])
         break
 "
 }

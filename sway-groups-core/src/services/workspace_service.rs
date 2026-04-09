@@ -4,7 +4,6 @@ use crate::db::entities::{group, workspace, workspace_group};
 use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity, FocusHistoryEntity, GroupStateEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
-use crate::strip_legacy_suffix;
 use crate::sway::SwayIpcClient;
 use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, ModelTrait, Set};
 use tracing::info;
@@ -45,7 +44,7 @@ impl WorkspaceService {
         let mut seen = std::collections::HashSet::new();
 
         for sway_ws in sway_workspaces.iter().filter(|w| w.output == output_name) {
-            let base_name = strip_legacy_suffix(&sway_ws.name);
+            let base_name = sway_ws.name.clone();
 
             if seen.contains(&base_name) {
                 continue;
@@ -400,11 +399,11 @@ impl WorkspaceService {
 
         let sway_names: std::collections::HashSet<String> = sway_workspaces
             .iter()
-            .map(|w| strip_legacy_suffix(&w.name))
+            .map(|w| w.name.clone())
             .collect();
 
         for sway_ws in sway_workspaces {
-            let base_name = strip_legacy_suffix(&sway_ws.name);
+            let base_name = sway_ws.name.clone();
             let existing = WorkspaceEntity::find_by_name(&base_name)
                 .one(self.db.conn())
                 .await?;
