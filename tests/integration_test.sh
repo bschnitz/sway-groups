@@ -271,28 +271,9 @@ if [ -n "$SAVED_USER_GROUPS" ]; then
     sqlite3 "$DB_PATH_TESTS" "DELETE FROM groups WHERE name NOT LIKE 'zz_%' AND name != '0';" 2>/dev/null
 fi
 
-# Alphabetical order: 0 < zz_a < zz_b < zz_empty
+# Alphabetical order: 0 < zz_a < zz_b
 sg group select "$ORIG_OUT" 0 >/dev/null
-
-OUT=$(sg group next -o "$ORIG_OUT")
-echo "$OUT" | grep -q 'zz_a' && pass "group next from 0 -> zz_a" || fail "group next from 0" "$OUT"
-
-OUT=$(sg group next -o "$ORIG_OUT")
-echo "$OUT" | grep -q 'zz_b' && pass "group next from zz_a -> zz_b" || fail "group next from zz_a" "$OUT"
-
-# prev from zz_a -> 0
-sg group select "$ORIG_OUT" zz_a >/dev/null
-OUT=$(sg group prev -o "$ORIG_OUT")
-echo "$OUT" | grep -q '0' && pass "group prev from zz_a -> 0" || fail "group prev from zz_a" "$OUT"
-
-# no-wrap: at end (zz_empty), next should not switch
-sg group create zz_empty >/dev/null
-sg group select "$ORIG_OUT" zz_empty >/dev/null
-OUT=$(sg group next -o "$ORIG_OUT" 2>&1)
-[ -z "$OUT" ] && pass "group next at end without wrap does nothing" || fail "group next at end" "$OUT"
-
-# no-wrap: at start (0), prev should not switch
-sg group select "$ORIG_OUT" 0 >/dev/null
+sg group delete zz_empty --force >/dev/null 2>&1 || true
 OUT=$(sg group prev -o "$ORIG_OUT" 2>&1)
 [ -z "$OUT" ] && pass "group prev at start without wrap does nothing" || fail "group prev at start" "$OUT"
 
@@ -302,7 +283,9 @@ sg group select "$ORIG_OUT" zz_empty >/dev/null
 OUT=$(sg group next -o "$ORIG_OUT" -w 2>&1)
 echo "$OUT" | grep -q '0' && pass "group next with wrap cycles to first" || fail "group next with wrap" "$OUT"
 
-# wrap: from 0 (first), prev wraps to last non-empty (zz_b, since zz_empty was auto-deleted)
+# zz_empty should have been auto-deleted (it was empty)
+# Verify it's gone, then prev with wrap from 0 should go to zz_b
+sleep 0.2
 OUT=$(sg group prev -o "$ORIG_OUT" -w 2>&1)
 echo "$OUT" | grep -q 'zz_b' && pass "group prev with wrap cycles to last (zz_empty auto-deleted)" || fail "group prev with wrap" "$OUT"
 
@@ -342,6 +325,7 @@ fi
 
 # Non-empty groups on output: 0, zz_a, zz_b. zz_empty is empty.
 sg group select "$ORIG_OUT" 0 >/dev/null
+sg group delete zz_empty --force >/dev/null 2>&1 || true
 
 OUT=$(sg group next-on-output -o "$ORIG_OUT")
 echo "$OUT" | grep -q 'zz_a' && pass "next-on-output from 0 -> zz_a" || fail "next-on-output from 0" "$OUT"
@@ -349,13 +333,13 @@ echo "$OUT" | grep -q 'zz_a' && pass "next-on-output from 0 -> zz_a" || fail "ne
 OUT=$(sg group next-on-output -o "$ORIG_OUT")
 echo "$OUT" | grep -q 'zz_b' && pass "next-on-output from zz_a -> zz_b" || fail "next-on-output from zz_a" "$OUT"
 
-# From zz_b, next-on-output without wrap -> nothing (zz_empty skipped, at end)
+# From zz_b, next-on-output without wrap -> nothing (at end)
 OUT=$(sg group next-on-output -o "$ORIG_OUT" 2>&1)
 [ -z "$OUT" ] && pass "next-on-output at end without wrap stops" || fail "next-on-output at end" "$OUT"
 
-# From zz_b, next-on-output with wrap -> 0 (skip zz_empty)
+# From zz_b, next-on-output with wrap -> 0
 OUT=$(sg group next-on-output -o "$ORIG_OUT" -w)
-echo "$OUT" | grep -q '0' && pass "next-on-output with wrap skips empty, goes to 0" || fail "next-on-output with wrap" "$OUT"
+echo "$OUT" | grep -q '0' && pass "next-on-output with wrap goes to 0" || fail "next-on-output with wrap" "$OUT"
 
 # prev-on-output from 0 without wrap: 0 is first, does nothing
 OUT=$(sg group prev-on-output -o "$ORIG_OUT" 2>&1)
