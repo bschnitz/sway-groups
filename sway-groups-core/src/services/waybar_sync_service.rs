@@ -47,7 +47,6 @@ impl WaybarSyncService {
 
             // Deduplicate by base name: if both "foo" and "foo_class_hidden" exist,
             // prefer the one without suffix (it's the "real" one)
-            let mut preferred: Vec<&SwayWorkspace> = Vec::new();
             let mut base_to_ws: std::collections::HashMap<String, SwayWorkspace> = std::collections::HashMap::new();
 
             for sway_ws in &output_workspaces {
