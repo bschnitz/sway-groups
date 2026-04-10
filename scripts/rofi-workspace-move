@@ -7,10 +7,7 @@ current_ws=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
 import json, sys
 for w in json.load(sys.stdin):
     if w['focused']:
-        n = w['name']
-        for s in ('_class_hidden', '_class_global'):
-            n = n.removesuffix(s)
-        print(n)
+        print(w['name'])
         break
 ")
 

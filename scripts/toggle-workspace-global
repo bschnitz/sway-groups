@@ -1,7 +1,7 @@
 #!/bin/sh
 # Toggle the current workspace as global (visible in all groups).
 
-raw_ws=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
+current_ws=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
 import json, sys
 for w in json.load(sys.stdin):
     if w['focused']:
@@ -9,17 +9,14 @@ for w in json.load(sys.stdin):
         break
 ")
 
-if [ -z "$raw_ws" ]; then
+if [ -z "$current_ws" ]; then
     notify-send "swayg" "Cannot determine current workspace."
     exit 1
 fi
 
-current_ws="$raw_ws"
-for s in _class_hidden _class_global; do
-    current_ws="${current_ws%"$s"}"
-done
+is_global=$(sqlite3 ~/.local/share/swayg/swayg.db "SELECT is_global FROM workspaces WHERE name = '$current_ws';" 2>/dev/null)
 
-if echo "$raw_ws" | grep -q "_class_global$"; then
+if [ "$is_global" = "1" ]; then
     $HOME/.cargo/bin/swayg workspace unglobal "$current_ws"
     notify-send "swayg" "Workspace '$current_ws' is no longer global."
 else

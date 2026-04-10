@@ -2,7 +2,7 @@
 
 ## Overview
 
-`swayg` is a CLI tool for managing sway workspace groups. It wraps sway IPC commands to provide group-aware workspace navigation and management. Workspaces are organized into named groups, and switching between groups automatically hides/shows the appropriate workspaces via waybar-compatible suffixes.
+`swayg` is a CLI tool for managing sway workspace groups. It wraps sway IPC commands to provide group-aware workspace navigation and management. Workspaces are organized into named groups, and switching between groups shows only the relevant workspaces in waybar via [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic) IPC.
 
 ## Installation
 
@@ -10,18 +10,12 @@
 
 - Rust toolchain (stable, edition 2024)
 - Sway window manager
-- systemd (user instance) for daemon management
+- [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic)
 
 ### Build and Install
 
 ```sh
-# Clone and install
 cargo install --path sway-groups-cli
-
-# Install systemd service and start daemon
-cp swaygd.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now swaygd
 ```
 
 Or use the convenience script:
@@ -34,26 +28,31 @@ Or use the convenience script:
 
 ```sh
 swayg --help
-swayg daemon status
 ```
 
-## Initial Setup
+### waybar-dynamic Setup
 
-After installation, sync your existing sway workspaces into the database:
+1. Install [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic)
+2. Add a custom widget to your waybar config:
 
-```sh
-swayg sync --all
+```json
+"custom/swayg_workspaces": {
+    "format": "{}",
+    "exec": "",
+    "instance": "swayg_workspaces",
+    "separator": false,
+    "interval": 0
+}
 ```
 
-This creates the default group "0" containing all existing workspaces.
+`swayg` communicates with waybar-dynamic via Unix socket IPC. Each `swayg` command automatically updates the waybar widget.
 
 ## Key Concepts
 
 - **Workspace**: A sway workspace (e.g., "1", "2", "3:Firefox")
 - **Group**: A named collection of workspaces (e.g., "0", "dev", "work")
-- **Active Group**: The currently selected group per output -- only workspaces in this group are visible
-- **Global Workspace**: A workspace visible in ALL groups (marked with `_class_global`)
-- **Hidden Suffix**: Non-active workspaces get `_class_hidden` suffix to indicate they should be hidden in waybar
+- **Active Group**: The currently selected group per output -- only workspaces in this group are shown in waybar
+- **Global Workspace**: A workspace visible in ALL groups
 
 ## Database
 
@@ -70,27 +69,6 @@ rm ~/.local/share/swayg/swayg.db
 swayg sync --all
 ```
 
-## Daemon (swaygd)
-
-The daemon `swaygd` runs in the background and automatically syncs workspace suffixes when sway events occur (workspace changes, output changes, shutdown).
-
-### Daemon Management
-
-```sh
-swayg daemon status     # Check if daemon is running
-swayg daemon start      # Start the daemon
-swayg daemon stop       # Stop the daemon
-```
-
-The daemon is typically managed via systemd:
-
-```sh
-systemctl --user status swaygd
-systemctl --user restart swaygd
-```
-
-The daemon writes a PID file to `~/.local/share/swayg/swaygd.pid`.
-
 ## Group Switching Behavior
 
 When switching to a group, swayg automatically focuses a workspace in the new group:
@@ -100,6 +78,8 @@ When switching to a group, swayg automatically focuses a workspace in the new gr
 3. **Previously visited**: Restores the last focused workspace in that group
 
 The last focused workspace per group/output is persisted in the database.
+
+Empty groups (containing no non-global workspaces) are automatically deleted when switching away from them.
 
 ## CLI Commands
 
@@ -149,7 +129,7 @@ swayg group rename work project
 Set the active group for an output. This automatically:
 - Saves the currently focused workspace for the old group
 - Switches sway focus to an appropriate workspace in the new group
-- Syncs all workspace suffixes
+- Updates the waybar widget
 
 ```sh
 swayg group select eDP-1 dev
@@ -191,7 +171,7 @@ swayg group prev-on-output --output eDP-1 --wrap
 ```
 
 #### `swayg group prune [--keep <NAME>...]`
-Remove empty groups (except default "0"). Specify groups to keep with `--keep`.
+Remove empty groups (except default "0"). A group is considered empty if it contains no non-global workspaces. Specify groups to keep with `--keep`.
 
 ```sh
 swayg group prune
@@ -217,6 +197,13 @@ swayg workspace add 4 --group dev
 ```
 
 A workspace can belong to multiple groups simultaneously.
+
+#### `swayg workspace rename <OLD_NAME> <NEW_NAME>`
+Rename a workspace in sway and update the database. If the target name already exists, the source workspace is merged into the target (containers are moved, group memberships are unioned).
+
+```sh
+swayg workspace rename old_name new_name
+```
 
 #### `swayg workspace move <WORKSPACE> -g|--groups <GROUPS>`
 Move a workspace to specific groups (comma-separated), removing it from all other groups.
@@ -294,7 +281,7 @@ swayg nav go 3
 ```
 
 #### `swayg nav move-to <WORKSPACE>`
-Move the currently focused container to a specific workspace.
+Move the currently focused container to a specific workspace. The target workspace is automatically added to the active group.
 
 ```sh
 swayg nav move-to 3
@@ -308,7 +295,7 @@ swayg nav back
 ```
 
 ### `swayg sync`
-Manually synchronize the database with the current sway state. Normally handled automatically by the daemon, but useful for initial setup or recovery.
+Manually synchronize the database with the current sway state. Useful for initial setup or recovery.
 
 ```sh
 swayg sync --all          # Sync everything
@@ -331,59 +318,6 @@ HDMI-A-0: active group = "0"
   Visible: 5
   Hidden: (none)
 ```
-
-### `swayg daemon` - Daemon Management
-
-#### `swayg daemon start`
-Start the swayg daemon. Checks if already running.
-
-#### `swayg daemon stop`
-Stop the running daemon via SIGTERM.
-
-#### `swayg daemon status`
-Check if the daemon is running by checking the PID file.
-
-## Suffix Management
-
-### Suffix Rules
-
-1. **Global workspaces**: Always get `_class_global` suffix (never hidden)
-2. **Active group workspaces**: No suffix (visible)
-3. **Other group workspaces**: Get `_class_hidden` suffix
-4. **Workspaces not in any group**: Treated as in group "0" (default)
-
-### Suffix Sync
-
-Suffixes are automatically synced when:
-- Active group changes (`swayg group select`, `swayg group next`, etc.)
-- Workspace added/removed from group
-- Workspace global status changes
-- Daemon receives sway workspace/output events
-
-### Workspace Naming Convention
-
-Workspaces in sway use a naming convention with optional suffixes:
-- Basic: `"1"`, `"2"`, `"3"`
-- Named: `"1:Firefox"`, `"2:Terminal"`
-- Hidden: `"2_class_hidden"`, `"3:Code_class_hidden"`
-- Global: `"1_class_global"`
-
-The CLI handles the suffix manipulation transparently.
-
-### waybar Integration
-
-To hide workspaces with `_class_hidden` suffix in waybar, configure the sway/workspaces module:
-
-```json
-"sway/workspaces": {
-    "format": "{icon} {name}",
-    "name_map": {
-        "_class_hidden": ""
-    }
-}
-```
-
-Or use a custom `rewrite` rule to hide them.
 
 ## Typical Workflow
 
@@ -417,13 +351,6 @@ swayg group next --output eDP-1 --wrap
 
 ## Troubleshooting
 
-### Workspaces stuck in hidden state
-Run `swayg sync --all` to resync suffixes, or restart the daemon:
-
-```sh
-systemctl --user restart swaygd
-```
-
 ### Reset everything
 ```sh
 rm ~/.local/share/swayg/swayg.db
@@ -433,5 +360,6 @@ swayg sync --all
 ### Enable verbose logging
 ```sh
 RUST_LOG=debug swayg status
-RUST_LOG=debug swaygd
 ```
+
+Log files are written to `~/.local/share/swayg/swayg.YYYY-MM-DD` (rolling daily).

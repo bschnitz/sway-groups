@@ -24,6 +24,8 @@ impl NavigationService {
             .map(|o| o.active_group)
             .unwrap_or_else(|| "0".to_string());
 
+        info!("get_visible_workspaces: output={}, active_group={}", output_name, active_group);
+
         let sway_workspaces = self.ipc_client.get_workspaces()?;
         let mut visible = Vec::new();
         let mut seen = std::collections::HashSet::new();
@@ -91,10 +93,13 @@ impl NavigationService {
     pub async fn next_workspace(&self, output: &str, wrap: bool) -> Result<Option<String>> {
         let visible = self.get_visible_workspaces(output).await?;
         let current = self.ipc_client.get_focused_workspace()?;
+        info!("nav next: output={}, active_group visible={:?}, current={}, wrap={}", output, visible, current.name, wrap);
 
         let next = find_next(&visible, &current.name, wrap);
         if let Some(ref target) = next {
             self.navigate_to_workspace(target).await?;
+        } else {
+            info!("nav next: no next workspace found");
         }
         Ok(next)
     }
@@ -102,10 +107,13 @@ impl NavigationService {
     pub async fn next_workspace_global(&self, wrap: bool) -> Result<Option<String>> {
         let visible = self.get_visible_workspaces_global().await?;
         let current = self.ipc_client.get_focused_workspace()?;
+        info!("nav next-on-output: visible={:?}, current={}, wrap={}", visible, current.name, wrap);
 
         let next = find_next(&visible, &current.name, wrap);
         if let Some(ref target) = next {
             self.navigate_to_workspace(target).await?;
+        } else {
+            info!("nav next-on-output: no next workspace found");
         }
         Ok(next)
     }
@@ -113,10 +121,13 @@ impl NavigationService {
     pub async fn prev_workspace(&self, output: &str, wrap: bool) -> Result<Option<String>> {
         let visible = self.get_visible_workspaces(output).await?;
         let current = self.ipc_client.get_focused_workspace()?;
+        info!("nav prev: output={}, visible={:?}, current={}, wrap={}", output, visible, current.name, wrap);
 
         let prev = find_prev(&visible, &current.name, wrap);
         if let Some(ref target) = prev {
             self.navigate_to_workspace(target).await?;
+        } else {
+            info!("nav prev: no prev workspace found");
         }
         Ok(prev)
     }
@@ -124,15 +135,19 @@ impl NavigationService {
     pub async fn prev_workspace_global(&self, wrap: bool) -> Result<Option<String>> {
         let visible = self.get_visible_workspaces_global().await?;
         let current = self.ipc_client.get_focused_workspace()?;
+        info!("nav prev-on-output: visible={:?}, current={}, wrap={}", visible, current.name, wrap);
 
         let prev = find_prev(&visible, &current.name, wrap);
         if let Some(ref target) = prev {
             self.navigate_to_workspace(target).await?;
+        } else {
+            info!("nav prev-on-output: no prev workspace found");
         }
         Ok(prev)
     }
 
     pub async fn go_workspace(&self, workspace: &str) -> Result<()> {
+        info!("nav go: workspace={}", workspace);
         self.navigate_to_workspace(workspace).await
     }
 

@@ -94,18 +94,10 @@ impl WaybarSyncService {
             }
         }
 
-        widgets.sort_by(|a, b| {
-            let a_num: Option<i64> = a.label.parse().ok();
-            let b_num: Option<i64> = b.label.parse().ok();
-            match (a_num, b_num) {
-                (Some(an), Some(bn)) => an.cmp(&bn),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => a.label.cmp(&b.label),
-            }
-        });
+        widgets.sort_by(|a, b| a.label.cmp(&b.label));
 
-        info!("waybar sync: sending {} widgets", widgets.len());
+        let widget_names: Vec<&str> = widgets.iter().map(|w| w.label.as_str()).collect();
+        info!("waybar sync: sending {} widgets: {:?}", widgets.len(), widget_names);
         self.waybar_client.send_set_all(widgets)?;
 
         Ok(())

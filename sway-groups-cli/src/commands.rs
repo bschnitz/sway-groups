@@ -1,6 +1,7 @@
 //! CLI commands for swayg.
 
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 use sway_groups_core::services::{GroupService, NavigationService, WaybarSyncService, WorkspaceService};
 use sway_groups_core::sway::SwayIpcClient;
 
@@ -29,6 +30,10 @@ enum Command {
         #[command(subcommand)]
         action: NavAction,
     },
+    Container {
+        #[command(subcommand)]
+        action: ContainerAction,
+    },
     Sync {
         #[arg(short, long)]
         all: bool,
@@ -42,6 +47,8 @@ enum Command {
         #[arg(short, long)]
         outputs: bool,
     },
+    Init,
+    Repair,
     Status,
 }
 
@@ -66,6 +73,8 @@ enum GroupAction {
     Select {
         output: String,
         group: String,
+        #[arg(short, long)]
+        create: bool,
     },
     Active {
         output: String,
@@ -177,6 +186,15 @@ enum NavAction {
     Back,
 }
 
+#[derive(Subcommand)]
+enum ContainerAction {
+    Move {
+        workspace: String,
+        #[arg(long)]
+        switch_to_workspace: bool,
+    },
+}
+
 pub async fn run(
     cli: Cli,
     group_service: &GroupService,
@@ -184,13 +202,21 @@ pub async fn run(
     waybar_sync: &WaybarSyncService,
     nav_service: &NavigationService,
     ipc_client: &SwayIpcClient,
+    db_path: PathBuf,
 ) -> anyhow::Result<()> {
     match cli.command {
         Command::Group { action } => run_group(action, group_service, waybar_sync, ipc_client).await?,
         Command::Workspace { action } => run_workspace(action, workspace_service, group_service, waybar_sync, ipc_client).await?,
         Command::Nav { action } => run_nav(action, nav_service, waybar_sync, ipc_client).await?,
+        Command::Container { action } => run_container(action, workspace_service, group_service, nav_service, waybar_sync, ipc_client).await?,
         Command::Sync { all, workspaces, groups, outputs } => {
             run_sync(all, workspaces, groups, outputs, workspace_service, waybar_sync).await?;
+        }
+        Command::Init => {
+            run_init(db_path, workspace_service, group_service, waybar_sync).await?;
+        }
+        Command::Repair => {
+            run_repair(workspace_service, group_service, waybar_sync, ipc_client).await?;
         }
         Command::Status => {
             run_status(group_service, workspace_service, waybar_sync, ipc_client).await?;
@@ -245,7 +271,14 @@ async fn run_group(
             group_service.rename_group(&old_name, &new_name).await?;
             println!("Renamed group \"{}\" to \"{}\"", old_name, new_name);
         }
-        GroupAction::Select { output, group } => {
+        GroupAction::Select { output, group, create } => {
+            if create {
+                let groups = group_service.list_all_group_names().await?;
+                if !groups.iter().any(|g| g == &group) {
+                    group_service.create_group(&group).await?;
+                    println!("Created group \"{}\"", group);
+                }
+            }
             group_service.set_active_group(&output, &group).await?;
             waybar_sync.update_waybar().await?;
             println!("Set active group for \"{}\" to \"{}\"", output, group);
@@ -407,9 +440,13 @@ async fn run_workspace(
             println!("Removed workspace \"{}\" from group \"{}\"", workspace, source_group);
         }
         WorkspaceAction::Rename { old_name, new_name } => {
-            workspace_service.rename_workspace(&old_name, &new_name).await?;
+            let merged = workspace_service.rename_workspace(&old_name, &new_name).await?;
             waybar_sync.update_waybar().await?;
-            println!("Renamed workspace \"{}\" to \"{}\"", old_name, new_name);
+            if merged {
+                println!("Merged workspace \"{}\" into \"{}\"", old_name, new_name);
+            } else {
+                println!("Renamed workspace \"{}\" to \"{}\"", old_name, new_name);
+            }
         }
         WorkspaceAction::Global { workspace } => {
             workspace_service.set_global(&workspace, true).await?;
@@ -489,6 +526,36 @@ async fn run_nav(
     Ok(())
 }
 
+async fn run_container(
+    action: ContainerAction,
+    workspace_service: &WorkspaceService,
+    group_service: &GroupService,
+    nav_service: &NavigationService,
+    waybar_sync: &WaybarSyncService,
+    ipc_client: &SwayIpcClient,
+) -> anyhow::Result<()> {
+    match action {
+        ContainerAction::Move { workspace, switch_to_workspace } => {
+            let output = ipc_client.get_primary_output().ok();
+            let active_group = match output {
+                Some(ref out) => group_service.get_active_group(out).await.unwrap_or_else(|_| "0".to_string()),
+                None => "0".to_string(),
+            };
+
+            nav_service.move_to_workspace(&workspace).await?;
+            workspace_service.add_to_group(&workspace, &active_group).await.ok();
+
+            if switch_to_workspace {
+                nav_service.go_workspace(&workspace).await?;
+            }
+
+            waybar_sync.update_waybar().await?;
+            println!("Moved container to \"{}\"", workspace);
+        }
+    }
+    Ok(())
+}
+
 async fn run_sync(
     all: bool,
     workspaces: bool,
@@ -532,6 +599,50 @@ async fn run_sync(
         parts.push("outputs");
     }
     println!("Synced: {}", parts.join(", "));
+
+    Ok(())
+}
+
+async fn run_init(
+    db_path: PathBuf,
+    _workspace_service: &WorkspaceService,
+    _group_service: &GroupService,
+    _waybar_sync: &WaybarSyncService,
+) -> anyhow::Result<()> {
+    if db_path.exists() {
+        std::fs::remove_file(&db_path)?;
+        println!("Removed existing database.");
+    }
+
+    let db = sway_groups_core::db::DatabaseManager::new(db_path).await?;
+    let ipc = sway_groups_core::sway::SwayIpcClient::new()?;
+    let group_svc = GroupService::new(db.clone(), ipc.clone());
+    let workspace_svc = WorkspaceService::new(db.clone(), ipc.clone());
+    let waybar_sync_svc = WaybarSyncService::new(db.clone(), ipc.clone(), sway_groups_core::sway::WaybarClient::new());
+
+    group_svc.ensure_default_group().await?;
+    workspace_svc.sync_from_sway().await?;
+    waybar_sync_svc.update_waybar().await?;
+
+    println!("Initialized: created database, synced workspaces and outputs.");
+    Ok(())
+}
+
+async fn run_repair(
+    workspace_service: &WorkspaceService,
+    group_service: &GroupService,
+    waybar_sync: &WaybarSyncService,
+    _ipc_client: &SwayIpcClient,
+) -> anyhow::Result<()> {
+    let (removed_ws, added_ws, removed_groups) = workspace_service.repair(group_service).await?;
+
+    group_service.ensure_default_group().await?;
+    waybar_sync.update_waybar().await?;
+
+    println!("Repair complete:");
+    println!("  Workspaces removed from DB: {}", removed_ws);
+    println!("  Workspaces added to group '0': {}", added_ws);
+    println!("  Empty groups removed: {}", removed_groups);
 
     Ok(())
 }

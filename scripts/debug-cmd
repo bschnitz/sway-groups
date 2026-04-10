@@ -1,0 +1,52 @@
+#!/bin/bash
+# Debug helper: shows DB state before/after a swayg command, plus the relevant logs.
+
+if [ -z "$1" ]; then
+    echo "Usage: $0 <command> [args...]"
+    echo "Example: $0 swayg nav next"
+    exit 1
+fi
+
+DB=~/.local/share/swayg/swayg.db
+LOG_DIR=~/.local/share/swayg
+LOG_FILE=$(ls -t "$LOG_DIR"/swayg.* 2>/dev/null | head -1)
+
+dump_db() {
+    echo "=== Sway State ==="
+    echo "--- focused workspace ---"
+    swaymsg -t get_workspaces 2>/dev/null | jq -r '.[] | select(.focused) | "\(.name) on \(.output)"' || echo "(no sway)"
+    echo ""
+    echo "=== DB State ==="
+    echo "--- outputs (active group) ---"
+    sqlite3 "$DB" "SELECT name, active_group FROM outputs ORDER BY name;" 2>/dev/null || echo "(no db)"
+    echo "--- group_state (last focused per group) ---"
+    sqlite3 "$DB" "SELECT output, group_name, last_focused_workspace FROM group_state ORDER BY output, group_name;" 2>/dev/null || echo "(no db)"
+    echo "--- workspaces ---"
+    sqlite3 "$DB" "SELECT w.name, w.output, w.is_global, COALESCE(GROUP_CONCAT(g.name), '(none)') FROM workspaces w LEFT JOIN workspace_groups wg ON w.id = wg.workspace_id LEFT JOIN groups g ON g.id = wg.group_id GROUP BY w.id ORDER BY w.name;" 2>/dev/null || echo "(no db)"
+    echo ""
+}
+
+echo ">>> BEFORE"
+dump_db
+
+if [ -n "$LOG_FILE" ]; then
+    LAST_LINE=$(wc -l < "$LOG_FILE")
+else
+    LAST_LINE=0
+fi
+
+echo ">>> RUNNING: $@"
+echo ""
+RUST_LOG=swayg=debug,sway_groups_core=debug "$@"
+EXIT=$?
+echo ""
+
+echo ">>> AFTER"
+dump_db
+
+if [ -n "$LOG_FILE" ] && [ -f "$LOG_FILE" ]; then
+    echo "=== Logs ==="
+    tail -n +$((LAST_LINE + 1)) "$LOG_FILE"
+fi
+
+exit $EXIT

@@ -138,6 +138,12 @@ impl SwayIpcClient {
             .ok_or_else(|| Error::SwayIpc("No focused workspace".to_string()))
     }
 
+    /// Check if the focused workspace is empty (no windows/containers).
+    pub fn is_focused_workspace_empty(&self) -> Result<bool> {
+        let ws = self.get_focused_workspace()?;
+        Ok(ws.representation.is_none())
+    }
+
     /// Rename a workspace.
     pub fn rename_workspace(&self, old_name: &str, new_name: &str) -> Result<()> {
         let command = format!("rename workspace \"{}\" to \"{}\"", old_name, new_name);
@@ -154,6 +160,19 @@ impl SwayIpcClient {
         } else {
             Err(Error::SwayIpc("Empty response".to_string()))
         }
+    }
+
+    /// Get the sway tree (for introspecting containers, windows, etc.)
+    pub fn get_tree(&self) -> Result<Vec<u8>> {
+        let mut stream = self.connect()?;
+
+        let header = IpcHeader::new(SwayMsgType::GetTree, 0);
+
+        stream.write_all(&header.to_bytes())?;
+        stream.flush()?;
+
+        let response = Self::read_message(&mut stream)?;
+        Ok(response)
     }
 
     /// Get current workspace names.

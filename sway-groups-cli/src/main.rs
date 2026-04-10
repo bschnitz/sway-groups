@@ -46,7 +46,7 @@ async fn main() -> AnyResult<()> {
     let db_path = get_db_path();
     info!("Using database at: {}", db_path.display());
 
-    let db: DatabaseManager = DatabaseManager::new(db_path).await?;
+    let db: DatabaseManager = DatabaseManager::new(db_path.clone()).await?;
     let ipc_client = SwayIpcClient::new()?;
     let waybar_client = WaybarClient::new();
     let group_service = GroupService::new(db.clone(), ipc_client.clone());
@@ -56,7 +56,7 @@ async fn main() -> AnyResult<()> {
 
     group_service.ensure_default_group().await?;
 
-    commands::run(cli, &group_service, &workspace_service, &waybar_sync, &nav_service, &ipc_client).await?;
+    commands::run(cli, &group_service, &workspace_service, &waybar_sync, &nav_service, &ipc_client, db_path).await?;
 
     Ok(())
 }

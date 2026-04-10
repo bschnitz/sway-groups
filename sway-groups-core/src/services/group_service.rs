@@ -1,6 +1,6 @@
 //! Group management service.
 
-use crate::db::entities::{group, group_state, output, GroupEntity, GroupStateEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
+use crate::db::entities::{group, group_state, output, workspace, workspace_group, FocusHistoryEntity, GroupEntity, GroupStateEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
@@ -49,7 +49,6 @@ impl GroupService {
                     .one(self.db.conn())
                     .await?
                 {
-                    // Filter by output if specified
                     if let Some(output) = output_filter
                         && ws.output.as_ref() != Some(&output.to_string()) {
                         continue;
@@ -169,14 +168,50 @@ impl GroupService {
             )));
         }
 
-        // If we have memberships and force is true, remove them
+        // Remove memberships, keep workspace_ids for cleanup
+        let mut ws_ids = Vec::new();
         for membership in memberships {
+            ws_ids.push(membership.workspace_id);
             membership.delete(self.db.conn()).await?;
         }
 
         // Delete the group
         group.delete(self.db.conn()).await?;
         info!("Deleted group: {}", name);
+
+        // Clean up orphaned workspaces (no group membership, not in sway)
+        let sway_workspaces = self.ipc_client.get_workspaces().unwrap_or_default();
+        let sway_names: std::collections::HashSet<String> = sway_workspaces
+            .iter()
+            .map(|w| w.name.clone())
+            .collect();
+
+        for ws_id in &ws_ids {
+            let remaining = WorkspaceGroupEntity::find_by_workspace(*ws_id)
+                .all(self.db.conn())
+                .await?;
+
+            if remaining.is_empty() {
+                if let Some(ws) = WorkspaceEntity::find_by_id(*ws_id)
+                    .one(self.db.conn())
+                    .await?
+                {
+                    if !sway_names.contains(&ws.name) {
+                        // Remove focus history
+                        if let Ok(histories) = FocusHistoryEntity::find_by_workspace_name(&ws.name)
+                            .all(self.db.conn())
+                            .await
+                        {
+                            for h in histories {
+                                h.delete(self.db.conn()).await.ok();
+                            }
+                        }
+                        info!("Removed orphaned workspace '{}'", ws.name);
+                        ws.delete(self.db.conn()).await?;
+                    }
+                }
+            }
+        }
 
         Ok(())
     }
@@ -352,6 +387,8 @@ impl GroupService {
         }
         debug!("set_active_group: output={}, old_group='{}', new_group='{}'", output, old_group, group);
 
+        let old_group_needs_cleanup = old_group != group && old_group != "0";
+
         // Get or create output
         let output_model = OutputEntity::find_by_name(output)
             .one(self.db.conn())
@@ -385,6 +422,9 @@ impl GroupService {
             // Case 1: Group has no workspaces -> focus workspace "0"
             debug!("set_active_group: case 1 (empty group), focusing workspace '0'");
             self.focus_workspace("0")?;
+
+            // Ensure workspace "0" exists in DB and is in this group
+            self.ensure_workspace_in_group("0", group, output).await?;
         } else {
             // Check if this group was previously visited on this output
             let last_focused = self.get_last_focused_workspace(output, group).await?;
@@ -415,11 +455,20 @@ impl GroupService {
 
         info!("Set active group for {} to '{}'", output, group);
 
-        if old_group != "0" && old_group != group {
-            let groups = self.list_groups(None).await?;
-            if let Some(g) = groups.iter().find(|g| g.name == old_group) && g.workspace_count == 0 {
-                self.delete_group(&old_group, true).await?;
-                info!("Auto-removed empty group '{}' after switch", old_group);
+        // After switching: if old group needs cleanup, check if any non-global
+        // workspaces from old group still exist in sway. If none do, delete group.
+        if old_group_needs_cleanup {
+            match self.should_delete_old_group(&old_group).await {
+                Ok(true) => {
+                    self.delete_group(&old_group, true).await?;
+                    info!("Auto-removed empty group '{}' after switch (no workspaces left in sway)", old_group);
+                }
+                Ok(false) => {
+                    debug!("set_active_group: old group '{}' still has workspaces in sway, not deleting", old_group);
+                }
+                Err(e) => {
+                    debug!("set_active_group: error checking old group '{}': {}", old_group, e);
+                }
             }
         }
 
@@ -530,7 +579,7 @@ impl GroupService {
                 continue;
             }
 
-            if group.workspace_count == 0 {
+            if self.is_effectively_empty(&group.name).await? {
                 self.delete_group(&group.name, true).await?;
                 removed += 1;
             }
@@ -546,6 +595,135 @@ impl GroupService {
             self.create_group("0").await?;
             info!("Created default group '0'");
         }
+        Ok(())
+    }
+
+    /// Check if a group has no non-global workspaces.
+    async fn is_effectively_empty(&self, group_name: &str) -> Result<bool> {
+        let group = match GroupEntity::find_by_name(group_name)
+            .one(self.db.conn())
+            .await?
+        {
+            Some(g) => g,
+            None => return Ok(true),
+        };
+
+        let memberships = WorkspaceGroupEntity::find_by_group(group.id)
+            .all(self.db.conn())
+            .await?;
+
+        for membership in memberships {
+            if let Some(ws) = WorkspaceEntity::find_by_id(membership.workspace_id)
+                .one(self.db.conn())
+                .await?
+            {
+                if !ws.is_global {
+                    return Ok(false);
+                }
+            }
+        }
+
+        Ok(true)
+    }
+
+    /// Check if all non-global workspaces of a group have been removed from sway.
+    /// Used after switching away from a group to decide if it should be auto-deleted.
+    async fn should_delete_old_group(&self, group_name: &str) -> Result<bool> {
+        let sway_workspaces = self.ipc_client.get_workspaces()?;
+        let sway_names: std::collections::HashSet<String> = sway_workspaces
+            .iter()
+            .map(|w| w.name.clone())
+            .collect();
+
+        let group = match GroupEntity::find_by_name(group_name)
+            .one(self.db.conn())
+            .await?
+        {
+            Some(g) => g,
+            None => return Ok(true),
+        };
+
+        let memberships = WorkspaceGroupEntity::find_by_group(group.id)
+            .all(self.db.conn())
+            .await?;
+
+        for membership in memberships {
+            if let Some(ws) = WorkspaceEntity::find_by_id(membership.workspace_id)
+                .one(self.db.conn())
+                .await?
+            {
+                if !ws.is_global && sway_names.contains(&ws.name) {
+                    debug!("should_delete_old_group: workspace '{}' still exists in sway", ws.name);
+                    return Ok(false);
+                }
+            }
+        }
+
+        Ok(true)
+    }
+
+    async fn ensure_workspace_in_group(&self, ws_name: &str, group_name: &str, output: &str) -> Result<()> {
+        let now = chrono::Utc::now().naive_utc();
+
+        let ws = if let Some(existing) = WorkspaceEntity::find_by_name(ws_name)
+            .one(self.db.conn())
+            .await?
+        {
+            let ws_id = existing.id;
+            let mut active = existing.into_active_model();
+            active.output = Set(Some(output.to_string()));
+            active.updated_at = Set(Some(now));
+            active.update(self.db.conn()).await?;
+            WorkspaceEntity::find_by_id(ws_id)
+                .one(self.db.conn())
+                .await?
+                .unwrap()
+        } else {
+            let active = workspace::ActiveModel {
+                name: Set(ws_name.to_string()),
+                number: Set(None),
+                output: Set(Some(output.to_string())),
+                is_global: Set(false),
+                created_at: Set(Some(now)),
+                updated_at: Set(Some(now)),
+                ..Default::default()
+            };
+            active.insert(self.db.conn()).await?
+        };
+
+        let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
+            .all(self.db.conn())
+            .await?;
+
+        let mut already_in_group = false;
+        for m in &memberships {
+            if let Some(g) = GroupEntity::find_by_id(m.group_id)
+                .one(self.db.conn())
+                .await?
+            {
+                if g.name == group_name {
+                    already_in_group = true;
+                    break;
+                }
+            }
+        }
+
+        if !already_in_group {
+            if let Some(group) = GroupEntity::find_by_name(group_name)
+                .one(self.db.conn())
+                .await?
+            {
+                let membership = workspace_group::ActiveModel {
+                    workspace_id: Set(ws.id),
+                    group_id: Set(group.id),
+                    created_at: Set(Some(now)),
+                    ..Default::default()
+                };
+                membership.insert(self.db.conn()).await?;
+                info!("Added workspace '{}' to group '{}'", ws_name, group_name);
+            }
+        }
+
         Ok(())
     }
 }

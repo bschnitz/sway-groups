@@ -1,6 +1,6 @@
 //! Workspace management service.
 
-use crate::db::entities::{group, workspace, workspace_group};
+use crate::db::entities::{group, output, workspace, workspace_group};
 use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity, FocusHistoryEntity, GroupStateEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
@@ -151,20 +151,46 @@ impl WorkspaceService {
             .await?)
     }
 
-    /// Add a workspace to a group.
-    pub async fn add_to_group(&self, workspace_name: &str, group_name: &str) -> Result<()> {
-        // Get or create workspace
-        let workspace = match WorkspaceEntity::find_by_name(workspace_name)
+    /// Ensure a workspace exists in DB, creating it in sway if necessary.
+    async fn ensure_workspace(&self, workspace_name: &str) -> Result<workspace::Model> {
+        if let Some(ws) = WorkspaceEntity::find_by_name(workspace_name)
             .one(self.db.conn())
             .await?
         {
-            Some(ws) => ws,
+            return Ok(ws);
+        }
+
+        // Not in DB — check sway
+        let sway_workspaces = self.ipc_client.get_workspaces()?;
+        let sway_ws = sway_workspaces
+            .iter()
+            .find(|w| w.name == workspace_name || w.num.map(|n| n.to_string()) == Some(workspace_name.to_string()));
+
+        match sway_ws {
+            Some(ws) => {
+                let number = ws.num.map(|n| n as i32);
+                let now = chrono::Utc::now().naive_utc();
+
+                let active = workspace::ActiveModel {
+                    name: Set(ws.name.clone()),
+                    number: Set(number),
+                    output: Set(Some(ws.output.clone())),
+                    is_global: Set(false),
+                    created_at: Set(Some(now)),
+                    updated_at: Set(Some(now)),
+                    ..Default::default()
+                };
+                Ok(active.insert(self.db.conn()).await?)
+            }
             None => {
-                // Try to create from sway if it exists
+                // Not in sway either — create it via swaymsg
+                info!("Workspace '{}' not found in sway, creating it", workspace_name);
+                self.ipc_client.run_command(&format!("workspace {}", workspace_name))?;
+
                 let sway_workspaces = self.ipc_client.get_workspaces()?;
                 let sway_ws = sway_workspaces
                     .iter()
-                    .find(|w| w.name == workspace_name || w.num.map(|n| n.to_string()) == Some(workspace_name.to_string()));
+                    .find(|w| w.name == workspace_name);
 
                 match sway_ws {
                     Some(ws) => {
@@ -180,14 +206,19 @@ impl WorkspaceService {
                             updated_at: Set(Some(now)),
                             ..Default::default()
                         };
-                        active.insert(self.db.conn()).await?
+                        Ok(active.insert(self.db.conn()).await?)
                     }
                     None => {
-                        return Err(Error::WorkspaceNotFound(workspace_name.to_string()));
+                        Err(Error::WorkspaceNotFound(workspace_name.to_string()))
                     }
                 }
             }
-        };
+        }
+    }
+
+    /// Add a workspace to a group.
+    pub async fn add_to_group(&self, workspace_name: &str, group_name: &str) -> Result<()> {
+        let workspace = self.ensure_workspace(workspace_name).await?;
 
         // Get group
         let group = GroupEntity::find_by_name(group_name)
@@ -380,10 +411,71 @@ impl WorkspaceService {
             .await?
             .ok_or_else(|| Error::WorkspaceNotFound(workspace_name.to_string()))?;
 
+        let ws_id = workspace.id;
         let mut active = workspace.into_active_model();
         active.is_global = Set(global);
         active.updated_at = Set(Some(chrono::Utc::now().naive_utc()));
         active.update(self.db.conn()).await?;
+
+        if global {
+            let memberships = WorkspaceGroupEntity::find_by_workspace(ws_id)
+                .all(self.db.conn())
+                .await?;
+            let count = memberships.len();
+            for m in memberships {
+                m.delete(self.db.conn()).await?;
+            }
+            if count > 0 {
+                info!(
+                    "Removed workspace '{}' from {} group(s) (now global)",
+                    workspace_name,
+                    count
+                );
+            }
+        } else {
+            let sway_workspaces = self.ipc_client.get_workspaces()?;
+            let ws_output = sway_workspaces
+                .iter()
+                .find(|ws| ws.name == workspace_name)
+                .map(|ws| ws.output.clone());
+
+            if let Some(output_name) = ws_output {
+                let active_group = OutputEntity::find_by_name(&output_name)
+                    .one(self.db.conn())
+                    .await?
+                    .map(|o| o.active_group)
+                    .unwrap_or_else(|| "0".to_string());
+
+                let group = GroupEntity::find_by_name(&active_group)
+                    .one(self.db.conn())
+                    .await?;
+
+                if let Some(group) = group {
+                    let existing = WorkspaceGroupEntity::find_membership(ws_id, group.id)
+                        .one(self.db.conn())
+                        .await?;
+                    if existing.is_none() {
+                        let now = chrono::Utc::now().naive_utc();
+                        let membership = workspace_group::ActiveModel {
+                            workspace_id: Set(ws_id),
+                            group_id: Set(group.id),
+                            created_at: Set(Some(now)),
+                            ..Default::default()
+                        };
+                        membership.insert(self.db.conn()).await?;
+                        info!(
+                            "Added global workspace '{}' back to group '{}'",
+                            workspace_name, active_group
+                        );
+                    }
+                }
+            } else {
+                info!(
+                    "Workspace '{}' not found in sway, cannot reassign to group",
+                    workspace_name
+                );
+            }
+        }
 
         info!(
             "Set workspace '{}' global = {}",
@@ -392,19 +484,21 @@ impl WorkspaceService {
         Ok(())
     }
 
-    /// Rename a workspace. Handles two cases:
-    /// 1. Simple rename: target doesn't exist — sway renames, DB entry updated
-    /// 2. Merge: target exists — containers are moved, groups are merged
-    pub async fn rename_workspace(&self, old_name: &str, new_name: &str) -> Result<()> {
+    /// Rename a workspace. Returns whether it was a simple rename or a merge.
+    pub async fn rename_workspace(&self, old_name: &str, new_name: &str) -> Result<bool> {
         let target_exists = WorkspaceEntity::find_by_name(new_name)
             .one(self.db.conn())
             .await?
             .is_some();
 
         if target_exists {
-            self.merge_workspace(old_name, new_name).await
+            self.merge_workspace(old_name, new_name).await?;
+            let focus_cmd = format!("workspace \"{}\"", new_name);
+            self.ipc_client.run_command(&focus_cmd)?;
+            Ok(true)
         } else {
-            self.simple_rename_workspace(old_name, new_name).await
+            self.simple_rename_workspace(old_name, new_name).await?;
+            Ok(false)
         }
     }
 
@@ -459,14 +553,54 @@ impl WorkspaceService {
             }
         }
 
-        let command = format!("rename workspace \"{}\" to \"{}\"", old_name, new_name);
-        let results = self.ipc_client.run_command(&command)?;
-        if let Some(result) = results.first() {
-            if !result.success {
-                return Err(Error::SwayIpc(
-                    result.error.clone().unwrap_or_else(|| "Unknown error".to_string()),
-                ));
+        let tree_payload = self.ipc_client.get_tree()?;
+        let tree: serde_json::Value = serde_json::from_slice(&tree_payload)?;
+
+        fn collect_containers(node: &serde_json::Value, target_ws: &str, ids: &mut Vec<i64>) {
+            let node_type = node.get("type").and_then(|t| t.as_str());
+            let node_name = node.get("name").and_then(|n| n.as_str());
+
+            if node_type == Some("workspace") && node_name == Some(target_ws) {
+                if let Some(nodes) = node.get("nodes").and_then(|n| n.as_array()) {
+                    for child in nodes {
+                        if child.get("type").and_then(|t| t.as_str()) == Some("con") {
+                            if let Some(id) = child.get("id").and_then(|i| i.as_i64()) {
+                                ids.push(id);
+                            }
+                        }
+                    }
+                }
+                if let Some(nodes) = node.get("floating_nodes").and_then(|n| n.as_array()) {
+                    for child in nodes {
+                        if child.get("type").and_then(|t| t.as_str()) == Some("floating_con") {
+                            if let Some(id) = child.get("id").and_then(|i| i.as_i64()) {
+                                ids.push(id);
+                            }
+                        }
+                    }
+                }
+                return;
             }
+
+            if let Some(nodes) = node.get("nodes").and_then(|n| n.as_array()) {
+                for child in nodes {
+                    collect_containers(child, target_ws, ids);
+                }
+            }
+            if let Some(nodes) = node.get("floating_nodes").and_then(|n| n.as_array()) {
+                for child in nodes {
+                    collect_containers(child, target_ws, ids);
+                }
+            }
+        }
+
+        let mut container_ids = Vec::new();
+        collect_containers(&tree, old_name, &mut container_ids);
+
+        for id in &container_ids {
+            let command = format!("[con_id={}] move to workspace \"{}\"", id, new_name);
+            info!("merge: moving con_id={} to workspace '{}'", id, new_name);
+            self.ipc_client.run_command(&command)?;
         }
 
         for m in old_memberships {
@@ -500,7 +634,31 @@ impl WorkspaceService {
     /// Sync workspaces from sway.
     pub async fn sync_from_sway(&self) -> Result<()> {
         let sway_workspaces = self.ipc_client.get_workspaces()?;
+        let sway_outputs = self.ipc_client.get_outputs()?;
         let now = chrono::Utc::now().naive_utc();
+
+        // Sync outputs
+        for sway_out in &sway_outputs {
+            let existing = OutputEntity::find_by_name(&sway_out.name)
+                .one(self.db.conn())
+                .await?;
+
+            if let Some(out) = existing {
+                let mut active = out.into_active_model();
+                active.updated_at = Set(Some(now));
+                active.update(self.db.conn()).await?;
+            } else {
+                let active = output::ActiveModel {
+                    name: Set(sway_out.name.clone()),
+                    active_group: Set("0".to_string()),
+                    created_at: Set(Some(now)),
+                    updated_at: Set(Some(now)),
+                    ..Default::default()
+                };
+                active.insert(self.db.conn()).await?;
+                info!("Created output '{}' with default group '0'", sway_out.name);
+            }
+        }
 
         let sway_names: std::collections::HashSet<String> = sway_workspaces
             .iter()
@@ -604,6 +762,137 @@ impl WorkspaceService {
 
         info!("Synced workspaces from sway");
         Ok(())
+    }
+
+    /// Repair the database by reconciling with sway's actual state.
+    /// Returns (removed_workspaces, added_workspaces, removed_groups).
+    pub async fn repair(
+        &self,
+        group_service: &crate::services::GroupService,
+    ) -> Result<(usize, usize, usize)> {
+        let sway_workspaces = self.ipc_client.get_workspaces()?;
+        let sway_outputs = self.ipc_client.get_outputs()?;
+        let now = chrono::Utc::now().naive_utc();
+
+        let sway_names: std::collections::HashSet<String> = sway_workspaces
+            .iter()
+            .map(|w| w.name.clone())
+            .collect();
+
+        let sway_output_names: std::collections::HashSet<String> = sway_outputs
+            .iter()
+            .map(|o| o.name.clone())
+            .collect();
+
+        let mut removed_ws = 0usize;
+        let mut added_ws = 0usize;
+
+        // --- Sync outputs ---
+        let db_outputs = OutputEntity::find()
+            .all(self.db.conn())
+            .await?;
+
+        for db_out in &db_outputs {
+            if !sway_output_names.contains(&db_out.name) {
+                db_out.clone().delete(self.db.conn()).await.ok();
+                info!("repair: removed output '{}' from DB", db_out.name);
+            }
+        }
+
+        for sway_out in &sway_outputs {
+            let existing = OutputEntity::find_by_name(&sway_out.name)
+                .one(self.db.conn())
+                .await?;
+
+            if let Some(out) = existing {
+                let mut active = out.into_active_model();
+                active.updated_at = Set(Some(now));
+                active.update(self.db.conn()).await?;
+            } else {
+                let active = output::ActiveModel {
+                    name: Set(sway_out.name.clone()),
+                    active_group: Set("0".to_string()),
+                    created_at: Set(Some(now)),
+                    updated_at: Set(Some(now)),
+                    ..Default::default()
+                };
+                active.insert(self.db.conn()).await?;
+                info!("repair: created output '{}'", sway_out.name);
+            }
+        }
+
+        // --- Remove workspaces from DB that are not in sway ---
+        let db_workspaces = WorkspaceEntity::find()
+            .all(self.db.conn())
+            .await?;
+
+        for ws in &db_workspaces {
+            if !sway_names.contains(&ws.name) {
+                let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
+                    .all(self.db.conn())
+                    .await?;
+                for m in memberships {
+                    m.delete(self.db.conn()).await.ok();
+                }
+
+                if let Ok(histories) = FocusHistoryEntity::find_by_workspace_name(&ws.name)
+                    .all(self.db.conn())
+                    .await
+                {
+                    for h in histories {
+                        h.delete(self.db.conn()).await.ok();
+                    }
+                }
+
+                ws.clone().delete(self.db.conn()).await?;
+                info!("repair: removed workspace '{}' from DB (not in sway)", ws.name);
+                removed_ws += 1;
+            }
+        }
+
+        // --- Add sway workspaces to DB that are not yet tracked ---
+        for sway_ws in &sway_workspaces {
+            let existing = WorkspaceEntity::find_by_name(&sway_ws.name)
+                .one(self.db.conn())
+                .await?;
+
+            if existing.is_none() {
+                let active = workspace::ActiveModel {
+                    name: Set(sway_ws.name.clone()),
+                    number: Set(sway_ws.num.map(|n| n as i32)),
+                    output: Set(Some(sway_ws.output.clone())),
+                    is_global: Set(false),
+                    created_at: Set(Some(now)),
+                    updated_at: Set(Some(now)),
+                    ..Default::default()
+                };
+                let ws = active.insert(self.db.conn()).await?;
+
+                if let Some(group) = GroupEntity::find_by_name("0")
+                    .one(self.db.conn())
+                    .await?
+                {
+                    let membership = workspace_group::ActiveModel {
+                        workspace_id: Set(ws.id),
+                        group_id: Set(group.id),
+                        created_at: Set(Some(now)),
+                        ..Default::default()
+                    };
+                    membership.insert(self.db.conn()).await?;
+                }
+
+                info!("repair: added workspace '{}' to group '0'", sway_ws.name);
+                added_ws += 1;
+            }
+        }
+
+        // --- Prune empty groups ---
+        let removed_groups = group_service.prune_groups(&[]).await.unwrap_or(0);
+
+        info!("repair: removed {} stale workspaces, added {} new workspaces, pruned {} empty groups",
+              removed_ws, added_ws, removed_groups);
+
+        Ok((removed_ws, added_ws, removed_groups))
     }
 
 }

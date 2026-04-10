@@ -22,4 +22,4 @@ if [ -z "$group" ]; then
     exit 0
 fi
 
-$HOME/.cargo/bin/swayg group select "$output" "$group"
+$HOME/.cargo/bin/swayg group select "$output" "$group" --create

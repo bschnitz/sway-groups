@@ -2,15 +2,14 @@
 
 ## Overview
 
-`swayg` is a CLI tool for managing sway workspace groups. It wraps sway IPC commands to provide group-aware workspace navigation and management.
+`swayg` is a CLI tool for managing sway workspace groups. It wraps sway IPC commands to provide group-aware workspace navigation and management. Workspace visibility in waybar is handled via [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic) IPC.
 
 ## Key Concepts
 
 - **Workspace**: A sway workspace (e.g., "1", "2", "3:Firefox")
 - **Group**: A named collection of workspaces (e.g., "0", "dev", "work")
-- **Active Group**: The currently selected group per output -- only workspaces in this group are visible
-- **Global Workspace**: A workspace visible in ALL groups (marked with `_class_global`)
-- **Hidden Suffix**: Non-active workspaces get `_class_hidden` suffix to indicate they should be hidden in waybar
+- **Active Group**: The currently selected group per output -- only workspaces in this group are shown in waybar
+- **Global Workspace**: A workspace visible in ALL groups
 
 ## Database Schema
 
@@ -167,7 +166,7 @@ swayg group prev-on-output --output eDP-1 --wrap
 ```
 
 #### `swayg group prune [--keep <NAME>...]`
-Remove empty groups (except default "0").
+Remove empty groups (except default "0"). A group is considered empty if it contains no non-global workspaces.
 
 ```sh
 $ swayg group prune --keep 0 --keep default
@@ -202,6 +201,14 @@ Add a workspace to a group. The workspace must exist in sway. If `--group` is om
 ```sh
 $ swayg workspace add 4 --group dev
 Added workspace "4" to group "dev"
+```
+
+#### `swayg workspace rename <OLD_NAME> <NEW_NAME>`
+Rename a workspace in sway and update the database. If the target name already exists, the source workspace is merged into the target (containers are moved, group memberships are unioned).
+
+```sh
+$ swayg workspace rename old_name new_name
+Renamed workspace "old_name" to "new_name"
 ```
 
 #### `swayg workspace move <WORKSPACE> -g|--groups <GROUPS>`
@@ -289,7 +296,7 @@ Navigated to "3"
 ```
 
 #### `swayg nav move-to <WORKSPACE>`
-Move the currently focused container to a specific workspace.
+Move the currently focused container to a specific workspace. The target workspace is automatically added to the active group.
 
 ```sh
 $ swayg nav move-to 3
@@ -305,7 +312,7 @@ Navigated back to "1"
 ```
 
 ### `swayg sync`
-Manually synchronize the database with the current sway state. Normally handled automatically by the daemon. Useful for initial setup or recovery.
+Manually synchronize the database with the current sway state. Useful for initial setup or recovery.
 
 ```sh
 $ swayg sync --all
@@ -325,48 +332,12 @@ HDMI-A-0: active group = "0"
   Hidden: (none)
 ```
 
-### `swayg daemon` - Background Service
-
-#### `swayg daemon start`
-Start the swayg daemon for automatic suffix synchronization. Refuses to start if already running.
-
-#### `swayg daemon stop`
-Stop the running daemon via SIGTERM.
-
-#### `swayg daemon status`
-Check if the daemon is running.
-
-## Suffix Management
-
-### Suffix Rules
-
-1. **Global workspaces**: Always get `_class_global` suffix (never hidden)
-2. **Active group workspaces**: No suffix (visible)
-3. **Other group workspaces**: Get `_class_hidden` suffix
-4. **Workspaces not in any group**: Treated as in group "0" (default)
-
-### Suffix Sync
-
-Suffixes are automatically synced when:
-- Active group changes (`swayg group select`, `swayg group next`, etc.)
-- Workspace added/removed from group
-- Workspace global status changes
-- Daemon receives sway IPC events
-
-## Workspace Naming Convention
-
-Workspaces in sway use a naming convention:
-- Basic: `"1"`, `"2"`, `"3"`
-- Named: `"1:Firefox"`, `"2:Terminal"`
-- Hidden: `"2_class_hidden"`, `"3:Code_class_hidden"`
-- Global: `"1_class_global"`
-
-The CLI handles the suffix manipulation transparently.
-
 ## Implementation Notes
 
 - Uses SeaORM 2.0 with entity-first approach
 - SQLite database for persistence
 - Sway IPC over Unix socket
+- waybar-dynamic IPC for workspace widget updates
 - Async runtime with Tokio
 - Rust Edition 2024
+- Log files: `~/.local/share/swayg/swayg.YYYY-MM-DD` (rolling daily)
