@@ -1,6 +1,6 @@
 //! Workspace navigation service.
 
-use crate::db::entities::{focus_history, workspace_group, GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity, FocusHistoryEntity};
+use crate::db::entities::{focus_history, workspace, workspace_group, GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity, FocusHistoryEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
@@ -169,55 +169,78 @@ impl NavigationService {
             .one(self.db.conn())
             .await?;
 
-        if let Some(ws) = target_ws {
-            let sway_workspaces = self.ipc_client.get_workspaces()?;
-            if let Some(sway_ws) = sway_workspaces.iter().find(|w| w.name == workspace_name) {
-                let mut active = ws.clone().into_active_model();
-                active.output = Set(Some(sway_ws.output.clone()));
-                active.updated_at = Set(Some(chrono::Utc::now().naive_utc()));
-                active.update(self.db.conn()).await?;
-            }
+        let active_group = OutputEntity::find_by_name(
+            &self.ipc_client.get_primary_output().unwrap_or_default()
+        )
+            .one(self.db.conn())
+            .await?
+            .map(|o| o.active_group)
+            .unwrap_or_else(|| "0".to_string());
 
-            let active_group = OutputEntity::find_by_name(
-                &self.ipc_client.get_primary_output().unwrap_or_default()
-            )
-                .one(self.db.conn())
-                .await?
-                .map(|o| o.active_group)
-                .unwrap_or_else(|| "0".to_string());
-
-            let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
-                .all(self.db.conn())
-                .await?;
-
-            let mut in_group = false;
-            for m in &memberships {
-                if let Some(group) = GroupEntity::find_by_id(m.group_id)
-                    .one(self.db.conn())
-                    .await?
-                {
-                    if group.name == active_group {
-                        in_group = true;
-                        break;
-                    }
+        let ws = match target_ws {
+            Some(ws) => {
+                let sway_workspaces = self.ipc_client.get_workspaces()?;
+                if let Some(sway_ws) = sway_workspaces.iter().find(|w| w.name == workspace_name) {
+                    let mut active = ws.clone().into_active_model();
+                    active.output = Set(Some(sway_ws.output.clone()));
+                    active.updated_at = Set(Some(chrono::Utc::now().naive_utc()));
+                    active.update(self.db.conn()).await?;
                 }
+                ws
             }
-
-            if !in_group {
-                if let Some(group) = GroupEntity::find_by_name(&active_group)
-                    .one(self.db.conn())
-                    .await?
-                {
+            None => {
+                let sway_workspaces = self.ipc_client.get_workspaces()?;
+                if let Some(sway_ws) = sway_workspaces.iter().find(|w| w.name == workspace_name) {
+                    let number = sway_ws.num.map(|n| n as i32);
                     let now = chrono::Utc::now().naive_utc();
-                    let membership = workspace_group::ActiveModel {
-                        workspace_id: Set(ws.id),
-                        group_id: Set(group.id),
+                    let active = workspace::ActiveModel {
+                        name: Set(sway_ws.name.clone()),
+                        number: Set(number),
+                        output: Set(Some(sway_ws.output.clone())),
+                        is_global: Set(false),
                         created_at: Set(Some(now)),
+                        updated_at: Set(Some(now)),
                         ..Default::default()
                     };
-                    membership.insert(self.db.conn()).await?;
-                    info!("Added workspace '{}' to active group '{}'", workspace_name, active_group);
+                    info!("Created workspace '{}' in DB (from nav move-to)", workspace_name);
+                    active.insert(self.db.conn()).await?
+                } else {
+                    return Err(Error::WorkspaceNotFound(workspace_name.to_string()));
                 }
+            }
+        };
+
+        let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
+            .all(self.db.conn())
+            .await?;
+
+        let mut in_group = false;
+        for m in &memberships {
+            if let Some(group) = GroupEntity::find_by_id(m.group_id)
+                .one(self.db.conn())
+                .await?
+            {
+                if group.name == active_group {
+                    in_group = true;
+                    break;
+                }
+            }
+        }
+
+        if !in_group {
+            if let Some(group) = GroupEntity::find_by_name(&active_group)
+                .one(self.db.conn())
+                .await?
+            {
+                let now = chrono::Utc::now().naive_utc();
+                let membership = workspace_group::ActiveModel {
+                    workspace_id: Set(ws.id),
+                    group_id: Set(group.id),
+                    created_at: Set(Some(now)),
+                    ..Default::default()
+                };
+                membership.insert(self.db.conn()).await?;
+                info!("Added workspace '{}' to active group '{}'", workspace_name, active_group);
             }
         }
 
