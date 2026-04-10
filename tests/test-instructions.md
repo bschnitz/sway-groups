@@ -3,8 +3,10 @@
 ## General Rules
 
 1. **Every assertion must have PASS/FAIL output.** Never check something without printing the result.
-   - Use `pass()` for successful checks, `fail()` for failures.
-   - If a precondition fails, ABORT immediately with `exit 1`.
+    - Use `pass()` for successful checks, `fail()` for failures.
+    - If a precondition fails, ABORT immediately with `exit 1`.
+
+2. **Always notify when work is done.** Use `notify-send "swayg" "<summary>"` when a task is finished (test written, test executed, plan presented, etc.). This applies to all work, not just tests.
 
 2. **Check preconditions BEFORE init.** Things like "test group must not exist" must be checked against the current (real) DB, not the freshly initialized one. `init` comes AFTER preconditions.
 
@@ -59,15 +61,22 @@
     - Kitty on workspace Y: `swaymsg -t get_tree | jq -r '[.. | objects | select(.type? == "workspace")] | .[] | {name: .name, apps: [.. | objects | select(.app_id? != null) | .app_id]} | select(.apps | index("X")) | .name'`
     - Note: jq's `..` only traverses **downward**. To find a workspace containing a specific app_id, iterate over all workspaces and check descendants.
 
-17. **Wait for kitty to appear in sway tree.** After launching kitty, use `sleep 0.3` before checking. Kitty needs a moment to register with sway.
+17. **Wait for kitty to appear in sway tree.** After launching kitty, use `sleep 0.5` before checking. Kitty needs a moment to register with sway.
 
 ## swayg Commands
 
-18. **`swayg workspace add <name>`** creates the workspace in sway if it doesn't exist, adds it to DB, and assigns it to the active group. No need for `swaymsg workspace <name>` + `swayg sync`.
+26. **`swayg workspace add <name>`** creates the workspace in sway if it doesn't exist, adds it to DB, and assigns it to the active group. No need for `swaymsg workspace <name>` + `swayg sync`.
 
-19. **`swayg container move <WORKSPACE> [--switch-to-workspace]`** moves the focused container to the target workspace. If the workspace doesn't exist in sway, sway creates it automatically on `move container`. The command also adds the workspace to the active group in DB.
+27. **`swayg container move <WORKSPACE> [--switch-to-workspace]`** moves the focused container to the target workspace. If the workspace doesn't exist in sway, sway creates it automatically on `move container`. The command also adds the workspace to the active group in DB.
 
-20. **`swayg group select <OUTPUT> <GROUP> --create`** creates the group and switches to it. When switching to a group with no workspaces, workspace "0" is focused (temporary, auto-deleted by sway on switch away). Empty groups are auto-deleted when switching away.
+28. **`swayg group select <OUTPUT> <GROUP> --create`** creates the group and switches to it. When switching to a group with no workspaces, workspace "0" is focused (temporary, auto-deleted by sway on switch away). Empty groups are auto-deleted when switching away.
+
+## Visibility Checks
+
+29. **`swayg workspace list --visible --plain --output <OUTPUT>`** lists all workspaces visible in the active group for that output (including global workspaces). Use this to verify workspace visibility:
+    - Workspace visible: `echo "$OUT" | grep -q "$WS"` → expect `0` exit code
+    - Workspace NOT visible: `echo "$OUT" | grep -q "$WS"` → expect non-zero exit code
+    - **Note:** `--visible` is important — without it, all group workspaces are shown regardless of global status.
 
 ## sway Behavior
 
@@ -83,28 +92,30 @@
 
 24. **`move container to workspace` creates the workspace in sway.** No need to pre-create it. Sway automatically creates the target workspace when moving a container there.
 
+25. **Sway doesn't delete empty workspaces immediately.** After `move container`, the old workspace persists as empty in sway until a focus switch happens. Use `swaymsg workspace "$OTHER_WS"; sleep 0.1` before checking the old workspace is gone.
+
 ## Precondition Checks
 
-25. **Check preconditions for:** test group not in DB, test workspaces not in DB, test workspaces not in sway, test kitties not running. All checked BEFORE `init`.
+30. **Check preconditions for:** test group not in DB, test workspaces not in DB, test workspaces not in sway, test kitties not running. All checked BEFORE `init`.
 
 ## DB / Paths
 
-26. **DB path:** Always use `~/.local/share/swayg/swayg.db`.
-27. **Binary path:** Always use `$HOME/.cargo/bin/swayg`.
+31. **DB path:** Always use `~/.local/share/swayg/swayg.db`.
+32. **Binary path:** Always use `$HOME/.cargo/bin/swayg`.
 
 ## Shell Script Pitfalls
 
-28. **Shell quoting in `run()` helper:** The `run()` helper uses `eval "$@"`. Single-quoted strings don't expand variables. For variable expansion inside `eval`, use double quotes carefully.
+33. **Shell quoting in `run()` helper:** The `run()` helper uses `eval "$@"`. Single-quoted strings don't expand variables. For variable expansion inside `eval`, use double quotes carefully.
 
-29. **`run()` captures exit code of last command.** After a `run()` call, `$?` reflects the last command in the `eval` string, not the swayg command if it was followed by `>/dev/null 2>&1`. Check swayg exit code separately if needed.
+34. **`run()` captures exit code of last command.** After a `run()` call, `$?` reflects the last command in the `eval` string, not the swayg command if it was followed by `>/dev/null 2>&1`. Check swayg exit code separately if needed.
 
 ## Presenting Test Results
 
-30. **When asked to run tests, present results ONLY.** Run all tests sequentially. For each test, show a one-line summary (`test_name — X/Y PASS`). For the FAILING test, show the PASS/FAIL block using the format from rule 11. Stop after the first failing test — do NOT run subsequent tests.
+35. **When asked to run tests, present results ONLY.** Run all tests sequentially. For each test, show a one-line summary (`test_name — X/Y PASS`). For the FAILING test, show the PASS/FAIL block using the format from rule 11. Stop after the first failing test — do NOT run subsequent tests.
 
-31. **NO analysis, NO explanation.** Never explain WHY a test failed. Never diagnose the root cause. Never suggest fixes. The user will ask if they want analysis. Just present the raw results.
+36. **NO analysis, NO explanation.** Never explain WHY a test failed. Never diagnose the root cause. Never suggest fixes. The user will ask if they want analysis. Just present the raw results.
 
-32. **Exact reporting format when a test fails:**
+37. **Exact reporting format when a test fails:**
     ```
     test01_group_select.sh — 8/8 PASS
     test02_new_workspace.sh — 24/24 PASS
@@ -120,7 +131,7 @@
     ABORTED — 2 passed, 1 failed
     ```
 
-33. **If all tests pass**, show each test on one line:
+38. **If all tests pass**, show each test on one line:
     ```
     test01_group_select.sh — 8/8 PASS
     test02_new_workspace.sh — 24/24 PASS
@@ -128,13 +139,72 @@
     test04_workspace_move.sh — 18/18 PASS
     ```
 
-34. **If the first test fails**, do NOT continue to the next test. Show only the failing test's block.
+39. **If the first test fails**, do NOT continue to the next test. Show only the failing test's block.
+
+## Presenting Test Plans
+
+43. **Test plan format:** When asked to present a test plan, use this format — command line followed by dash-prefixed assertions. No PASS/FAIL, no explanation, no analysis. Separate test phases with `--- Section name ---` headers.
+
+44. **Test plan section headers:**
+    - `--- Precondition checks (BEFORE init) ---` — all precondition assertions
+    - `--- Setup ---` — init, group creation, kitty launch, workspace creation
+    - `--- Test ---` — the core assertions being tested
+    - `--- Cleanup ---` — kill kitties, switch back, auto-delete verification
+    - `--- Post-condition ---` — final DB verification
+
+45. **Test plan completeness:** Include all steps from precondition checks through post-condition. Each `run()` command gets its own block with all assertions listed below it.
+
+46. **Setup-Block:** All setup commands (init, group creation, kitty launch, workspace moves, group switches) go in a single `run()` block. After that, a single verification block checks the entire setup state. This applies only to the Setup section. Test, Cleanup, and Post-condition sections follow the normal pattern (command then assertions).
+
+    Example:
+    ```
+    --- Setup ---
+    [one run() block: init + create group + launch kitty + move container]
+
+    Verify setup:
+    - group exists
+    - kitty running
+    - workspace in group
+    ```
+
+    Example:
+    ```
+    --- Precondition checks (BEFORE init) ---
+    - __test_group_a__ does not exist in DB
+    - __tg_ws1__ does not exist in sway
+
+    --- Setup ---
+    swayg init
+    - init succeeded
+
+    swayg group select eDP-1 "__test_group_a__" --create
+    - group created
+    - active group set
+
+    kitty --class "__tg_ws1__"; sleep 0.5
+    - kitty running
+
+    --- Test ---
+    swayg workspace remove "__tg_ws1__"
+    - removed from active group only
+    - still in other group
+
+    --- Cleanup ---
+    swayg group select eDP-1 "$ORIG_GROUP"
+    - focused on original workspace
+
+    kill kitty
+    - kitty gone
+
+    --- Post-condition ---
+    - no test data remains in DB
+    ```
 
 ## Post-conditions
 
-35. **Every test MUST have a post-condition** that verifies no test data remains after the test finishes. Check that all test groups, test workspaces, and test workspace_groups entries have been cleaned up from the DB.
-36. **Post-condition format:** Use a single `run()` step with sqlite3 queries, followed by PASS/FAIL assertions for each category (groups, workspaces, workspace_groups).
-37. **If test workspaces existed in sway during the test** but were killed (kitties), run `swayg init >/dev/null 2>&1` before the post-condition check to let `sync_from_sway` clean up stale workspace rows from the DB.
+40. **Every test MUST have a post-condition** that verifies no test data remains after the test finishes. Check that all test groups, test workspaces, and test workspace_groups entries have been cleaned up from the DB.
+41. **Post-condition format:** Use a single `run()` step with sqlite3 queries, followed by PASS/FAIL assertions for each category (groups, workspaces, workspace_groups).
+42. **If test workspaces existed in sway during the test** but were killed (kitties), run `swayg init >/dev/null 2>&1` before the post-condition check to let `sync_from_sway` clean up stale workspace rows from the DB.
 
 ## Test File Naming
 

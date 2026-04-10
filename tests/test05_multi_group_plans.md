@@ -7,8 +7,8 @@ Tests for workspaces that exist in multiple groups simultaneously.
 ## Test Plans
 
 ### test05a.sh — `workspace add` for existing workspace in another group
-- [ ] Implement
-- [ ] Pass
+- [x] Implement
+- [x] Pass
 
 **Setup:** Create Group A, add WS1 with kitty to Group A, switch to Group B
 **Action:** `swayg workspace add WS1`
@@ -16,8 +16,8 @@ Tests for workspaces that exist in multiple groups simultaneously.
 **Checks:** WS1 in both groups in DB, WS1 exists once in sway
 
 ### test05b.sh — `container move` to workspace in another group
-- [ ] Implement
-- [ ] Pass
+- [x] Implement
+- [x] Pass
 
 **Setup:** Create Group A + B, WS1 in Group A with kitty, switch to Group B
 **Action:** Launch kitty WS2, `swayg container move WS1 --switch-to-workspace`
@@ -25,8 +25,8 @@ Tests for workspaces that exist in multiple groups simultaneously.
 **Checks:** Focused on WS1, kitty WS2 on WS1, WS1 in both groups in DB
 
 ### test05c.sh — `workspace rename` to workspace in another group (merge)
-- [ ] Implement
-- [ ] Pass
+- [x] Implement
+- [x] Pass
 
 **Setup:** WS1 in Group A, WS2 in Group B (both with kitties)
 **Action:** `swayg workspace rename WS2 WS1`
@@ -34,13 +34,13 @@ Tests for workspaces that exist in multiple groups simultaneously.
 **Checks:** WS2 gone from DB, WS1 in both groups, kitty WS2 on WS1, one WS1 in sway
 
 ### test05d.sh — `workspace global` on multi-group workspace
-- [ ] Implement
-- [ ] Pass
+- [x] Implement
+- [x] Pass
 
 **Setup:** WS1 in Group A and Group B
 **Action:** `swayg workspace global WS1`
-**Expectation:** WS1 removed from ALL groups
-**Checks:** is_global=1, no workspace_groups entries for WS1
+**Expectation:** WS1 removed from ALL groups; non-active groups auto-deleted (no non-global workspaces left)
+**Checks:** is_global=1, no workspace_groups entries, Group A auto-deleted, Group B still exists (active)
 
 ### test05e.sh — `workspace unglobal` on previously multi-group workspace
 - [ ] Implement
