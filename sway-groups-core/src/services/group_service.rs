@@ -179,12 +179,23 @@ impl GroupService {
         group.delete(self.db.conn()).await?;
         info!("Deleted group: {}", name);
 
-        // Clean up orphaned workspaces (no group membership, not in sway)
+        // Clean up orphaned workspaces: move to group "0" if still in sway, delete if not
         let sway_workspaces = self.ipc_client.get_workspaces().unwrap_or_default();
         let sway_names: std::collections::HashSet<String> = sway_workspaces
             .iter()
             .map(|w| w.name.clone())
             .collect();
+
+        let default_group = match GroupEntity::find_by_name("0")
+            .one(self.db.conn())
+            .await?
+        {
+            Some(g) => g,
+            None => {
+                warn!("Default group '0' not found, cannot reassign orphaned workspaces");
+                return Ok(());
+            }
+        };
 
         for ws_id in &ws_ids {
             let remaining = WorkspaceGroupEntity::find_by_workspace(*ws_id)
@@ -196,8 +207,17 @@ impl GroupService {
                     .one(self.db.conn())
                     .await?
                 {
-                    if !sway_names.contains(&ws.name) {
-                        // Remove focus history
+                    if sway_names.contains(&ws.name) {
+                        let now = chrono::Utc::now().naive_utc();
+                        let membership = workspace_group::ActiveModel {
+                            workspace_id: Set(*ws_id),
+                            group_id: Set(default_group.id),
+                            created_at: Set(Some(now)),
+                            ..Default::default()
+                        };
+                        membership.insert(self.db.conn()).await?;
+                        info!("Moved orphaned workspace '{}' to group '0'", ws.name);
+                    } else {
                         if let Ok(histories) = FocusHistoryEntity::find_by_workspace_name(&ws.name)
                             .all(self.db.conn())
                             .await

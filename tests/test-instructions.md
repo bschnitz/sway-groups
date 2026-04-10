@@ -105,7 +105,7 @@
 
 ## Shell Script Pitfalls
 
-33. **Shell quoting in `run()` helper:** The `run()` helper uses `eval "$@"`. Single-quoted strings don't expand variables. For variable expansion inside `eval`, use double quotes carefully.
+33. **Shell quoting in `run()` helper:** The `run()` helper uses `eval "$@"`. Avoid mixing single and double quotes in the same eval string — unbalanced quotes cause silent failures. Prefer double-quote outer with single-quote inner variables: `"$SG group select $OUTPUT '$GROUP_A' --create 2>&1"`. Use `\$` to escape variables that must NOT expand during eval (e.g., `$!` inside eval: `echo \$! > path`).
 
 34. **`run()` captures exit code of last command.** After a `run()` call, `$?` reflects the last command in the `eval` string, not the swayg command if it was followed by `>/dev/null 2>&1`. Check swayg exit code separately if needed.
 
