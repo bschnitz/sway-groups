@@ -422,6 +422,9 @@ impl WorkspaceService {
                 .all(self.db.conn())
                 .await?;
             let count = memberships.len();
+
+            let affected_group_ids: Vec<i32> = memberships.iter().map(|m| m.group_id).collect();
+
             for m in memberships {
                 m.delete(self.db.conn()).await?;
             }
@@ -431,6 +434,74 @@ impl WorkspaceService {
                     workspace_name,
                     count
                 );
+            }
+
+            let sway_workspaces = self.ipc_client.get_workspaces()?;
+            let sway_names: std::collections::HashSet<String> = sway_workspaces
+                .iter()
+                .map(|w| w.name.clone())
+                .collect();
+
+            let outputs = self.ipc_client.get_outputs()?;
+            let active_group_ids: std::collections::HashSet<i32> = {
+                let mut ids = std::collections::HashSet::new();
+                for o in &outputs {
+                    if let Some(out) = OutputEntity::find_by_name(&o.name)
+                        .one(self.db.conn())
+                        .await?
+                    {
+                        if let Some(g) = GroupEntity::find_by_name(&out.active_group)
+                            .one(self.db.conn())
+                            .await?
+                        {
+                            ids.insert(g.id);
+                        }
+                    }
+                }
+                ids
+            };
+
+            for gid in &affected_group_ids {
+                if active_group_ids.contains(gid) {
+                    continue;
+                }
+
+                let group = match GroupEntity::find_by_id(*gid)
+                    .one(self.db.conn())
+                    .await?
+                {
+                    Some(g) => g,
+                    None => continue,
+                };
+
+                let remaining_memberships = WorkspaceGroupEntity::find_by_group(group.id)
+                    .all(self.db.conn())
+                    .await?;
+
+                let mut has_non_global_in_sway = false;
+                for rm in &remaining_memberships {
+                    if let Some(ws) = WorkspaceEntity::find_by_id(rm.workspace_id)
+                        .one(self.db.conn())
+                        .await?
+                    {
+                        if ws.name == "0" {
+                            continue;
+                        }
+                        if !ws.is_global && sway_names.contains(&ws.name) {
+                            has_non_global_in_sway = true;
+                            break;
+                        }
+                    }
+                }
+
+                if !has_non_global_in_sway {
+                    info!("Auto-removed empty group '{}' (workspace '{}' went global)", group.name, workspace_name);
+                    let group_name = group.name.clone();
+                    match group.delete(self.db.conn()).await {
+                        Ok(_) => {},
+                        Err(e) => info!("Failed to delete group '{}': {:?}", group_name, e),
+                    }
+                }
             }
         } else {
             let sway_workspaces = self.ipc_client.get_workspaces()?;
