@@ -11,11 +11,11 @@ Based on `tests/test-instructions.md`, adapted for Rust.
 
 3. **Use `DummyWindowHandle` instead of kitty.** Spawn dummy windows via `sway-dummy-window` binary (200x100 pixel, visible in sway). Faster, no external dependencies.
 
-4. **DB assertions via `rusqlite`, not `sea-orm`.** Read the test DB directly with SQLite queries, not through entity abstractions.
+4. **DB assertions via `sqlite3` CLI, not `rusqlite`.** `rusqlite` conflicts with `libsqlite3-sys` from `sqlx`/`sea-orm` in `sway-groups-core`. Use `Command::new("sqlite3")` for DB queries in tests.
 
-5. **Test DB path: `/tmp/swayg-integration-test.db`.** Never touch the production DB. Configure swayg to use this DB via environment variable or config before each test.
+5. **Test DB path: `/tmp/swayg-integration-test.db`.** Never touch the production DB. Configure swayg to use this DB via `--db` flag.
 
-6. **Check preconditions BEFORE any swayg commands.** Verify test groups/workspaces don't exist in DB before running setup.
+6. **Check preconditions BEFORE any swayg commands.** Verify test groups/workspaces don't exist in DB AND in sway before running setup.
 
 7. **Always restore original state.** Save original workspace/output at start. Switch back in `Drop` or test cleanup. Never leave the user on a wrong workspace.
 
@@ -40,29 +40,46 @@ Every test follows this pattern:
 async fn test_01_something() {
     // 1. Setup fixture
     let fixture = TestFixture::new().await.unwrap();
-    
-    // 2. Precondition checks (sqlite3 queries)
-    assert!(!group_exists(&fixture.db, "zz_test_x"));
-    
-    // 3. Setup (swayg CLI calls)
-    swayg(&["init"]).success();
-    swayg(&["group", "select", &fixture.output, "zz_test_x", "--create"]).success();
-    
-    // 4. Spawn dummy windows if needed
-    let win = fixture.spawn_window("zz_test_win1").await;
-    
-    // 5. Test actions (swayg CLI calls)
-    swayg(&["container", "move", "zz_target", "--switch-to-workspace"]).success();
-    
-    // 6. Assertions (DB + sway state)
-    assert_workspace_exists(&fixture.db, "zz_target");
-    assert_focused_workspace(&fixture, "zz_target");
-    
-    // 7. Cleanup
-    drop(win);  // kills dummy window
-    
-    // 8. Post-condition
-    assert_no_test_data(&fixture.db);
+
+    // 2. Remember original state (orig_group, orig_ws) BEFORE preconditions
+    let orig_group = swayg_output_without_db(&["group", "active", &fixture.orig_output]);
+
+    // 3. Precondition checks (production DB + sway state)
+    //    - Test groups not in production DB
+    //    - Test workspaces not in production DB
+    //    - Test workspaces not in sway
+
+    // 4. Init + setup (swayg CLI calls with --db flag)
+    fixture.init().success();
+    fixture.swayg(&["group", "select", &fixture.orig_output, GROUP, "--create"]).success();
+
+    // 5. Verify setup (DB + CLI assertions)
+    //    - Group exists in DB (sqlite3 count)
+    //    - Active group via CLI (swayg group active)
+
+    // 6. Spawn dummy windows + verify in sway tree
+    let _win = DummyWindowHandle::spawn(WS1).expect("spawn");
+    sleep(500ms);
+    assert!(workspace_of_window(WS1).is_some(), "window registered in sway");
+
+    // 7. Test actions (swayg CLI calls)
+
+    // 8. Assertions (DB + sway state via CLI)
+
+    // 9. Cleanup (kill windows FIRST while on orig group, then auto-delete groups)
+    drop(_win);
+    assert!(workspace_of_window(WS1).is_none(), "window gone from sway");
+    for g in &[GROUP_A, GROUP_B] {
+        fixture.swayg(&["group", "select", &fixture.orig_output, g]).success();
+        fixture.swayg(&["group", "select", &fixture.orig_output, &orig_group]).success();
+    }
+    assert_eq!(db_count("groups WHERE name = GROUP"), 0, "auto-deleted");
+
+    // 10. Post-condition (init sync + verify no test data remains)
+    fixture.init().success();
+    assert_eq!(db_count("groups WHERE name IN (GROUP_A, GROUP_B)"), 0);
+    assert_eq!(db_count("workspaces WHERE name IN (WS1, WS2)"), 0);
+    assert_eq!(db_count("workspace_groups wg JOIN groups g ON ..."), 0);
 }
 ```
 
@@ -76,13 +93,37 @@ async fn test_01_something() {
 
 24. **Empty workspace detection:** `representation` is `null` in `get_workspaces()` output.
 
+25. **Sway keeps focused workspace even if empty.** If you kill a window on the focused workspace, the workspace stays. Switch away FIRST before killing, otherwise the workspace won't be removed by sway.
+
+26. **Auto-delete only triggers on the OLD active group.** When `group select` switches from group A to group B, only group A is checked for auto-deletion. To auto-delete multiple empty groups, you must iterate: select each group then switch away.
+
+27. **`set_active_group` adds workspace "0" to empty groups.** When switching to an empty group, workspace "0" gets added. This prevents `group prune` from removing the group (since "0" is non-global and exists in sway). Don't rely on `prune` for cleanup after group switches.
+
 ## DB Queries
 
-25. **Group exists:** `SELECT count(*) FROM groups WHERE name = ?` → assert 1
-26. **Workspace exists:** `SELECT count(*) FROM workspaces WHERE name = ?` → assert 1
-27. **Workspace in group:** JOIN `workspace_groups`, `groups`, `workspaces` on names
-28. **Active group:** `SELECT active_group FROM outputs WHERE name = ?`
-29. **No test data:** No groups/workspaces with `zz_test_` prefix in their name
+28. **Group exists:** `SELECT count(*) FROM groups WHERE name = ?` → assert 1
+29. **Workspace exists:** `SELECT count(*) FROM workspaces WHERE name = ?` → assert 1
+30. **Workspace in group:** JOIN `workspace_groups`, `groups`, `workspaces` on names
+31. **Active group:** Use `swayg group active <output>` CLI, NOT direct SQL
+32. **No test data:** No groups/workspaces with `zz_test_` prefix in their name
+
+## Assertion Rules
+
+33. **Active group MUST be checked via CLI**, not via direct SQL (`SELECT active_group FROM outputs`). Use `swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output])`.
+
+34. **After every `DummyWindowHandle::spawn`, verify the window in sway.** Add `assert!(workspace_of_window(WS).is_some(), "...")` after the sleep. Process spawn success does NOT guarantee sway registered the window.
+
+35. **After killing windows, verify they're gone from sway.** Add `assert!(workspace_of_window(WS).is_none(), "...")` after the sleep. Don't silently continue if the window failed to close.
+
+36. **After `group select --create`, assert the group exists in DB.** Don't only check the active group — also verify `SELECT count(*) FROM groups WHERE name = ?` == 1.
+
+37. **Every test MUST have a post-condition** verifying no test data remains. Check groups, workspaces, AND workspace_groups for test entity names.
+
+38. **Auto-delete must be explicitly tested.** Don't rely solely on `fixture.init()` in post-condition to clean up. Exercise the auto-delete code path: select the empty group, switch away, then assert it's gone. Exception: if the group was already auto-deleted during a prior switch (e.g., `unglobal` made it effectively empty), verify via `init` sync instead.
+
+39. **Post-condition checks MUST match the shell tests.** If the shell test checks `groups + workspaces + workspace_groups`, the Rust test must also check all three. If the shell only checks `groups + workspaces`, the Rust test should too.
+
+40. **Preconditions check the PRODUCTION DB (no `--db` flag), not the test DB.** The test DB doesn't exist yet at precondition time. Guard with `if real_db.exists()` since the production DB may not exist on a fresh install.
 
 ## swayg Command Reference
 
@@ -116,32 +157,40 @@ These commands are used in tests (check latest syntax in CLI):
 - `swayg sync [--workspaces] [--groups] [--outputs]` — sync from sway
 - `swayg status` — show current status
 
-## Post-conditions
+## Shell Test Equivalence
 
-30. **Every test MUST have a post-condition** verifying no test data remains. Check groups, workspaces, workspace_groups for `zz_test_` prefix.
+When writing or modifying Rust tests, they MUST match the corresponding shell test in `tests/test*.sh`:
 
-31. **If test workspaces existed in sway** during the test (dummy windows were spawned), kill them first, then run `swayg init` before post-condition to clean stale rows.
+41. **Same preconditions:** DB checks AND sway checks must match the shell test.
+42. **Same assertions:** Every assertion in the shell test must have a Rust equivalent.
+43. **Same cleanup ordering:** Kill windows before or after group switches should match the shell test unless there's a known sway behavior reason to differ.
+44. **Same post-conditions:** Shell post-condition checks (groups, workspaces, workspace_groups) must all be present in the Rust test.
+45. **Extra assertions in Rust are allowed** (e.g., `orig_group` non-empty check, init success check). Missing assertions from shell are NOT allowed.
 
 ## Helper Design
 
-32. **`TestFixture`** — RAII guard:
+46. **`TestFixture`** — RAII guard:
     - Creates `/tmp/swayg-integration-test.db`, configures swayg env to use it
     - Saves original workspace + output
     - `Drop` switches back to original workspace
     - Fields: `db_path`, `orig_workspace`, `orig_output`
 
-33. **`DummyWindowHandle`** — RAII wrapper:
+47. **`DummyWindowHandle`** — RAII wrapper:
     - Spawns `sway-dummy-window <app_id>` process
     - Waits until it appears in sway tree (up to 2s)
     - `Drop` kills the process (via PID)
     - Method: `spawn(app_id: &str) -> Result<Self>`
     - Method: `exists_in_tree() -> bool`
 
-34. **`swayg()` helper** — shorthand for `Command::cargo_bin("swayg").unwrap().args(...)`:
+48. **`swayg()` helper** — shorthand for `Command::cargo_bin("swayg").unwrap().args(...)`:
     - Returns `assert_cmd::assert::Assert` for chaining
     - Always set `env("SWAYG_DB", &fixture.db_path)`
 
-35. **Sway state queries** — helper functions that call `swaymsg` and parse JSON:
+49. **`swayg_output()` helper** — captures stdout from a swayg CLI call:
+    - Use for checking active group, workspace lists, status output
+    - Returns `String`
+
+50. **Sway state queries** — helper functions that call `swaymsg` and parse JSON:
     - `focused_workspace() -> String`
     - `workspace_exists(name) -> bool`
     - `window_in_tree(app_id) -> bool`
