@@ -36,6 +36,7 @@ async fn test_workspace_with_containers() {
     // --- Spawn window 1, move container to WS1 ---
     let win1 = DummyWindowHandle::spawn(&fixture, WS1).expect("spawn win1");
     fixture.ipc.run_command(&format!("move container to workspace \"{}\"", WS1)).expect("move to WS1");
+    fixture.workspace_service.add_to_group(WS1, TEST_GROUP).await.ok();
     fixture.ipc.run_command(&format!("workspace \"{}\"", WS1)).expect("focus WS1");
     std::thread::sleep(Duration::from_millis(150));
 
@@ -46,6 +47,7 @@ async fn test_workspace_with_containers() {
     // --- Spawn window 2, move container to WS2 ---
     let win2 = DummyWindowHandle::spawn(&fixture, WS2).expect("spawn win2");
     fixture.ipc.run_command(&format!("move container to workspace \"{}\"", WS2)).expect("move to WS2");
+    fixture.workspace_service.add_to_group(WS2, TEST_GROUP).await.ok();
     fixture.ipc.run_command(&format!("workspace \"{}\"", WS2)).expect("focus WS2");
     std::thread::sleep(Duration::from_millis(150));
 

@@ -1,12 +1,11 @@
 //! Minimal Wayland window for integration testing.
 //!
-//! Opens a single window with a configurable `app_id`, then blocks until
-//! SIGTERM or SIGINT. Sway registers the window immediately and removes it
-//! when the process exits.
+//! Opens a 200x100 colored window with a configurable `app_id`, then blocks
+//! until SIGTERM or SIGINT. Sway registers the window immediately and removes
+//! it when the process exits.
 //!
 //! Usage: sway-dummy-window <app_id>
 
-use std::os::fd::{AsFd, FromRawFd, OwnedFd};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -16,12 +15,13 @@ use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
 use smithay_client_toolkit::delegate_compositor;
 use smithay_client_toolkit::delegate_output;
 use smithay_client_toolkit::delegate_registry;
+use smithay_client_toolkit::delegate_shm;
 use smithay_client_toolkit::delegate_xdg_shell;
 use smithay_client_toolkit::delegate_xdg_window;
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::client::globals::registry_queue_init;
-use smithay_client_toolkit::reexports::client::protocol::{wl_buffer, wl_output, wl_shm, wl_shm_pool, wl_surface};
-use smithay_client_toolkit::reexports::client::{Connection, Dispatch, Proxy, QueueHandle};
+use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_shm, wl_surface};
+use smithay_client_toolkit::reexports::client::{Connection, QueueHandle};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
 use smithay_client_toolkit::registry_handlers;
 use smithay_client_toolkit::shell::xdg::window::{
@@ -29,8 +29,12 @@ use smithay_client_toolkit::shell::xdg::window::{
 };
 use smithay_client_toolkit::shell::xdg::XdgShell;
 use smithay_client_toolkit::shell::WaylandSurface;
+use smithay_client_toolkit::shm::{Shm, ShmHandler};
+use smithay_client_toolkit::shm::slot::{Buffer, SlotPool};
 
-#[allow(dead_code)]
+const WIDTH: u32 = 200;
+const HEIGHT: u32 = 100;
+
 struct DummyWindow {
     registry_state: RegistryState,
     output_state: OutputState,
@@ -38,44 +42,17 @@ struct DummyWindow {
     xdg_shell: XdgShell,
     window: Option<Window>,
     running: Arc<AtomicBool>,
-    configured: bool,
-    wl_shm: wl_shm::WlShm,
+    first_configure: bool,
+    shm: Shm,
+    pool: SlotPool,
+    buffer: Option<Buffer>,
 }
 
-impl Dispatch<wl_shm::WlShm, ()> for DummyWindow {
-    fn event(
-        _: &mut Self,
-        _: &wl_shm::WlShm,
-        _: wl_shm::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {}
+impl ShmHandler for DummyWindow {
+    fn shm_state(&mut self) -> &mut Shm {
+        &mut self.shm
+    }
 }
-
-impl Dispatch<wl_shm_pool::WlShmPool, ()> for DummyWindow {
-    fn event(
-        _: &mut Self,
-        _: &wl_shm_pool::WlShmPool,
-        _: <wl_shm_pool::WlShmPool as Proxy>::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {}
-}
-
-impl Dispatch<wl_buffer::WlBuffer, ()> for DummyWindow {
-    fn event(
-        _: &mut Self,
-        _: &wl_buffer::WlBuffer,
-        _: <wl_buffer::WlBuffer as Proxy>::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {}
-}
-
-// --- OutputHandler ---
 
 impl OutputHandler for DummyWindow {
     fn output_state(&mut self) -> &mut OutputState { &mut self.output_state }
@@ -85,8 +62,6 @@ impl OutputHandler for DummyWindow {
 }
 
 delegate_output!(DummyWindow);
-
-// --- CompositorHandler ---
 
 impl CompositorHandler for DummyWindow {
     fn scale_factor_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: i32) {}
@@ -98,8 +73,6 @@ impl CompositorHandler for DummyWindow {
 
 delegate_compositor!(DummyWindow);
 
-// --- WindowHandler ---
-
 impl WindowHandler for DummyWindow {
     fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &Window) {
         self.running.store(false, Ordering::SeqCst);
@@ -107,30 +80,23 @@ impl WindowHandler for DummyWindow {
 
     fn configure(
         &mut self,
-        _: &Connection,
+        conn: &Connection,
         qh: &QueueHandle<Self>,
         _: &Window,
         _: WindowConfigure,
         _: u32,
     ) {
-        if !self.configured {
-            self.configured = true;
-            if let Some(window) = &self.window {
-                let surface = window.wl_surface();
-                let fd = create_memfd();
-                let pool = self.wl_shm.create_pool(fd.as_fd(), 4, qh, ());
-                let buffer = pool.create_buffer(0, 1, 1, 4, wl_shm::Format::Argb8888, qh, ());
-                surface.attach(Some(&buffer), 0, 0);
-                surface.commit();
-            }
+        self.buffer = None;
+        if self.first_configure {
+            self.first_configure = false;
+            self.draw(conn, qh);
         }
     }
 }
 
 delegate_xdg_shell!(DummyWindow);
 delegate_xdg_window!(DummyWindow);
-
-// --- Registry ---
+delegate_shm!(DummyWindow);
 
 impl ProvidesRegistryState for DummyWindow {
     fn registry(&mut self) -> &mut RegistryState { &mut self.registry_state }
@@ -139,18 +105,44 @@ impl ProvidesRegistryState for DummyWindow {
 
 delegate_registry!(DummyWindow);
 
-fn create_memfd() -> OwnedFd {
-    use std::ffi::CStr;
-    let name = CStr::from_bytes_with_nul(b"sway-dummy-window\0").unwrap();
-    let fd = unsafe {
-        libc::syscall(libc::SYS_memfd_create, name.as_ptr(), libc::MFD_CLOEXEC) as i32
-    };
-    if fd < 0 {
-        panic!("memfd_create failed: {}", std::io::Error::last_os_error());
-    }
-    unsafe {
-        libc::ftruncate(fd, 4);
-        FromRawFd::from_raw_fd(fd)
+impl DummyWindow {
+    fn draw(&mut self, _conn: &Connection, qh: &QueueHandle<Self>) {
+        let width = WIDTH;
+        let height = HEIGHT;
+        let stride = width as i32 * 4;
+
+        let buffer = self.buffer.get_or_insert_with(|| {
+            self.pool
+                .create_buffer(width as i32, height as i32, stride, wl_shm::Format::Argb8888)
+                .expect("create buffer")
+                .0
+        });
+
+        let canvas = match self.pool.canvas(buffer) {
+            Some(canvas) => canvas,
+            None => {
+                let (second_buffer, canvas) = self
+                    .pool
+                    .create_buffer(width as i32, height as i32, stride, wl_shm::Format::Argb8888)
+                    .expect("create buffer");
+                *buffer = second_buffer;
+                canvas
+            }
+        };
+
+        canvas.chunks_exact_mut(4).for_each(|chunk| {
+            let color: u32 = 0xFF80_4040;
+            let array: &mut [u8; 4] = chunk.try_into().unwrap();
+            *array = color.to_le_bytes();
+        });
+
+        if let Some(window) = &self.window {
+            let surface = window.wl_surface();
+            surface.damage_buffer(0, 0, width as i32, height as i32);
+            surface.frame(qh, surface.clone());
+            buffer.attach_to(surface).expect("buffer attach");
+            window.commit();
+        }
     }
 }
 
@@ -190,13 +182,16 @@ fn main() {
     let compositor_state = CompositorState::bind(&globals, &qh).expect("wl_compositor not available");
     let output_state = OutputState::new(&globals, &qh);
     let xdg_shell = XdgShell::bind(&globals, &qh).expect("xdg_wm_base not available");
-    let wl_shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).expect("wl_shm not available");
+    let shm = Shm::bind(&globals, &qh).expect("wl_shm not available");
+
+    let pool = SlotPool::new(WIDTH as usize * HEIGHT as usize * 4, &shm)
+        .expect("Failed to create slot pool");
 
     let surface = compositor_state.create_surface(&qh);
     let window = xdg_shell.create_window(surface, WindowDecorations::ServerDefault, &qh);
     window.set_app_id(app_id);
     window.set_title("sway-dummy-window");
-    window.set_min_size(Some((1, 1)));
+    window.set_min_size(Some((WIDTH, HEIGHT)));
     window.commit();
 
     let mut state = DummyWindow {
@@ -206,8 +201,10 @@ fn main() {
         xdg_shell,
         window: Some(window),
         running: running.clone(),
-        configured: false,
-        wl_shm,
+        first_configure: true,
+        shm,
+        pool,
+        buffer: None,
     };
 
     let mut event_loop: EventLoop<DummyWindow> = EventLoop::try_new().expect("Failed to create event loop");
