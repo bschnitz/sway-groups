@@ -1,4 +1,4 @@
-use sway_groups_tests::common::{TestFixture, get_focused_workspace};
+use sway_groups_tests::common::{TestFixture, get_focused_workspace, swayg_output};
 
 const TEST_GROUP: &str = "zz_test_group_select";
 
@@ -81,10 +81,7 @@ async fn test_01_group_select() {
         "group was created"
     );
 
-    let active = db_query(
-        &fixture.db_path,
-        &format!("SELECT active_group FROM outputs WHERE name = '{}'", fixture.orig_output),
-    );
+    let active = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active, TEST_GROUP, "active group changed to test group");
 
     // --- Test: switch back to original group (auto-delete) ---
@@ -106,4 +103,12 @@ async fn test_01_group_select() {
 
     // --- Post-condition: no test data ---
     assert_eq!(db_count(&fixture.db_path, "groups", "name", TEST_GROUP), 0);
+    let wsgrp_gone = db_query(
+        &fixture.db_path,
+        &format!(
+            "SELECT count(*) FROM workspace_groups wg JOIN groups g ON g.id = wg.group_id WHERE g.name = '{}'",
+            TEST_GROUP
+        ),
+    );
+    assert_eq!(wsgrp_gone, "0", "no test workspace_groups remain");
 }
