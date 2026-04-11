@@ -9,23 +9,12 @@ publish = false
 name = "sway_groups_tests"
 path = "src/lib.rs"
 
-[[test]]
-name = "test01_group_select"
-path = "tests/test01_group_select.rs"
-harness = true
-
 [dependencies]
-sway-groups-core = { path = "../sway-groups-core" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
-sea-orm = { workspace = true }
 serde_json = { workspace = true }
+dirs = "5"
+assert_cmd = "2.2"
 
 [dev-dependencies]
-tokio = { workspace = true }
-anyhow = { workspace = true }
-sway-groups-core = { path = "../sway-groups-core" }
-sea-orm = { workspace = true }
-serde_json = { workspace = true }
-chrono.workspace = true
 sway-groups-dummy-window = { path = "../sway-groups-dummy-window" }
