@@ -1,0 +1,16 @@
+[package]
+name = "sway-groups-dummy-window"
+version.workspace = true
+edition.workspace = true
+description = "Minimal Wayland window for integration testing"
+
+[[bin]]
+name = "sway-dummy-window"
+path = "src/main.rs"
+
+[dependencies]
+smithay-client-toolkit = { workspace = true }
+calloop = { workspace = true }
+calloop-wayland-source = { workspace = true }
+wayland-client = { workspace = true }
+libc = "0.2"

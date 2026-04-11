@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["sway-groups-core", "sway-groups-cli"]
+members = [
+    "sway-groups-core",
+    "sway-groups-cli",
+    "sway-groups-dummy-window",
+    "sway-groups-tests",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -46,3 +51,11 @@ uuid = { version = "1", features = ["v4"] }
 
 # directories
 directories = "5"
+
+# Wayland (for dummy window binary)
+smithay-client-toolkit = { version = "0.20", default-features = false, features = [
+    "calloop",
+] }
+calloop = "0.14"
+calloop-wayland-source = "0.4"
+wayland-client = "0.31"
