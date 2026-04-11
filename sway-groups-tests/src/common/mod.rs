@@ -376,3 +376,185 @@ pub async fn assert_no_test_data(db: &DatabaseManager) {
         test_ws.iter().map(|w| &w.name).collect::<Vec<_>>()
     );
 }
+
+// ---------------------------------------------------------------------------
+// Additional assertion helpers
+// ---------------------------------------------------------------------------
+
+/// Assert that a workspace is NOT a member of the given group.
+pub async fn assert_workspace_not_in_group(db: &DatabaseManager, workspace: &str, group: &str) {
+    let ws = WorkspaceEntity::find_by_name(workspace)
+        .one(db.conn())
+        .await
+        .unwrap_or(None);
+
+    if ws.is_none() {
+        // Workspace doesn't exist at all → trivially not in group
+        return;
+    }
+    let ws = ws.unwrap();
+
+    let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
+        .all(db.conn())
+        .await
+        .unwrap_or_default();
+
+    let in_group = memberships.iter().any(|m| {
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                sway_groups_core::db::entities::GroupEntity::find_by_id(m.group_id)
+                    .one(db.conn())
+                    .await
+                    .unwrap_or(None)
+                    .map(|g| g.name == group)
+                    .unwrap_or(false)
+            })
+        })
+    });
+
+    assert!(
+        !in_group,
+        "Expected workspace '{}' NOT to be in group '{}', but it is",
+        workspace, group
+    );
+}
+
+/// Assert that the workspace's `is_global` flag matches `expected`.
+pub async fn assert_workspace_global(db: &DatabaseManager, name: &str, expected: bool) {
+    let found = WorkspaceEntity::find_by_name(name)
+        .one(db.conn())
+        .await
+        .unwrap_or(None)
+        .unwrap_or_else(|| panic!("Workspace '{}' not found in DB", name));
+    assert_eq!(
+        found.is_global, expected,
+        "Workspace '{}' is_global: expected {}, got {}",
+        name, expected, found.is_global
+    );
+}
+
+/// Assert that the active group on the fixture's orig_output matches `expected`.
+pub async fn assert_active_group_orig(fixture: &SwayTestFixture, expected: &str) {
+    assert_active_group(fixture, &fixture.orig_output.clone(), expected).await;
+}
+
+/// Assert that a workspace exists exactly once in the Sway tree.
+pub fn assert_window_in_tree(fixture: &SwayTestFixture, app_id: &str) {
+    assert!(
+        window_exists_in_tree(&fixture.ipc, app_id),
+        "Expected window '{}' to exist in Sway tree, but it does not",
+        app_id
+    );
+}
+
+/// Assert that a workspace does NOT exist in the Sway tree.
+pub fn assert_window_not_in_tree(fixture: &SwayTestFixture, app_id: &str) {
+    assert!(
+        !window_exists_in_tree(&fixture.ipc, app_id),
+        "Expected window '{}' NOT to exist in Sway tree, but it does",
+        app_id
+    );
+}
+
+/// Assert that a workspace with the given name exists in Sway.
+pub fn assert_sway_workspace_exists(fixture: &SwayTestFixture, name: &str) {
+    let exists = fixture
+        .ipc
+        .get_workspaces()
+        .map(|ws| ws.iter().any(|w| w.name == name))
+        .unwrap_or(false);
+    assert!(
+        exists,
+        "Expected workspace '{}' to exist in Sway, but it does not",
+        name
+    );
+}
+
+/// Assert that a workspace does NOT exist in Sway.
+pub fn assert_sway_workspace_not_exists(fixture: &SwayTestFixture, name: &str) {
+    let exists = fixture
+        .ipc
+        .get_workspaces()
+        .map(|ws| ws.iter().any(|w| w.name == name))
+        .unwrap_or(false);
+    assert!(
+        !exists,
+        "Expected workspace '{}' NOT to exist in Sway, but it does",
+        name
+    );
+}
+
+/// Assert the focused workspace is on a specific Sway workspace name (container check).
+/// Verifies that a window with app_id `app_id` is on workspace `workspace_name`.
+pub fn assert_window_on_workspace(fixture: &SwayTestFixture, app_id: &str, workspace_name: &str) {
+    let Ok(bytes) = fixture.ipc.get_tree() else {
+        panic!("Failed to get Sway tree");
+    };
+    let Ok(tree) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        panic!("Failed to parse Sway tree");
+    };
+
+    let ws = find_workspace_of_app_id(&tree, app_id);
+    assert_eq!(
+        ws.as_deref(),
+        Some(workspace_name),
+        "Expected window '{}' to be on workspace '{}', but got {:?}",
+        app_id, workspace_name, ws
+    );
+}
+
+fn find_workspace_of_app_id(node: &serde_json::Value, app_id: &str) -> Option<String> {
+    find_workspace_of_app_id_inner(node, app_id, None)
+}
+
+fn find_workspace_of_app_id_inner(
+    node: &serde_json::Value,
+    app_id: &str,
+    current_ws: Option<&str>,
+) -> Option<String> {
+    let node_type = node.get("type").and_then(|v: &serde_json::Value| v.as_str());
+    let node_name = node.get("name").and_then(|v: &serde_json::Value| v.as_str());
+
+    let ws = if node_type == Some("workspace") {
+        node_name
+    } else {
+        current_ws
+    };
+
+    if node.get("app_id").and_then(|v: &serde_json::Value| v.as_str()) == Some(app_id) {
+        return ws.map(|s| s.to_string());
+    }
+
+    for key in &["nodes", "floating_nodes"] {
+        if let Some(children) = node.get(key).and_then(|v: &serde_json::Value| v.as_array()) {
+            for child in children {
+                if let Some(result) = find_workspace_of_app_id_inner(child, app_id, ws) {
+                    return Some(result);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Helper: switch Sway to a group and back, triggering auto-delete logic.
+/// Returns the group that was switched to before returning.
+pub async fn switch_group_and_back(
+    fixture: &SwayTestFixture,
+    to_group: &str,
+    back_group: &str,
+) -> anyhow::Result<()> {
+    fixture
+        .group_service
+        .set_active_group(&fixture.orig_output, to_group)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    fixture
+        .group_service
+        .set_active_group(&fixture.orig_output, back_group)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    Ok(())
+}
