@@ -27,3 +27,5 @@ anyhow = { workspace = true }
 sway-groups-core = { path = "../sway-groups-core" }
 sea-orm = { workspace = true }
 serde_json = { workspace = true }
+chrono.workspace = true
+sway-groups-dummy-window = { path = "../sway-groups-dummy-window" }

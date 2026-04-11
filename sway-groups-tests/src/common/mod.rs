@@ -220,6 +220,24 @@ fn dummy_window_binary() -> PathBuf {
     if let Ok(path) = std::env::var("CARGO_BIN_EXE_sway-dummy-window") {
         return PathBuf::from(path);
     }
+
+    let target_dir = std::env::var("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            manifest_dir
+                .parent()
+                .unwrap_or(&manifest_dir)
+                .join("target")
+        });
+
+    let candidate = target_dir.join("debug").join("sway-dummy-window");
+    if candidate.exists() {
+        return candidate;
+    }
+
     if let Ok(mut exe) = std::env::current_exe() {
         exe.pop();
         let candidate = exe.join("sway-dummy-window");

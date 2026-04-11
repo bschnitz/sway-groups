@@ -2748,9 +2748,11 @@ name = "sway-groups-tests"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "sea-orm",
  "serde_json",
  "sway-groups-core",
+ "sway-groups-dummy-window",
  "tokio",
 ]
 
