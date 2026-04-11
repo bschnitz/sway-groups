@@ -12,6 +12,10 @@ pub struct Cli {
     #[arg(short, long)]
     pub verbose: bool,
 
+    /// Path to the database file. Overrides the default location.
+    #[arg(short, long, env = "SWAYG_DB")]
+    pub db: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Command,
 }

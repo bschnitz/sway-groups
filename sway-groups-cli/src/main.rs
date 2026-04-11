@@ -34,7 +34,11 @@ async fn main() -> AnyResult<()> {
 
     let level = if cli.verbose { "debug" } else { "info" };
 
-    let file_appender = RollingFileAppender::new(Rotation::DAILY, get_data_dir(), "swayg");
+    let db_path = cli.db.clone().unwrap_or_else(get_db_path);
+    let data_dir = db_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(get_data_dir);
+    std::fs::create_dir_all(&data_dir).ok();
+
+    let file_appender = RollingFileAppender::new(Rotation::DAILY, data_dir, "swayg");
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .with(tracing_subscriber::fmt::layer().with_writer(file_appender))
@@ -43,7 +47,6 @@ async fn main() -> AnyResult<()> {
             .add_directive(format!("sway_groups_core={}", level).parse()?))
         .init();
 
-    let db_path = get_db_path();
     info!("Using database at: {}", db_path.display());
 
     let db: DatabaseManager = DatabaseManager::new(db_path.clone()).await?;
