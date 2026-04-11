@@ -12,7 +12,7 @@ const WS1: &str = "zz_test_ws1_wg";
 async fn test_workspace_groups_listing() {
     let fixture = SwayTestFixture::new().await.expect("fixture setup");
     let output = fixture.orig_output.clone();
-    let orig_ws = fixture.orig_workspace.clone();
+    let _orig_ws = fixture.orig_workspace.clone();
 
     // --- Setup: WS1 in GROUP_A + GROUP_B, NOT in GROUP_C ---
     fixture.group_service.get_or_create_group(GROUP_A).await.unwrap();

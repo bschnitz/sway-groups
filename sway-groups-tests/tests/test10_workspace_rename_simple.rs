@@ -11,7 +11,7 @@ const WS_DST: &str = "zz_test_dst";
 async fn test_workspace_rename_simple() {
     let fixture = SwayTestFixture::new().await.expect("fixture setup");
     let output = fixture.orig_output.clone();
-    let orig_ws = fixture.orig_workspace.clone();
+    let _orig_ws = fixture.orig_workspace.clone();
 
     // --- Setup ---
     fixture.group_service.get_or_create_group(GROUP).await.unwrap();

@@ -11,7 +11,7 @@ use std::time::Duration;
 use sway_groups_tests::common::{
     assert_active_group_orig, assert_focused_workspace, assert_group_exists,
     assert_group_not_exists, assert_no_test_data, assert_workspace_exists,
-    assert_workspace_in_group, assert_window_not_in_tree, DummyWindowHandle, SwayTestFixture,
+    assert_workspace_in_group, DummyWindowHandle, SwayTestFixture,
 };
 
 const TEST_GROUP: &str = "zz_test_ws_containers";

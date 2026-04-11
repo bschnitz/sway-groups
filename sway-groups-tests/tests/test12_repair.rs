@@ -17,7 +17,7 @@ const WS_STALE: &str = "zz_test_stale_rep";
 async fn test_repair() {
     let fixture = SwayTestFixture::new().await.expect("fixture setup");
     let output = fixture.orig_output.clone();
-    let orig_ws = fixture.orig_workspace.clone();
+    let _orig_ws = fixture.orig_workspace.clone();
 
     // --- Setup: GROUP + WS1 in Sway, plus a stale DB-only workspace ---
     fixture.group_service.get_or_create_group(GROUP).await.unwrap();
@@ -74,7 +74,7 @@ async fn test_repair() {
     assert_group_exists(&fixture.db, GROUP_EMPTY).await;
 
     // --- Repair ---
-    let (removed, added, pruned) = fixture.workspace_service
+    let (_removed, _added, _pruned) = fixture.workspace_service
         .repair(&fixture.group_service)
         .await
         .expect("repair");

@@ -3,10 +3,9 @@
 use std::time::Duration;
 
 use sway_groups_tests::common::{
-    assert_active_group_orig, assert_focused_workspace, assert_group_exists,
-    assert_group_not_exists, assert_no_test_data, assert_workspace_exists,
+    assert_focused_workspace, assert_group_not_exists, assert_no_test_data,
     assert_workspace_global, assert_workspace_in_group, assert_workspace_not_in_group,
-    switch_group_and_back, DummyWindowHandle, SwayTestFixture,
+    DummyWindowHandle, SwayTestFixture,
 };
 
 const TEST_GROUP: &str = "zz_test_global_ws";

@@ -30,6 +30,7 @@ use smithay_client_toolkit::shell::xdg::window::{
 use smithay_client_toolkit::shell::xdg::XdgShell;
 use smithay_client_toolkit::shell::WaylandSurface;
 
+#[allow(dead_code)]
 struct DummyWindow {
     registry_state: RegistryState,
     output_state: OutputState,

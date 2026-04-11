@@ -1,6 +1,5 @@
 //! Test: group rename — updates DB, output.active_group, group_state. Error cases.
 
-use sea_orm::EntityTrait;
 use sway_groups_core::db::entities::{GroupEntity, GroupStateEntity, OutputEntity};
 use sway_groups_tests::common::*;
 
