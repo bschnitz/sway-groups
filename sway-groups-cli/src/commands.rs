@@ -125,6 +125,8 @@ enum WorkspaceAction {
         visible: bool,
         #[arg(long)]
         plain: bool,
+        #[arg(long)]
+        groups: bool,
     },
     Add {
         workspace: String,
@@ -185,9 +187,6 @@ enum NavAction {
         #[arg(short, long)]
         output: Option<String>,
     },
-    MoveTo {
-        workspace: String,
-    },
     Back,
 }
 
@@ -213,7 +212,7 @@ pub async fn run(
         Command::Group { action } => run_group(action, group_service, waybar_sync, ipc_client).await?,
         Command::Workspace { action } => run_workspace(action, workspace_service, group_service, waybar_sync, ipc_client).await?,
         Command::Nav { action } => run_nav(action, nav_service, waybar_sync, ipc_client).await?,
-        Command::Container { action } => run_container(action, workspace_service, group_service, nav_service, waybar_sync, ipc_client).await?,
+        Command::Container { action } => run_container(action, nav_service, waybar_sync).await?,
         Command::Sync { all, workspaces, groups, outputs } => {
             run_sync(all, workspaces, groups, outputs, workspace_service, waybar_sync).await?;
         }
@@ -360,7 +359,7 @@ async fn run_workspace(
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
-        WorkspaceAction::List { output, group, visible, plain } => {
+        WorkspaceAction::List { output, group, visible, plain, groups } => {
             if visible {
                 let output_name = output.as_deref()
                     .map(|s| s.to_string())
@@ -402,7 +401,16 @@ async fn run_workspace(
                     }
                     for ws in &workspaces {
                         if plain {
-                            println!("{}", ws.name);
+                            if groups {
+                                let groups_str = ws.groups.join(",");
+                                if groups_str.is_empty() {
+                                    println!("{}│", ws.name);
+                                } else {
+                                    println!("{}│{}", ws.name, groups_str);
+                                }
+                            } else {
+                                println!("{}", ws.name);
+                            }
                         } else {
                             let status = if ws.is_global {
                                 "(global)"
@@ -534,11 +542,6 @@ async fn run_nav(
             waybar_sync.update_waybar().await?;
             println!("Navigated to \"{}\"", workspace);
         }
-        NavAction::MoveTo { workspace } => {
-            nav_service.move_to_workspace(&workspace).await?;
-            waybar_sync.update_waybar().await?;
-            println!("Moved container to \"{}\"", workspace);
-        }
         NavAction::Back => {
             if let Some(target) = nav_service.go_back().await? {
                 waybar_sync.update_waybar().await?;
@@ -553,25 +556,15 @@ async fn run_nav(
 
 async fn run_container(
     action: ContainerAction,
-    workspace_service: &WorkspaceService,
-    group_service: &GroupService,
     nav_service: &NavigationService,
     waybar_sync: &WaybarSyncService,
-    ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
         ContainerAction::Move { workspace, switch_to_workspace } => {
-            let output = ipc_client.get_primary_output().ok();
-            let active_group = match output {
-                Some(ref out) => group_service.get_active_group(out).await.unwrap_or_else(|_| "0".to_string()),
-                None => "0".to_string(),
-            };
-
             nav_service.move_to_workspace(&workspace).await?;
-            workspace_service.add_to_group(&workspace, &active_group).await.ok();
 
             if switch_to_workspace {
-                nav_service.go_workspace(&workspace).await?;
+                nav_service.focus_workspace(&workspace).await?;
             }
 
             waybar_sync.update_waybar().await?;

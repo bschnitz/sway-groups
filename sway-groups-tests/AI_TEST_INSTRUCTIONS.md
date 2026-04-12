@@ -147,11 +147,10 @@ These commands are used in tests (check latest syntax in CLI):
 - `swayg workspace global <name>` — set global
 - `swayg workspace unglobal <name>` — unset global
 - `swayg workspace groups <name>` — show groups
-- `swayg container move <workspace> [--switch-to-workspace]` — move focused container
+- `swayg container move <workspace> [--switch-to-workspace]` — move focused container; new workspaces auto-added to active group
 - `swayg nav next [--output <output>] [--wrap]` — next workspace in group
 - `swayg nav prev [--output <output>] [--wrap]` — prev workspace in group
 - `swayg nav go <workspace>` — switch to workspace
-- `swayg nav move-to <workspace>` — move focused container + add to group
 - `swayg nav back` — go to last focused workspace
 - `swayg repair` — full DB↔sway reconciliation
 - `swayg sync [--workspaces] [--groups] [--outputs]` — sync from sway

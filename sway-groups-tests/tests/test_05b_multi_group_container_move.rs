@@ -249,6 +249,7 @@ async fn test_05b_multi_group_container_move() {
         WS1
     );
 
+    // container move does NOT change group assignments for existing workspaces
     assert_eq!(
         workspace_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
@@ -258,8 +259,8 @@ async fn test_05b_multi_group_container_move() {
 
     assert_eq!(
         workspace_in_group_count(&fixture.db_path, WS1, GROUP_B),
-        1,
-        "{} is in group '{}'",
+        0,
+        "{} NOT added to group '{}' by container move",
         WS1, GROUP_B
     );
 
@@ -270,7 +271,8 @@ async fn test_05b_multi_group_container_move() {
         WS1
     );
 
-    // --- Verify visibility in Group B ---
+    // container move does NOT change group visibility — WS1 is still in GROUP_A,
+    // so it does NOT appear in GROUP_B's visible workspace list
     let visible = swayg_output(
         &fixture.db_path,
         &[
@@ -283,12 +285,12 @@ async fn test_05b_multi_group_container_move() {
         ],
     );
     assert!(
-        visible.lines().any(|l| l.contains(WS1)),
-        "{} is visible in Group B",
+        !visible.lines().any(|l| l.contains(WS1)),
+        "{} NOT visible in Group B (belongs to Group A)",
         WS1
     );
 
-    // --- Switch back to original group ---
+    // --- Switch back to original group (GROUP_B is empty → auto-deleted) ---
     fixture
         .swayg(&[
             "group",
@@ -304,6 +306,16 @@ async fn test_05b_multi_group_container_move() {
         orig_ws,
         "focused on original workspace '{}'",
         orig_ws
+    );
+
+    assert_eq!(
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)
+        ),
+        0,
+        "{} auto-deleted (empty)",
+        GROUP_B
     );
 
     // --- Kill dummy windows ---
@@ -322,39 +334,7 @@ async fn test_05b_multi_group_container_move() {
         WS2
     );
 
-    // --- Auto-delete Group B ---
-    fixture
-        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
-        .success();
-
-    fixture
-        .swayg(&[
-            "group",
-            "select",
-            &orig_group,
-            "--output",
-            &fixture.orig_output,
-        ])
-        .success();
-
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        orig_ws,
-        "focused on '{}' after Group B cleanup",
-        orig_ws
-    );
-
-    assert_eq!(
-        db_count(
-            &fixture.db_path,
-            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)
-        ),
-        0,
-        "{} auto-deleted",
-        GROUP_B
-    );
-
-    // --- Auto-delete Group A ---
+    // --- Auto-delete Group A (empty after window kill) ---
     fixture
         .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();

@@ -159,9 +159,9 @@ async fn test_19_nav_move_to() {
     let active_group = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active_group, GROUP, "active group = '{}'", GROUP);
 
-    // --- 4. Test: nav move-to ---
+    // --- 4. Test: container move --switch-to-workspace ---
     fixture
-        .swayg(&["nav", "move-to", WS_TARGET])
+        .swayg(&["container", "move", WS_TARGET, "--switch-to-workspace"])
         .success();
 
     assert_eq!(
