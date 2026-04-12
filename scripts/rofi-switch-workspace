@@ -1,7 +1,7 @@
 #!/bin/sh
 # Switch to a workspace via rofi.
 # Shows all workspaces with their group (one line per workspace+group).
-# Global workspaces appear once per group they belong to.
+# Typing a new name creates the workspace in the current group.
 # Output is auto-resolved via group state when switching.
 
 current_output=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
@@ -19,5 +19,5 @@ if [ -z "$choice" ]; then
     exit 0
 fi
 
-workspace=$(echo "$choice" | cut -d'│' -f1)
+workspace="${choice%%│*}"
 $HOME/.cargo/bin/swayg nav go "$workspace"

@@ -1,15 +1,10 @@
 #!/bin/sh
 # Move the focused container to a workspace (chosen via rofi).
 # Shows all workspaces with their group memberships.
-# Allows entering a new workspace name (created in current group/output).
+# Typing a new name creates the workspace in the current group.
 
-current_ws=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
-import json, sys
-for w in json.load(sys.stdin):
-    if w['focused']:
-        print(w['name'])
-        break
-")
+# Absoluten Pfad zu swayg festlegen
+SWAYG="$HOME/.cargo/bin/swayg"
 
 current_output=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
 import json, sys
@@ -19,28 +14,14 @@ for w in json.load(sys.stdin):
         break
 ")
 
-current_group=$($HOME/.cargo/bin/swayg group active "$current_output" 2>/dev/null | tail -1)
+current_group=$($SWAYG group active "$current_output" 2>/dev/null | tail -1)
 
-# Get all workspaces with groups
-workspaces=$(swayg workspace list --plain --groups 2>/dev/null)
+workspaces=$($SWAYG workspace list --plain --groups 2>/dev/null)
 
-# Add option to create new workspace
-choice=$(printf '%s\n' "$workspaces" "Create new workspace..." | rofi -dmenu -p "Move to workspace:")
+choice=$(printf '%s\n' "$workspaces" | rofi -dmenu -p "Move to workspace:")
 if [ -z "$choice" ]; then
     exit 0
 fi
 
-# Check if user wants to create a new workspace
-if [ "$choice" = "Create new workspace..." ]; then
-    new_ws=$(echo "" | rofi -dmenu -p "New workspace name:")
-    if [ -z "$new_ws" ]; then
-        exit 0
-    fi
-    # Create workspace in current group
-    swayg workspace add "$new_ws" --group "$current_group" --output "$current_output" 2>/dev/null
-    swayg container move "$new_ws" --switch-to-workspace
-else
-    # Extract workspace name (before │)
-    target_ws=$(echo "$choice" | cut -d'│' -f1)
-    swayg container move "$target_ws" --switch-to-workspace
-fi
+target_ws="${choice%%│*}"
+$SWAYG container move "$target_ws" --switch-to-workspace

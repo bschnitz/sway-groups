@@ -1,21 +1,11 @@
 #!/bin/sh
 # Switch active group via rofi.
 # Output is auto-resolved from group state.
-# Allows creating a new group by entering a new name.
+# Entering a new name creates the group.
 
-groups=$($HOME/.cargo/bin/swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}')
-
-choice=$(printf '%s\n' "$groups" "Create new group..." | rofi -dmenu -p "Select group:")
-if [ -z "$choice" ]; then
+group=$($HOME/.cargo/bin/swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | rofi -dmenu -p "Select group:")
+if [ -z "$group" ]; then
     exit 0
 fi
 
-if [ "$choice" = "Create new group..." ]; then
-    new_group=$(echo "" | rofi -dmenu -p "New group name:")
-    if [ -z "$new_group" ]; then
-        exit 0
-    fi
-    $HOME/.cargo/bin/swayg group select "$new_group" --create
-else
-    $HOME/.cargo/bin/swayg group select "$choice" --create
-fi
+$HOME/.cargo/bin/swayg group select "$group" --create
