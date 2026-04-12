@@ -90,6 +90,61 @@ impl NavigationService {
         Ok(all)
     }
 
+    pub async fn get_visible_workspaces_all_outputs(&self, output_name: &str) -> Result<Vec<String>> {
+        let active_group = OutputEntity::find_by_name(output_name)
+            .one(self.db.conn())
+            .await?
+            .map(|o| o.active_group)
+            .unwrap_or_else(|| "0".to_string());
+
+        info!("get_visible_workspaces_all_outputs: base_output={}, active_group={}", output_name, active_group);
+
+        let sway_workspaces = self.ipc_client.get_workspaces()?;
+        let mut visible = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+
+        for sway_ws in &sway_workspaces {
+            if seen.contains(&sway_ws.name) {
+                continue;
+            }
+
+            if let Some(workspace) = WorkspaceEntity::find_by_name(&sway_ws.name)
+                .one(self.db.conn())
+                .await?
+            {
+                if workspace.is_global {
+                    visible.push(sway_ws.name.clone());
+                    seen.insert(sway_ws.name.clone());
+                    continue;
+                }
+
+                let memberships = WorkspaceGroupEntity::find_by_workspace(workspace.id)
+                    .all(self.db.conn())
+                    .await?;
+
+                let mut found = false;
+                for m in &memberships {
+                    if let Some(group) = GroupEntity::find_by_id(m.group_id)
+                        .one(self.db.conn())
+                        .await?
+                        && group.name == active_group {
+                        visible.push(sway_ws.name.clone());
+                        found = true;
+                        break;
+                    }
+                }
+
+                if !found && memberships.is_empty() && active_group == "0" {
+                    visible.push(sway_ws.name.clone());
+                    seen.insert(sway_ws.name.clone());
+                }
+            }
+        }
+
+        visible.sort();
+        Ok(visible)
+    }
+
     pub async fn next_workspace(&self, output: &str, wrap: bool) -> Result<Option<String>> {
         let visible = self.get_visible_workspaces(output).await?;
         let current = self.ipc_client.get_focused_workspace()?;
@@ -100,6 +155,20 @@ impl NavigationService {
             self.navigate_to_workspace(target).await?;
         } else {
             info!("nav next: no next workspace found");
+        }
+        Ok(next)
+    }
+
+    pub async fn next_workspace_all_outputs(&self, output: &str, wrap: bool) -> Result<Option<String>> {
+        let visible = self.get_visible_workspaces_all_outputs(output).await?;
+        let current = self.ipc_client.get_focused_workspace()?;
+        info!("nav next --all-outputs: base_output={}, visible={:?}, current={}, wrap={}", output, visible, current.name, wrap);
+
+        let next = find_next(&visible, &current.name, wrap);
+        if let Some(ref target) = next {
+            self.navigate_to_workspace(target).await?;
+        } else {
+            info!("nav next --all-outputs: no next workspace found");
         }
         Ok(next)
     }
@@ -128,6 +197,20 @@ impl NavigationService {
             self.navigate_to_workspace(target).await?;
         } else {
             info!("nav prev: no prev workspace found");
+        }
+        Ok(prev)
+    }
+
+    pub async fn prev_workspace_all_outputs(&self, output: &str, wrap: bool) -> Result<Option<String>> {
+        let visible = self.get_visible_workspaces_all_outputs(output).await?;
+        let current = self.ipc_client.get_focused_workspace()?;
+        info!("nav prev --all-outputs: base_output={}, visible={:?}, current={}, wrap={}", output, visible, current.name, wrap);
+
+        let prev = find_prev(&visible, &current.name, wrap);
+        if let Some(ref target) = prev {
+            self.navigate_to_workspace(target).await?;
+        } else {
+            info!("nav prev --all-outputs: no prev workspace found");
         }
         Ok(prev)
     }

@@ -134,8 +134,6 @@ enum WorkspaceAction {
         workspace: String,
         #[arg(short, long)]
         group: Option<String>,
-        #[arg(short, long)]
-        output: Option<String>,
     },
     Move {
         workspace: String,
@@ -151,13 +149,13 @@ enum WorkspaceAction {
         old_name: String,
         new_name: String,
     },
+    Groups {
+        workspace: String,
+    },
     Global {
         workspace: String,
     },
     Unglobal {
-        workspace: String,
-    },
-    Groups {
         workspace: String,
     },
 }
@@ -169,6 +167,8 @@ enum NavAction {
         output: Option<String>,
         #[arg(short, long)]
         wrap: bool,
+        #[arg(long)]
+        all_outputs: bool,
     },
     NextOnOutput {
         #[arg(short, long)]
@@ -179,6 +179,8 @@ enum NavAction {
         output: Option<String>,
         #[arg(short, long)]
         wrap: bool,
+        #[arg(long)]
+        all_outputs: bool,
     },
     PrevOnOutput {
         #[arg(short, long)]
@@ -443,13 +445,11 @@ async fn run_workspace(
                 }
             }
         }
-        WorkspaceAction::Add { workspace, group, output } => {
+        WorkspaceAction::Add { workspace, group } => {
             let target_group = match &group {
                 Some(g) => g.clone(),
                 None => {
-                    let output_name = output.as_deref()
-                        .map(|o| o.to_string())
-                        .or_else(|| ipc_client.get_primary_output().ok());
+                    let output_name = ipc_client.get_primary_output().ok();
                     match output_name {
                         Some(ref out) => group_service.get_active_group(out).await.unwrap_or_else(|_| "0".to_string()),
                         None => "0".to_string(),
@@ -523,9 +523,14 @@ async fn run_nav(
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
-        NavAction::Next { output, wrap } => {
+        NavAction::Next { output, wrap, all_outputs } => {
             let output = resolve_output(output.as_deref(), ipc_client)?;
-            if let Some(target) = nav_service.next_workspace(&output, wrap).await? {
+            if all_outputs {
+                if let Some(target) = nav_service.next_workspace_all_outputs(&output, wrap).await? {
+                    waybar_sync.update_waybar().await?;
+                    println!("Navigated to \"{}\"", target);
+                }
+            } else if let Some(target) = nav_service.next_workspace(&output, wrap).await? {
                 waybar_sync.update_waybar().await?;
                 println!("Navigated to \"{}\"", target);
             }
@@ -536,9 +541,14 @@ async fn run_nav(
                 println!("Navigated to \"{}\"", target);
             }
         }
-        NavAction::Prev { output, wrap } => {
+        NavAction::Prev { output, wrap, all_outputs } => {
             let output = resolve_output(output.as_deref(), ipc_client)?;
-            if let Some(target) = nav_service.prev_workspace(&output, wrap).await? {
+            if all_outputs {
+                if let Some(target) = nav_service.prev_workspace_all_outputs(&output, wrap).await? {
+                    waybar_sync.update_waybar().await?;
+                    println!("Navigated to \"{}\"", target);
+                }
+            } else if let Some(target) = nav_service.prev_workspace(&output, wrap).await? {
                 waybar_sync.update_waybar().await?;
                 println!("Navigated to \"{}\"", target);
             }
