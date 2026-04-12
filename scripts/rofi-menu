@@ -1,0 +1,30 @@
+#!/bin/sh
+# Rofi menu for swayg actions (replaces wlr-which-key on F10).
+
+SCRIPTS_DIR="$HOME/data/projects/sway-groups/scripts"
+
+choice=$(printf '%s\n' \
+    "Rename group" \
+    "Switch group" \
+    "Move workspace to group" \
+    "Move container to workspace" \
+    "Switch workspace" \
+    | rofi -dmenu -p "Action:")
+
+case "$choice" in
+    "Rename group")
+        exec "$SCRIPTS_DIR/rofi-group-rename"
+        ;;
+    "Switch group")
+        exec "$SCRIPTS_DIR/rofi-group-select"
+        ;;
+    "Move workspace to group")
+        exec "$SCRIPTS_DIR/rofi-workspace-move"
+        ;;
+    "Move container to workspace")
+        exec "$SCRIPTS_DIR/rofi-move-to-workspace"
+        ;;
+    "Switch workspace")
+        exec "$SCRIPTS_DIR/rofi-switch-workspace"
+        ;;
+esac
