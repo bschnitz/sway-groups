@@ -7,6 +7,24 @@ use std::path::Path;
 use super::types::*;
 use crate::error::{Error, Result};
 
+/// Read a complete IPC frame: header + payload.
+/// Shared by [`EventStream::read_event`] and [`SwayIpcClient`] message methods.
+fn read_ipc_frame(stream: &mut UnixStream) -> Result<(u32, Vec<u8>)> {
+    let mut header = [0u8; 14];
+    stream.read_exact(&mut header)?;
+
+    let ipc_header = IpcHeader::from_bytes(&header);
+
+    if &ipc_header.magic != b"i3-ipc" {
+        return Err(Error::SwayIpc("Invalid IPC magic".to_string()));
+    }
+
+    let mut payload = vec![0u8; ipc_header.payload_size as usize];
+    stream.read_exact(&mut payload)?;
+
+    Ok((ipc_header.message_type, payload))
+}
+
 /// Sway IPC client for communicating with sway.
 #[derive(Clone)]
 pub struct SwayIpcClient {
@@ -22,19 +40,7 @@ impl EventStream {
     /// Read the next event from the stream.
     /// Returns the event type and payload.
     pub fn read_event(&mut self) -> Result<(u32, Vec<u8>)> {
-        let mut header = [0u8; 14];
-        self.stream.read_exact(&mut header)?;
-
-        let ipc_header = IpcHeader::from_bytes(&header);
-
-        if &ipc_header.magic != b"i3-ipc" {
-            return Err(Error::SwayIpc("Invalid IPC magic".to_string()));
-        }
-
-        let mut payload = vec![0u8; ipc_header.payload_size as usize];
-        self.stream.read_exact(&mut payload)?;
-
-        Ok((ipc_header.message_type, payload))
+        read_ipc_frame(&mut self.stream)
     }
 }
 
@@ -195,21 +201,9 @@ impl SwayIpcClient {
             .ok_or_else(|| Error::SwayIpc("No outputs available".to_string()))
     }
 
-    /// Read a message from the stream.
+    /// Read a message payload from the stream.
     fn read_message(stream: &mut UnixStream) -> Result<Vec<u8>> {
-        let mut header = [0u8; 14];
-        stream.read_exact(&mut header)?;
-
-        let ipc_header = IpcHeader::from_bytes(&header);
-
-        if &ipc_header.magic != b"i3-ipc" {
-            return Err(Error::SwayIpc("Invalid IPC magic".to_string()));
-        }
-
-        let mut payload = vec![0u8; ipc_header.payload_size as usize];
-        stream.read_exact(&mut payload)?;
-
-        Ok(payload)
+        read_ipc_frame(stream).map(|(_, payload)| payload)
     }
 }
 
