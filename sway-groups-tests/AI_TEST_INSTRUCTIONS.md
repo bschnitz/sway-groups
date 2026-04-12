@@ -196,3 +196,21 @@ When writing or modifying Rust tests, they MUST match the corresponding shell te
     - `window_in_tree(app_id) -> bool`
     - `workspace_of_window(app_id) -> Option<String>`
     - `workspaces_for_output(output) -> Vec<String>`
+
+## Test Plan Format
+
+When presenting a test plan to the user, use this format. Every command or action is followed by its assertions indented below:
+
+```
+`<command or action>`
+  - assertion 1a
+  - assertion 1b
+`<command or action>`
+  - assertion 2a
+```
+
+Commands are written as CLI invocations (e.g., `swayg group select <GROUP>`) or code actions (e.g., `TestFixture::new()`). Assertions describe what is checked after the command succeeds. Each command block must restore focus to the original workspace/output before the test ends.
+
+Precondition checks (DB counts, sway state) are NOT separate commands — they are assertions indented under the last preceding command/action. Only actual commands or code actions (things that change state or execute something) appear at the top level.
+
+Every command that changes state must have **full assertions** on the expected state changes — both DB and sway. `success` alone is NOT enough. Always verify what changed: group created (DB count), active group (CLI), workspace moved (sway), etc.

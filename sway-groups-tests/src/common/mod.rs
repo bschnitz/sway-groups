@@ -197,6 +197,21 @@ pub fn get_primary_output() -> Result<String> {
         .to_string())
 }
 
+pub fn get_focused_output() -> Result<String> {
+    let workspaces = swaymsg_json(&["-t", "get_workspaces"])
+        .context("Failed to get workspaces from sway")?;
+    let arr = workspaces.as_array().context("workspaces not an array")?;
+    let focused = arr
+        .iter()
+        .find(|w| w.get("focused").and_then(|f| f.as_bool()) == Some(true))
+        .context("No focused workspace found")?;
+    Ok(focused
+        .get("output")
+        .and_then(|o| o.as_str())
+        .unwrap_or_default()
+        .to_string())
+}
+
 pub fn get_focused_workspace() -> Result<String> {
     let workspaces = swaymsg_json(&["-t", "get_workspaces"])
         .context("Failed to get workspaces from sway")?;
@@ -283,4 +298,46 @@ fn find_workspace_of_app_id_inner(
         }
     }
     None
+}
+
+pub fn create_virtual_output() -> Result<String> {
+    let before: Vec<String> = swaymsg_json(&["-t", "get_outputs"])
+        .context("Failed to get outputs from sway")?
+        .as_array()
+        .context("outputs not an array")?
+        .iter()
+        .filter_map(|o| o.get("name").and_then(|n| n.as_str()).map(String::from))
+        .collect();
+
+    let _ = Command::new("swaymsg")
+        .args(["create_output", "HEADLESS-1"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        let after: Vec<String> = swaymsg_json(&["-t", "get_outputs"])
+            .context("Failed to get outputs from sway")?
+            .as_array()
+            .context("outputs not an array")?
+            .iter()
+            .filter_map(|o| o.get("name").and_then(|n| n.as_str()).map(String::from))
+            .collect();
+        if let Some(new_name) = after.into_iter().find(|n| !before.contains(n)) {
+            return Ok(new_name);
+        }
+        if std::time::Instant::now() > deadline {
+            anyhow::bail!("Virtual output was not created");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+pub fn unplug_output(name: &str) {
+    let _ = Command::new("swaymsg")
+        .args(["output", name, "unplug"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }

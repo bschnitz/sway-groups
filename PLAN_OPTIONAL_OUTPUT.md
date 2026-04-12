@@ -25,11 +25,101 @@ Wenn `--output` nicht angegeben wird, muss der "richtige" Output für eine Grupp
 
 ## Änderungen
 
-### Phase 1: CLI + Core (Rust)
+### Phase 1: Tests (zuerst!)
 
-#### 1.1 `commands.rs` — CLI Definition
+#### 1.1 Neue Tests: Output-übergreifendes Verhalten
 
-**`GroupAction::Select`** (Zeile 73-78):
+Alle neuen Tests nutzen einen virtuellen Output (`swaymsg create_output HEADLESS-1`, Cleanup: `swaymsg output HEADLESS-1 unplug`).
+
+| Test | Datei | Beschreibung | Virtueller Output |
+|------|--------|-------------|:---:|
+| **test_20** | `test_20_optional_output_select_auto_resolve.rs` | Gruppe auf eDP-1 besucht, Test auf virtuellem Output, `group select <group>` (kein `--output`) → wechselt zu eDP-1. Verifiziert Output + Workspace + active group. | Ja |
+| **test_21** | `test_21_optional_output_next_prev_auto_resolve.rs` | Zwei Gruppen auf verschiedenen Outputs besucht. `group next`/`group prev` ohne `--output` → Zielgruppe auf deren letztem Output. Cross-Output-Wechsel verifiziert. | Ja |
+| **test_22** | `test_22_optional_output_fallback.rs` | Neue Gruppe erstellt (nie besucht, kein `group_state` Eintrag). `group select <group>` ohne `--output` → bleibt auf aktuellem Output (Fallback). | Ja |
+
+**Abgedeckte Szenarien:**
+- A) Auto-Resolve via `group_state` (test_20, test_21)
+- B) Fallback bei fehlendem `group_state` (test_22)
+- C) Cross-Output-Wechsel (test_20, test_21)
+- D) `--output` Override → wird durch bestehende Tests abgedeckt (Phase 1.2)
+
+**WICHTIG:** Diese Tests werden ZUERST geschrieben (TDD). Sie werden erwartet, dass sie fehlschlagen (rot), bevor die Implementation erfolgt.
+
+#### 1.2 Bestehende Tests aktualisieren (21 Dateien, 85 Aufrufe)
+
+Alle `group select` Aufrufe in den Rust-Tests müssen von:
+```rust
+.swayg(&["group", "select", &fixture.orig_output, GROUP, "--create"])
+```
+auf:
+```rust
+.swayg(&["group", "select", GROUP, "--output", &fixture.orig_output, "--create"])
+```
+geändert werden. Der `output` Parameter wird vom ersten positional zu einem `--output` Flag.
+
+**Betroffene Dateien (85 Aufrufe):**
+- test_05g (12), test_06b (10), test_06a (8), test_13 (7), test_03 (6),
+- test_05e (5), test_05f (6), test_02 (4), test_15 (4), test_14 (4),
+- test_05a (2), test_05b (2), test_05c (2), test_16 (3), test_05d (3),
+- test_01 (2), test_11 (1), test_09 (1), test_08 (1), test_04 (1),
+- test_12 (1), test_17 (1)
+
+### Phase 2: Core (Rust)
+
+#### 2.1 `group_state.rs` — Neue Query
+
+Neue Query-Methode zum Finden des letzten Outputs für eine Gruppe:
+
+```rust
+pub fn find_last_visited_output_for_group(group_name: &str) -> Select<Self> {
+    Self::find()
+        .filter(Column::GroupName.eq(group_name))
+        .order_by_desc(Column::LastVisited)
+}
+```
+
+#### 2.2 `group_service.rs` — Neue Methode: `find_last_visited_output`
+
+```rust
+pub async fn find_last_visited_output(&self, group: &str) -> Result<Option<String>>
+```
+
+Query: `SELECT output FROM group_state WHERE group_name = ? ORDER BY last_visited DESC LIMIT 1`
+
+#### 2.3 `group_service.rs` — `next_group` / `prev_group` Refactoring
+
+**Entscheidung:** Neue Methoden `next_group_name`/`prev_group_name` die nur den Gruppennamen zurückgeben, ohne `set_active_group` aufzurufen. Die bestehenden Methoden bleiben für `next-on-output`/`prev-on-output` wie sie sind.
+
+Neue Methoden:
+- `next_group_name(output, wrap) -> Result<Option<String>>` — nur Name, kein Switch
+- `prev_group_name(output, wrap) -> Result<Option<String>>` — nur Name, kein Switch
+- `next_group_on_output_name(output, wrap) -> Result<Option<String>>` — analog für on_output
+- `prev_group_on_output_name(output, wrap) -> Result<Option<String>>` — analog für on_output
+
+Bestehende `next_group`/`prev_group` intern umgebaut, um die neuen `*_name` Methoden zu nutzen.
+
+#### 2.4 `commands.rs` — Neuer Helper: `resolve_group_output`
+
+```rust
+async fn resolve_group_output(
+    explicit_output: Option<&str>,
+    group: &str,
+    group_service: &GroupService,
+    ipc_client: &SwayIpcClient,
+) -> anyhow::Result<String> {
+    if let Some(output) = explicit_output {
+        return Ok(output.to_string());
+    }
+    if let Some(output) = group_service.find_last_visited_output(group).await? {
+        return Ok(output);
+    }
+    ipc_client.get_primary_output()
+}
+```
+
+#### 2.5 `commands.rs` — CLI Definition ändern
+
+**`GroupAction::Select`** (Zeile 77-82):
 ```rust
 // VON:
 Select {
@@ -49,117 +139,33 @@ Select {
 },
 ```
 
-**`GroupAction::Next`** (Zeile 82-87) und **`GroupAction::Prev`** (Zeile 94-99):
-Bereits `Option<String>` — keine Änderung nötig an der Definition.
+**`GroupAction::Next`** und **`GroupAction::Prev`**: Bereits `Option<String>` — keine Änderung.
 
-#### 1.2 `commands.rs` — Neuer Helper: `resolve_group_output`
+#### 2.6 `commands.rs` — CLI Handler
 
-Neue Funktion, die den Output für eine Gruppe ermittelt:
-
+**`GroupAction::Select`**:
 ```rust
-fn resolve_group_output(
-    explicit_output: Option<&str>,
-    group: &str,
-    db: &DatabaseManager,
-    ipc_client: &SwayIpcClient,
-) -> anyhow::Result<String> {
-    if let Some(output) = explicit_output {
-        return Ok(output.to_string());
-    }
-
-    // Try group_state for last-visited output
-    // (sqlite3 query oder via entity)
-    let last_output = /* query group_state ORDER BY last_visited DESC LIMIT 1 */;
-
-    if let Some(output) = last_output {
-        return Ok(output);
-    }
-
-    // Fallback: current focused output
-    ipc_client.get_primary_output()
-}
-```
-
-Dafür muss der `DatabaseManager` (bzw. die DB Connection) im CLI Handler verfügbar sein. Prüfen ob das schon der Fall ist.
-
-**Alternative:** Die Logik direkt in `set_active_group` in group_service.rs einbauen statt im CLI Handler. Dann braucht der CLI Handler nur den Parameter zu ändern und weiterzugeben.
-
-#### 1.3 `commands.rs` — CLI Handler
-
-**`GroupAction::Select`** (Zeile 274-285):
-```rust
-// VON:
 GroupAction::Select { output, group, create } => {
-    ...
-    group_service.set_active_group(&output, &group).await?;
-    ...
-}
-
-// AUF:
-GroupAction::Select { output, group, create } => {
-    ...
-    let resolved_output = resolve_group_output(output.as_deref(), &group, ...)?;
+    let resolved_output = resolve_group_output(output.as_deref(), &group, ...).await?;
     group_service.set_active_group(&resolved_output, &group).await?;
-    ...
 }
 ```
 
 **`GroupAction::Next`** und **`GroupAction::Prev`**:
 ```rust
-// VON:
 GroupAction::Next { output, wrap } => {
-    let output = resolve_output(output.as_deref(), ipc_client)?;
-    ...
-    group_service.next_group(&output, wrap).await?;
-}
-
-// AUF:
-GroupAction::Next { output, wrap } => {
-    // output is None -> resolve_output gives current output
-    let output = resolve_output(output.as_deref(), ipc_client)?;
-    ...
-    // next_group returns the group name, but we need to resolve its output
-    if let Some(next) = group_service.next_group(&output, wrap).await? {
-        let resolved_output = resolve_group_output(None, &next, ...)?;
-        group_service.set_active_group(&resolved_output, &next).await?;
-        ...
+    let current_output = resolve_output(output.as_deref(), ipc_client)?;
+    if let Some(next_name) = group_service.next_group_name(&current_output, wrap).await? {
+        let resolved_output = resolve_group_output(None, &next_name, ...).await?;
+        group_service.set_active_group(&resolved_output, &next_name).await?;
     }
 }
 ```
 
-**Achtung:** Bei `group next`/`group prev` ist die Logik komplexer, da die Zielgruppe erst nach dem Aufruf von `next_group`/`prev_group` bekannt ist. Zwei Ansätze:
+### Phase 3: Scripts (2 Dateien)
 
-- **Ansatz A:** `next_group`/`prev_group` geben nur den Gruppennamen zurück (wie bisher), dann wird der Output für diese Gruppe aufgelöst und `set_active_group` aufgerufen. Problem: `next_group` ruft intern bereits `set_active_group` auf (Rekursion!).
-- **Ansatz B:** `next_group`/`prev_group` bekommen einen Parameter `auto_resolve_output: bool`. Wenn `true`, lösen sie den Output intern auf.
+#### 3.1 `scripts/rofi-group-select`
 
-**Empfehlung:** Ansatz A ist sauberer. `next_group`/`prev_group` sollten nicht `set_active_group` intern aufrufen, sondern nur den Gruppennamen zurückgeben. Der CLI Handler macht dann die Output-Auflösung und ruft `set_active_group` selbst. Das bedeutet aber Refactoring in group_service.rs.
-
-#### 1.4 `group_service.rs` — `next_group` / `prev_group` Refactoring
-
-Aktuell rufen `next_group` und `prev_group` intern `set_active_group` auf (Zeilen 516, 538, 560, 582). Das ist ein Problem für die output-übergreifende Variante, weil der Output erst nach der Gruppenauswahl feststeht.
-
-**Lösung:** Neue Methoden `next_group_name` und `prev_group_name` die nur den Gruppennamen zurückgeben, ohne `set_active_group` aufzurufen. Die CLI Handler verwenden diese und übergeben das Ergebnis an `set_active_group`.
-
-Alternativ: Bestehende Methoden umbauen, sodass sie optionales Output-Argument akzeptieren und den Output intern auflösen.
-
-#### 1.5 `group_state.rs` — Neue Query
-
-Methode zum Finden des letzten Outputs für eine Gruppe:
-
-```rust
-pub fn find_last_visited_output(group_name: &str) -> ... {
-    // SELECT output FROM group_state
-    // WHERE group_name = ?
-    // ORDER BY last_visited DESC
-    // LIMIT 1
-}
-```
-
-### Phase 2: Scripts (2 Dateien)
-
-#### 2.1 `scripts/rofi-group-select`
-
-Zeile 25:
 ```bash
 # VON:
 $HOME/.cargo/bin/swayg group select "$output" "$group" --create
@@ -169,11 +175,8 @@ $HOME/.cargo/bin/swayg group select "$group" --create
 # (kein --output nötig, wird automatisch aufgelöst)
 ```
 
-Das Script kann auch die Output-Ermittlung am Anfang vereinfachen/entfernen.
+#### 3.2 `scripts/rofi-workspace-move`
 
-#### 2.2 `scripts/rofi-workspace-move`
-
-Zeile 36:
 ```bash
 # VON:
 $HOME/.cargo/bin/swayg group select "$current_output" "$first_group"
@@ -182,101 +185,30 @@ $HOME/.cargo/bin/swayg group select "$current_output" "$first_group"
 $HOME/.cargo/bin/swayg group select "$first_group" --output "$current_output"
 ```
 
-(Hier explizit `--output` weil wir auf dem aktuellen Output bleiben wollen, nicht zum letzten Output der Gruppe springen.)
-
-### Phase 3: Tests (~19 Dateien, ~50+ Aufrufe)
-
-#### 3.1 `group select` Aufrufe
-
-Alle Tests müssen von:
-```bash
-$SG group select $OUTPUT '$GROUP'
-```
-auf:
-```bash
-$SG group select '$GROUP' --output $OUTPUT
-```
-geändert werden.
-
-**Betroffene Testdateien:**
-- test01_group_select.sh (9 Aufrufe)
-- test02_new_workspace.sh (4)
-- test03_global_workspace.sh (6)
-- test04_workspace_move.sh (5)
-- test05a_multi_group_workspace_add.sh (7)
-- test05b_multi_group_container_move.sh (7)
-- test05c_multi_group_workspace_rename_merge.sh (7)
-- test05d_multi_group_global.sh (3)
-- test05e_multi_group_unglobal.sh (6)
-- test05f_multi_group_workspace_remove.sh (7)
-- test05g_multi_group_auto_delete.sh (11)
-- test06a_group_delete_multi_group_workspace.sh (8)
-- test06b_workspace_move_to_groups.sh (10)
-- test08_nav_next_prev.sh (4)
-- test09_nav_go_back.sh (4)
-- test10_workspace_rename_simple.sh (4)
-- test11_workspace_groups.sh (5)
-- test12_repair.sh (2)
-- test13_group_next_prev.sh (4)
-- test14_workspace_list_output_format.sh (4)
-- test15_sync_flags.sh (4)
-- test16_group_prune.sh (4)
-- test17_status.sh (4)
-- test19_nav_move_to.sh (1)
-
-**Alle `group select` mit `--create` sind auch betroffen:**
-```bash
-# VON:
-$SG group select $OUTPUT '__test_group__' --create
-
-# AUF:
-$SG group select '__test_group__' --output $OUTPUT --create
-```
-
-#### 3.2 `group next` / `group prev` Aufrufe
-
-`test13_group_next_prev.sh` — bereits `--output $OUTPUT` Syntax (Zeilen 126, 132, 138, 144, 150, 156, 162, 168, 177, 183). **Keine Änderung nötig.**
-
-#### 3.3 Neue Tests
-
-Test für output-übergreifendes Verhalten (nur wenn `--output` weggelassen wird):
-- `group select <group>` ohne `--output` → wechselt zum letzten Output der Gruppe
-- `group next` ohne `--output` → wechselt zur nächsten Gruppe auf deren letztem Output
-- Edge case: Gruppe die noch nie auf einem Output besucht wurde → Fallback auf aktuellen Output
-
-Diese Tests erfordern **zwei Outputs** (z.B. virtueller Output oder zwei physische Outputs). Auf einem Single-Output-System können sie nicht vollständig getestet werden. Vermutlich auf später verschieben.
-
 ### Phase 4: Dokumentation
 
-#### 4.1 `tests/test-instructions.md`
-
-- Regel 28 (aktuell): `swayg group select <OUTPUT> <GROUP> --create`
-  → Anpassen an neue Syntax: `swayg group select <GROUP> --output <OUTPUT> --create`
-- Mehrere Beispiele im Template (Zeilen 37, 72, 108, 127, 180, 193)
-
-#### 4.2 `README.md` und `CLI_SPEC.md`
-
-- Command-Syntax für `group select`, `group next`, `group prev` aktualisieren
-
-#### 4.3 Rust Integration Tests
-
-- `sway-groups-tests/tests/test01_group_select.rs` (Zeilen 39, 52) — `set_active_group` Aufrufe. Diese testen die Service-Schicht direkt, nicht die CLI. **Nicht betroffen** wenn sich die Service-Signatur nicht ändert.
+- `AI_TEST_INSTRUCTIONS.md` — Command-Syntax und Beispiele aktualisieren
+- `CLI_SPEC.md` / `README.md` — falls vorhanden
 
 ## Ausführungsreihenfolge
 
-1. **Phase 1.5:** `group_state.rs` — neue Query Methode
-2. **Phase 1.2:** `commands.rs` — neuer Helper `resolve_group_output`
-3. **Phase 1.1:** `commands.rs` — CLI Definition ändern
-4. **Phase 1.3:** `commands.rs` — CLI Handler anpassen
-5. **Phase 1.4:** `group_service.rs` — `next_group`/`prev_group` Refactoring
-6. **Build & Test:** `cargo build --release`, `install.sh`, `tests/run_all.sh`
-7. **Phase 3:** Tests anpassen (sed/replace)
-8. **Phase 2:** Scripts anpassen
-9. **Phase 4:** Dokumentation aktualisieren
-10. **Commit**
+1. **Phase 1.1:** Neue Tests schreiben (TDD — expected to fail)
+2. **Phase 2.1:** `group_state.rs` — neue Query
+3. **Phase 2.2:** `group_service.rs` — `find_last_visited_output`
+4. **Phase 2.3:** `group_service.rs` — `next_group`/`prev_group` Refactoring
+5. **Phase 2.5:** `commands.rs` — CLI Definition ändern
+6. **Phase 2.4:** `commands.rs` — `resolve_group_output` Helper
+7. **Phase 2.6:** `commands.rs` — CLI Handler anpassen
+8. **Build:** `cargo build -p sway-groups-cli && bash install.sh`
+9. **Phase 1.1:** Neue Tests laufen lassen (should pass now)
+10. **Phase 1.2:** Bestehende Tests aktualisieren (85 Aufrufe)
+11. **Run all tests:** `cargo test -p sway-groups-tests -- --test-threads=1`
+12. **Phase 3:** Scripts anpassen
+13. **Phase 4:** Dokumentation aktualisieren
+14. **Commit**
 
 ## Offene Fragen
 
-- Soll `next_group`/`prev_group` intern `set_active_group` aufrufen (aktuell) oder nur den Namen zurückgeben (Refactoring)? Letzteres ist sauberer für output-übergreifendes Verhalten, aber ein größerer Umbau.
-- Sollen `next-on-output` und `prev-on-output` ebenfalls output-optional werden, oder bleiben diese output-spezifisch? (Aktuelle Annahme: bleiben so.)
-- Wie testen wir output-übergreifendes Verhalten ohne zweiten physischen Output?
+~~- Wie testen wir output-übergreifendes Verhalten ohne zweiten physischen Output?~~ → **Gelöst:** Virtueller Output via `swaymsg create_output HEADLESS-1`.
+
+- `next-on-output`/`prev-on-output` bleiben output-spezifisch (keine Änderung).
