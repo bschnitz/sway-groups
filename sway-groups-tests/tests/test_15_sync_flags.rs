@@ -102,7 +102,7 @@ async fn test_15_sync_flags() {
     fixture.init().success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP, "--create"])
+        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output, "--create"])
         .success();
 
     let _win = DummyWindowHandle::spawn(WS1).expect("spawn dummy window");
@@ -113,7 +113,7 @@ async fn test_15_sync_flags() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     // Insert stale workspace into DB
@@ -239,10 +239,10 @@ async fn test_15_sync_flags() {
 
     // --- Switch back to original group ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP])
+        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
     assert_eq!(
         get_focused_workspace().unwrap(),

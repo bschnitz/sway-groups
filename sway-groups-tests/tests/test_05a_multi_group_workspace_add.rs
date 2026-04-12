@@ -110,8 +110,9 @@ async fn test_05a_multi_group_workspace_add() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP_A,
+            "--output",
+            &fixture.orig_output,
             "--create",
         ])
         .success();
@@ -182,8 +183,9 @@ async fn test_05a_multi_group_workspace_add() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP_B,
+            "--output",
+            &fixture.orig_output,
             "--create",
         ])
         .success();
@@ -263,8 +265,9 @@ async fn test_05a_multi_group_workspace_add() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
 
@@ -287,15 +290,16 @@ async fn test_05a_multi_group_workspace_add() {
 
     // --- Auto-delete Group B (WS1 gone from sway) ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
 
     fixture
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
 
@@ -318,15 +322,16 @@ async fn test_05a_multi_group_workspace_add() {
 
     // --- Auto-delete Group A (WS1 gone from sway) ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
 
     fixture
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
 

@@ -115,8 +115,9 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP_A,
+            "--output",
+            &fixture.orig_output,
             "--create",
         ])
         .success();
@@ -185,8 +186,9 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP_B,
+            "--output",
+            &fixture.orig_output,
             "--create",
         ])
         .success();
@@ -388,8 +390,9 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
 
@@ -418,15 +421,16 @@ async fn test_05c_multi_group_workspace_rename_merge() {
 
     // --- Auto-delete Group B ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
 
     fixture
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
 
@@ -449,15 +453,16 @@ async fn test_05c_multi_group_workspace_rename_merge() {
 
     // --- Auto-delete Group A ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
 
     fixture
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
 

@@ -149,7 +149,7 @@ async fn test_05g_multi_group_auto_delete() {
     fixture.init().success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A, "--create"])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output, "--create"])
         .success();
 
     let _win1 = DummyWindowHandle::spawn(WS1).expect("spawn dummy window WS1");
@@ -160,7 +160,7 @@ async fn test_05g_multi_group_auto_delete() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B, "--create"])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output, "--create"])
         .success();
 
     fixture
@@ -175,7 +175,7 @@ async fn test_05g_multi_group_auto_delete() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     // --- Verify setup ---
@@ -234,7 +234,7 @@ async fn test_05g_multi_group_auto_delete() {
 
     // --- Test: switch to Group A, back — Group A should NOT auto-delete ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
 
     let active = swayg_output(
@@ -244,7 +244,7 @@ async fn test_05g_multi_group_auto_delete() {
     assert_eq!(active, GROUP_A, "active group = {}", GROUP_A);
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(
@@ -286,7 +286,7 @@ async fn test_05g_multi_group_auto_delete() {
 
     // --- Test: switch to Group A, back — Group A NOW auto-deleted ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
 
     let active = swayg_output(
@@ -296,7 +296,7 @@ async fn test_05g_multi_group_auto_delete() {
     assert_eq!(active, GROUP_A, "active group = {}", GROUP_A);
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(
@@ -315,11 +315,11 @@ async fn test_05g_multi_group_auto_delete() {
 
     // --- Cleanup: Group B should NOT auto-delete (still has WS2) ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(
@@ -348,11 +348,11 @@ async fn test_05g_multi_group_auto_delete() {
 
     // --- Switch to Group B then back (NOW auto-delete Group B) ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(

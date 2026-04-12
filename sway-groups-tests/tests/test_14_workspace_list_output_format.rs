@@ -121,7 +121,7 @@ async fn test_14_workspace_list_output_format() {
     fixture.init().success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP, "--create"])
+        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output, "--create"])
         .success();
 
     let _win_a = DummyWindowHandle::spawn(WS_A).expect("spawn WS_A");
@@ -137,7 +137,7 @@ async fn test_14_workspace_list_output_format() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -281,10 +281,10 @@ async fn test_14_workspace_list_output_format() {
 
     // --- Auto-delete empty group ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP])
+        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(

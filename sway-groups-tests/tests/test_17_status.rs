@@ -83,8 +83,9 @@ async fn test_17_status() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP,
+            "--output",
+            &fixture.orig_output,
             "--create",
         ])
         .success();
@@ -97,7 +98,7 @@ async fn test_17_status() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, "0"])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
 

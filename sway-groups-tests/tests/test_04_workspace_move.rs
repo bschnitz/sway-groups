@@ -100,9 +100,10 @@ async fn test_04_workspace_move() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP_A,
             "--create",
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
 
@@ -165,9 +166,10 @@ async fn test_04_workspace_move() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP_B,
             "--create",
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
 
@@ -204,8 +206,9 @@ async fn test_04_workspace_move() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
 
@@ -235,15 +238,16 @@ async fn test_04_workspace_move() {
     );
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
 
     fixture
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
 

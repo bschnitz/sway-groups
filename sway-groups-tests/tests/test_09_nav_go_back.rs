@@ -83,8 +83,9 @@ async fn test_09_nav_go_back() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP,
+            "--output",
+            &fixture.orig_output,
             "--create",
         ])
         .success();
@@ -105,8 +106,9 @@ async fn test_09_nav_go_back() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -217,14 +219,15 @@ async fn test_09_nav_go_back() {
 
     // Auto-delete GROUP
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP])
+        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
         .success();
     fixture
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
 

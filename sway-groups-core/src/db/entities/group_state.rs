@@ -35,4 +35,11 @@ impl Entity {
         Self::find()
             .filter(Column::LastFocusedWorkspace.eq(workspace_name))
     }
+
+    pub fn find_last_visited_output_for_group(group_name: &str) -> Select<Self> {
+        use sea_orm::{ColumnTrait, Order, QueryFilter, QueryOrder};
+        Self::find()
+            .filter(Column::GroupName.eq(group_name))
+            .order_by(Column::LastVisited, Order::Desc)
+    }
 }

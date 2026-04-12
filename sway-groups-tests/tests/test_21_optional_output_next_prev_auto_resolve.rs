@@ -85,6 +85,46 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
     };
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
+    // Clean up stale workspaces/outputs from previous failed runs
+    for ws in [WS_A, WS_B] {
+        if workspace_exists_in_sway(ws) {
+            let _ = Command::new("swaymsg")
+                .args(["workspace", ws])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let _ = Command::new("swaymsg")
+                .args(["workspace", "back_and_forth"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+    let outputs = Command::new("swaymsg")
+        .args(["-t", "get_outputs"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .expect("swaymsg failed");
+    let all_outputs: Vec<String> = serde_json::from_slice::<serde_json::Value>(&outputs.stdout)
+        .expect("parse outputs")
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|o| o.get("name").and_then(|n| n.as_str()).map(String::from))
+        .filter(|n| n != &fixture.orig_output)
+        .collect();
+    for o in &all_outputs {
+        let _ = Command::new("swaymsg")
+            .args(["output", o, "unplug"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
     if real_db.exists() {
         assert_eq!(
             db_count(
@@ -342,6 +382,7 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
     );
 
     // --- Cleanup: auto-delete GROUP_A ---
+    let _ = fixture.swayg(&["workspace", "remove", "0"]);
     fixture
         .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();

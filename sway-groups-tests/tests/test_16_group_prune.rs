@@ -151,8 +151,9 @@ async fn test_16_group_prune() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP_A,
+            "--output",
+            &fixture.orig_output,
             "--create",
         ])
         .success();
@@ -165,7 +166,7 @@ async fn test_16_group_prune() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -344,10 +345,10 @@ async fn test_16_group_prune() {
     );
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(

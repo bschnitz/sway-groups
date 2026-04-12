@@ -95,8 +95,9 @@ async fn test_11_workspace_groups() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP_A,
+            "--output",
+            &fixture.orig_output,
             "--create",
         ])
         .success();
@@ -123,8 +124,9 @@ async fn test_11_workspace_groups() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -213,8 +215,9 @@ async fn test_11_workspace_groups() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
     assert_eq!(
@@ -227,14 +230,15 @@ async fn test_11_workspace_groups() {
     // Auto-delete all test groups
     for g in [GROUP_A, GROUP_B, GROUP_C] {
         fixture
-            .swayg(&["group", "select", &fixture.orig_output, g])
+            .swayg(&["group", "select", g, "--output", &fixture.orig_output])
             .success();
         fixture
             .swayg(&[
                 "group",
                 "select",
-                &fixture.orig_output,
                 &orig_group,
+                "--output",
+                &fixture.orig_output,
             ])
             .success();
     }

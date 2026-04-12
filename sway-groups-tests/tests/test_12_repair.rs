@@ -116,8 +116,9 @@ async fn test_12_repair() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP,
+            "--output",
+            &fixture.orig_output,
             "--create",
         ])
         .success();
@@ -130,7 +131,7 @@ async fn test_12_repair() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     fixture

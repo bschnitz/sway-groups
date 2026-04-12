@@ -51,7 +51,7 @@ async fn test_01_something() {
 
     // 4. Init + setup (swayg CLI calls with --db flag)
     fixture.init().success();
-    fixture.swayg(&["group", "select", &fixture.orig_output, GROUP, "--create"]).success();
+    fixture.swayg(&["group", "select", GROUP, "--output", &fixture.orig_output, "--create"]).success();
 
     // 5. Verify setup (DB + CLI assertions)
     //    - Group exists in DB (sqlite3 count)
@@ -70,8 +70,8 @@ async fn test_01_something() {
     drop(_win);
     assert!(workspace_of_window(WS1).is_none(), "window gone from sway");
     for g in &[GROUP_A, GROUP_B] {
-        fixture.swayg(&["group", "select", &fixture.orig_output, g]).success();
-        fixture.swayg(&["group", "select", &fixture.orig_output, &orig_group]).success();
+        fixture.swayg(&["group", "select", g, "--output", &fixture.orig_output]).success();
+        fixture.swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output]).success();
     }
     assert_eq!(db_count("groups WHERE name = GROUP"), 0, "auto-deleted");
 
@@ -130,12 +130,12 @@ async fn test_01_something() {
 These commands are used in tests (check latest syntax in CLI):
 
 - `swayg init` — drop + recreate DB, sync from sway
-- `swayg group select <output> <group> --create` — create + switch to group
+- `swayg group select <group> [--output <output>] --create` — create + switch to group (output auto-resolved if omitted)
 - `swayg group create <name>` — create group (error if exists)
 - `swayg group delete <name> --force` — delete group
 - `swayg group rename <old> <new>` — rename group
-- `swayg group next --output <output> [--wrap]` — next group
-- `swayg group prev --output <output> [--wrap]` — prev group
+- `swayg group next [--output <output>] [--wrap]` — next group (output auto-resolved if omitted)
+- `swayg group prev [--output <output>] [--wrap]` — prev group (output auto-resolved if omitted)
 - `swayg group prune [--keep <n>]` — prune empty groups
 - `swayg group list` — list groups
 - `swayg group active <output>` — show active group

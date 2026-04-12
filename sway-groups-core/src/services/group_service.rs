@@ -342,6 +342,18 @@ impl GroupService {
         Ok(state.and_then(|s| s.last_focused_workspace))
     }
 
+    /// Switch focus to an output via sway IPC.
+    fn focus_output(&self, output_name: &str) -> Result<()> {
+        let command = format!("focus output \"{}\"", output_name);
+        let results = self.ipc_client.run_command(&command)?;
+        if let Some(result) = results.first() {
+            if result.success {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
     /// Switch focus to a workspace via sway IPC.
     fn focus_workspace(&self, workspace_name: &str) -> Result<()> {
         let command = format!("workspace \"{}\"", workspace_name);
@@ -434,12 +446,28 @@ impl GroupService {
 
         // Note: waybar sync is handled by the caller (commands.rs)
 
+        // Switch to the target output first so workspace focus lands on the correct output
+        self.focus_output(output)?;
+
         // Handle workspace focus for the new group
         let group_workspaces = self.get_workspaces_for_group_on_output(group, output).await?;
         debug!("set_active_group: workspaces in group '{}' on '{}': {:?}", group, output, group_workspaces);
 
         if group_workspaces.is_empty() {
             // Case 1: Group has no workspaces -> focus workspace "0"
+            // If workspace "0" exists on a different output, sway would switch
+            // to that output instead of creating it on the target output.
+            // Remove it from sway first so it gets created on the target output.
+            if let Ok(all_ws) = self.ipc_client.get_workspaces() {
+                for ws in &all_ws {
+                    if ws.name == "0" && ws.output != output && ws.output.is_empty() == false {
+                        let _ = self.ipc_client.run_command(
+                            &format!("workspace \"{}\"", ws.output),
+                        );
+                        let _ = self.ipc_client.run_command("workspace back_and_forth");
+                    }
+                }
+            }
             debug!("set_active_group: case 1 (empty group), focusing workspace '0'");
             self.focus_workspace("0")?;
 
@@ -473,6 +501,9 @@ impl GroupService {
         // Record this visit
         self.save_current_workspace(output, group).await?;
 
+        // Update group-level last_visited (independent of output, used for cross-output resolution)
+        self.update_group_last_visited(group, output).await?;
+
         info!("Set active group for {} to '{}'", output, group);
 
         // After switching: if old group needs cleanup, check if any non-global
@@ -497,90 +528,120 @@ impl GroupService {
 
     /// Switch to next group alphabetically (all groups).
     pub async fn next_group(&self, output: &str, wrap: bool) -> Result<Option<String>> {
-        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
-        let group_names = self.list_all_group_names().await?;
-
-        if group_names.is_empty() {
-            return Ok(None);
+        let output = self.resolve_output(output).await?;
+        let next_name = self.next_group_name(&output, wrap).await?;
+        if let Some(ref name) = next_name {
+            self.set_active_group(&output, name).await?;
         }
-
-        let current_idx = group_names.iter().position(|g| g == &current);
-        let next_idx = match current_idx {
-            Some(idx) if idx + 1 < group_names.len() => idx + 1,
-            Some(_) if wrap => 0,
-            Some(_) => return Ok(None),
-            None => 0,
-        };
-
-        let next_name = group_names[next_idx].clone();
-        self.set_active_group(output, &next_name).await?;
-        Ok(Some(next_name))
+        Ok(next_name)
     }
 
     /// Switch to next non-empty group on a specific output.
     pub async fn next_group_on_output(&self, output: &str, wrap: bool) -> Result<Option<String>> {
-        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
-        let group_names = self.list_group_names_on_output(output).await?;
-
-        if group_names.is_empty() {
-            return Ok(None);
+        let output = self.resolve_output(output).await?;
+        let next_name = self.next_group_on_output_name(&output, wrap).await?;
+        if let Some(ref name) = next_name {
+            self.set_active_group(&output, name).await?;
         }
-
-        let current_idx = group_names.iter().position(|g| g == &current);
-        let next_idx = match current_idx {
-            Some(idx) if idx + 1 < group_names.len() => idx + 1,
-            Some(_) if wrap => 0,
-            Some(_) => return Ok(None),
-            None => 0,
-        };
-
-        let next_name = group_names[next_idx].clone();
-        self.set_active_group(output, &next_name).await?;
-        Ok(Some(next_name))
+        Ok(next_name)
     }
 
     /// Switch to previous group alphabetically (all groups).
     pub async fn prev_group(&self, output: &str, wrap: bool) -> Result<Option<String>> {
-        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
-        let group_names = self.list_all_group_names().await?;
-
-        if group_names.is_empty() {
-            return Ok(None);
+        let output = self.resolve_output(output).await?;
+        let prev_name = self.prev_group_name(&output, wrap).await?;
+        if let Some(ref name) = prev_name {
+            self.set_active_group(&output, name).await?;
         }
-
-        let current_idx = group_names.iter().position(|g| g == &current);
-        let prev_idx = match current_idx {
-            Some(idx) if idx > 0 => idx - 1,
-            Some(_) if wrap => group_names.len() - 1,
-            Some(_) => return Ok(None),
-            None => group_names.len() - 1,
-        };
-
-        let prev_name = group_names[prev_idx].clone();
-        self.set_active_group(output, &prev_name).await?;
-        Ok(Some(prev_name))
+        Ok(prev_name)
     }
 
     /// Switch to previous non-empty group on a specific output.
     pub async fn prev_group_on_output(&self, output: &str, wrap: bool) -> Result<Option<String>> {
-        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
-        let group_names = self.list_group_names_on_output(output).await?;
+        let output = self.resolve_output(output).await?;
+        let prev_name = self.prev_group_on_output_name(&output, wrap).await?;
+        if let Some(ref name) = prev_name {
+            self.set_active_group(&output, name).await?;
+        }
+        Ok(prev_name)
+    }
 
+    pub async fn find_last_visited_output(&self, group: &str) -> Result<Option<String>> {
+        let group_model = GroupEntity::find_by_name(group)
+            .one(self.db.conn())
+            .await?;
+        Ok(group_model.and_then(|g| g.last_active_output))
+    }
+
+    async fn resolve_output(&self, output: &str) -> Result<String> {
+        if output.is_empty() {
+            Ok(self.ipc_client.get_primary_output()?)
+        } else {
+            Ok(output.to_string())
+        }
+    }
+
+    fn compute_next_idx(current_idx: Option<usize>, len: usize, wrap: bool) -> Option<usize> {
+        match current_idx {
+            Some(idx) if idx + 1 < len => Some(idx + 1),
+            Some(_) if wrap => Some(0),
+            Some(_) => None,
+            None => Some(0),
+        }
+    }
+
+    fn compute_prev_idx(current_idx: Option<usize>, len: usize, wrap: bool) -> Option<usize> {
+        match current_idx {
+            Some(idx) if idx > 0 => Some(idx - 1),
+            Some(_) if wrap => Some(len - 1),
+            Some(_) => None,
+            None if len > 0 => Some(len - 1),
+            None => None,
+        }
+    }
+
+    pub async fn next_group_name(&self, output: &str, wrap: bool) -> Result<Option<String>> {
+        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
+        let group_names = self.list_all_group_names().await?;
         if group_names.is_empty() {
             return Ok(None);
         }
-
         let current_idx = group_names.iter().position(|g| g == &current);
-        let prev_idx = match current_idx {
-            Some(idx) if idx > 0 => idx - 1,
-            Some(_) if wrap => group_names.len() - 1,
-            Some(_) => return Ok(None),
-            None => group_names.len() - 1,
-        };
+        let next_idx = Self::compute_next_idx(current_idx, group_names.len(), wrap);
+        Ok(next_idx.map(|i| group_names[i].clone()))
+    }
 
-        let prev_name = group_names[prev_idx].clone();
-        self.set_active_group(output, &prev_name).await?;
-        Ok(Some(prev_name))
+    pub async fn next_group_on_output_name(&self, output: &str, wrap: bool) -> Result<Option<String>> {
+        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
+        let group_names = self.list_group_names_on_output(output).await?;
+        if group_names.is_empty() {
+            return Ok(None);
+        }
+        let current_idx = group_names.iter().position(|g| g == &current);
+        let next_idx = Self::compute_next_idx(current_idx, group_names.len(), wrap);
+        Ok(next_idx.map(|i| group_names[i].clone()))
+    }
+
+    pub async fn prev_group_name(&self, output: &str, wrap: bool) -> Result<Option<String>> {
+        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
+        let group_names = self.list_all_group_names().await?;
+        if group_names.is_empty() {
+            return Ok(None);
+        }
+        let current_idx = group_names.iter().position(|g| g == &current);
+        let prev_idx = Self::compute_prev_idx(current_idx, group_names.len(), wrap);
+        Ok(prev_idx.map(|i| group_names[i].clone()))
+    }
+
+    pub async fn prev_group_on_output_name(&self, output: &str, wrap: bool) -> Result<Option<String>> {
+        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
+        let group_names = self.list_group_names_on_output(output).await?;
+        if group_names.is_empty() {
+            return Ok(None);
+        }
+        let current_idx = group_names.iter().position(|g| g == &current);
+        let prev_idx = Self::compute_prev_idx(current_idx, group_names.len(), wrap);
+        Ok(prev_idx.map(|i| group_names[i].clone()))
     }
 
     /// Remove empty groups.
@@ -650,8 +711,9 @@ impl GroupService {
     /// Used after switching away from a group to decide if it should be auto-deleted.
     async fn should_delete_old_group(&self, group_name: &str) -> Result<bool> {
         let sway_workspaces = self.ipc_client.get_workspaces()?;
-        let sway_names: std::collections::HashSet<String> = sway_workspaces
+        let sway_non_empty: std::collections::HashSet<String> = sway_workspaces
             .iter()
+            .filter(|w| w.representation.is_some())
             .map(|w| w.name.clone())
             .collect();
 
@@ -672,14 +734,28 @@ impl GroupService {
                 .one(self.db.conn())
                 .await?
             {
-                if !ws.is_global && sway_names.contains(&ws.name) {
-                    debug!("should_delete_old_group: workspace '{}' still exists in sway", ws.name);
+                if !ws.is_global && sway_non_empty.contains(&ws.name) {
+                    debug!("should_delete_old_group: workspace '{}' still exists and is non-empty in sway", ws.name);
                     return Ok(false);
                 }
             }
         }
 
         Ok(true)
+    }
+
+    async fn update_group_last_visited(&self, group_name: &str, output: &str) -> Result<()> {
+        if let Some(group_model) = GroupEntity::find_by_name(group_name)
+            .one(self.db.conn())
+            .await?
+        {
+            let now = chrono::Utc::now().naive_utc();
+            let mut active = group_model.into_active_model();
+            active.last_visited = Set(Some(now));
+            active.last_active_output = Set(Some(output.to_string()));
+            active.update(self.db.conn()).await?;
+        }
+        Ok(())
     }
 
     async fn ensure_workspace_in_group(&self, ws_name: &str, group_name: &str, output: &str) -> Result<()> {

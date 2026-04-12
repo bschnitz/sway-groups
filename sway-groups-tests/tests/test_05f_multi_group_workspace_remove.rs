@@ -96,7 +96,7 @@ async fn test_05f_multi_group_workspace_remove() {
     fixture.init().success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A, "--create"])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(
@@ -131,7 +131,7 @@ async fn test_05f_multi_group_workspace_remove() {
 
     // --- Switch to Group B + add WS1 (multi-group membership) ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B, "--create"])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output, "--create"])
         .success();
 
     let active_b = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
@@ -201,7 +201,7 @@ async fn test_05f_multi_group_workspace_remove() {
 
     // --- Switch to Group A, verify WS1 visible ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
 
     let active_a = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
@@ -219,7 +219,7 @@ async fn test_05f_multi_group_workspace_remove() {
 
     // --- Switch back to orig group (Group A should NOT auto-delete, WS1 still in sway) ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
     assert_eq!(
         get_focused_workspace().unwrap(),
@@ -245,11 +245,11 @@ async fn test_05f_multi_group_workspace_remove() {
     );
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(

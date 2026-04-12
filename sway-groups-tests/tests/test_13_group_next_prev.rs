@@ -112,7 +112,7 @@ async fn test_13_group_next_prev() {
 
     // Group A + WS_A
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A, "--create"])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output, "--create"])
         .success();
     let _win_a = DummyWindowHandle::spawn(WS_A).expect("spawn WS_A");
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -122,7 +122,7 @@ async fn test_13_group_next_prev() {
 
     // Group B + WS_B
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B, "--create"])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output, "--create"])
         .success();
     let _win_b = DummyWindowHandle::spawn(WS_B).expect("spawn WS_B");
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -132,7 +132,7 @@ async fn test_13_group_next_prev() {
 
     // Group C + WS_C
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_C, "--create"])
+        .swayg(&["group", "select", GROUP_C, "--output", &fixture.orig_output, "--create"])
         .success();
     let _win_c = DummyWindowHandle::spawn(WS_C).expect("spawn WS_C");
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -142,7 +142,7 @@ async fn test_13_group_next_prev() {
 
     // Switch back to group A
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -296,7 +296,7 @@ async fn test_13_group_next_prev() {
 
     // --- Cleanup: switch to original workspace FIRST (so sway can remove empty workspaces) ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     drop(_win_a);
@@ -319,10 +319,10 @@ async fn test_13_group_next_prev() {
     // --- Auto-delete empty groups ---
     for g in [GROUP_A, GROUP_B, GROUP_C] {
         fixture
-            .swayg(&["group", "select", &fixture.orig_output, g])
+            .swayg(&["group", "select", g, "--output", &fixture.orig_output])
             .success();
         fixture
-            .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+            .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
             .success();
     }
 

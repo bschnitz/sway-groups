@@ -142,7 +142,7 @@ async fn test_05e_multi_group_unglobal() {
 
     // --- Create Group A ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A, "--create"])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(
@@ -195,7 +195,7 @@ async fn test_05e_multi_group_unglobal() {
 
     // --- Switch to Group B ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B, "--create"])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output, "--create"])
         .success();
 
     let active = swayg_output(
@@ -323,7 +323,7 @@ async fn test_05e_multi_group_unglobal() {
 
     // --- Switch back to original group (Group B should NOT auto-delete) ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(
@@ -352,11 +352,11 @@ async fn test_05e_multi_group_unglobal() {
 
     // --- Switch to Group B then back (NOW auto-delete Group B) ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(

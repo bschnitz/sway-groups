@@ -97,8 +97,9 @@ async fn test_08_nav_next_prev() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP,
+            "--output",
+            &fixture.orig_output,
             "--create",
         ])
         .success();
@@ -297,8 +298,9 @@ async fn test_08_nav_next_prev() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
     assert_eq!(
@@ -332,14 +334,15 @@ async fn test_08_nav_next_prev() {
 
     // Auto-delete GROUP
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP])
+        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
         .success();
     fixture
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
 

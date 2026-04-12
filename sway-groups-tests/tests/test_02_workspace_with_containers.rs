@@ -87,7 +87,7 @@ async fn test_02_workspace_with_containers() {
 
     // --- Select test group with --create ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP, "--create"])
+        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(
@@ -194,7 +194,7 @@ async fn test_02_workspace_with_containers() {
 
     // --- Switch back to original group ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(
@@ -227,11 +227,11 @@ async fn test_02_workspace_with_containers() {
 
     // --- Switch to test group then back (auto-delete should trigger) ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP])
+        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(

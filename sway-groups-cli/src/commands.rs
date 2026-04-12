@@ -75,8 +75,9 @@ enum GroupAction {
         new_name: String,
     },
     Select {
-        output: String,
         group: String,
+        #[arg(short, long)]
+        output: Option<String>,
         #[arg(short, long)]
         create: bool,
     },
@@ -239,6 +240,21 @@ fn resolve_output(output: Option<&str>, ipc_client: &SwayIpcClient) -> anyhow::R
     }
 }
 
+async fn resolve_group_output(
+    explicit_output: Option<&str>,
+    group: &str,
+    group_service: &GroupService,
+    ipc_client: &SwayIpcClient,
+) -> anyhow::Result<String> {
+    if let Some(output) = explicit_output {
+        return Ok(output.to_string());
+    }
+    if let Some(output) = group_service.find_last_visited_output(group).await? {
+        return Ok(output);
+    }
+    Ok(ipc_client.get_primary_output()?)
+}
+
 async fn run_group(
     action: GroupAction,
     group_service: &GroupService,
@@ -283,19 +299,22 @@ async fn run_group(
                     println!("Created group \"{}\"", group);
                 }
             }
-            group_service.set_active_group(&output, &group).await?;
+            let resolved_output = resolve_group_output(output.as_deref(), &group, group_service, ipc_client).await?;
+            group_service.set_active_group(&resolved_output, &group).await?;
             waybar_sync.update_waybar().await?;
-            println!("Set active group for \"{}\" to \"{}\"", output, group);
+            println!("Set active group for \"{}\" to \"{}\"", resolved_output, group);
         }
         GroupAction::Active { output } => {
             let active = group_service.get_active_group(&output).await.unwrap_or_else(|_| "0".to_string());
             println!("{}", active);
         }
         GroupAction::Next { output, wrap } => {
-            let output = resolve_output(output.as_deref(), ipc_client)?;
-            if let Some(next) = group_service.next_group(&output, wrap).await? {
+            let current_output = resolve_output(output.as_deref(), ipc_client)?;
+            if let Some(next_name) = group_service.next_group_name(&current_output, wrap).await? {
+                let resolved_output = resolve_group_output(None, &next_name, group_service, ipc_client).await?;
+                group_service.set_active_group(&resolved_output, &next_name).await?;
                 waybar_sync.update_waybar().await?;
-                println!("Switched from active group to \"{}\"", next);
+                println!("Switched from active group to \"{}\"", next_name);
             }
         }
         GroupAction::NextOnOutput { output, wrap } => {
@@ -306,10 +325,12 @@ async fn run_group(
             }
         }
         GroupAction::Prev { output, wrap } => {
-            let output = resolve_output(output.as_deref(), ipc_client)?;
-            if let Some(prev) = group_service.prev_group(&output, wrap).await? {
+            let current_output = resolve_output(output.as_deref(), ipc_client)?;
+            if let Some(prev_name) = group_service.prev_group_name(&current_output, wrap).await? {
+                let resolved_output = resolve_group_output(None, &prev_name, group_service, ipc_client).await?;
+                group_service.set_active_group(&resolved_output, &prev_name).await?;
                 waybar_sync.update_waybar().await?;
-                println!("Switched from active group to \"{}\"", prev);
+                println!("Switched from active group to \"{}\"", prev_name);
             }
         }
         GroupAction::PrevOnOutput { output, wrap } => {

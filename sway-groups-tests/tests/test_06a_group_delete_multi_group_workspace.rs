@@ -114,7 +114,7 @@ async fn test_06a_group_delete_multi_group_workspace() {
 
     // --- Setup: create groups A and B, add workspaces, set up memberships ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_A, "--create"])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output, "--create"])
         .success();
 
     let _win1 = DummyWindowHandle::spawn(WS1).expect("spawn dummy window WS1");
@@ -130,7 +130,7 @@ async fn test_06a_group_delete_multi_group_workspace() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B, "--create"])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output, "--create"])
         .success();
 
     fixture
@@ -138,7 +138,7 @@ async fn test_06a_group_delete_multi_group_workspace() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     // --- Verify setup ---
@@ -235,7 +235,7 @@ async fn test_06a_group_delete_multi_group_workspace() {
 
     // --- Verify visibility in Group B ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
 
     let visible_gb = swayg_output(
@@ -255,7 +255,7 @@ async fn test_06a_group_delete_multi_group_workspace() {
 
     // --- Verify visibility in group 0 ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, "0"])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
 
     let visible_0 = swayg_output(
@@ -270,7 +270,7 @@ async fn test_06a_group_delete_multi_group_workspace() {
 
     // --- Switch back to original group ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(
@@ -287,11 +287,11 @@ async fn test_06a_group_delete_multi_group_workspace() {
 
     // Switch to Group B then back (auto-delete Group B)
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, GROUP_B])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
 
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(

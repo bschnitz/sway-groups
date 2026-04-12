@@ -142,7 +142,7 @@ async fn test_03_global_workspace() {
 
     // --- 2. Select test group (with --create) ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, TEST_GROUP, "--create"])
+        .swayg(&["group", "select", TEST_GROUP, "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(
@@ -192,7 +192,7 @@ async fn test_03_global_workspace() {
 
     // --- 6. Switch back to original group ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(
@@ -256,7 +256,7 @@ async fn test_03_global_workspace() {
     // --- 11a. Auto-delete: switch from global workspace ---
     // Switch to test group
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, TEST_GROUP])
+        .swayg(&["group", "select", TEST_GROUP, "--output", &fixture.orig_output])
         .success();
 
     // Set WS2 as global
@@ -304,7 +304,7 @@ async fn test_03_global_workspace() {
 
     // Switch back from global workspace (should auto-delete test group)
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(
@@ -323,7 +323,7 @@ async fn test_03_global_workspace() {
 
     // Create test group again
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, TEST_GROUP, "--create"])
+        .swayg(&["group", "select", TEST_GROUP, "--output", &fixture.orig_output, "--create"])
         .success();
 
     // Launch dummy window WS1 again
@@ -355,7 +355,7 @@ async fn test_03_global_workspace() {
 
     // Switch back to original group (from empty workspace, should auto-delete)
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(

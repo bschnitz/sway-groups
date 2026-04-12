@@ -42,6 +42,30 @@ async fn test_22_optional_output_fallback() {
     };
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
+    // Clean up stale outputs from previous failed runs
+    let outputs = Command::new("swaymsg")
+        .args(["-t", "get_outputs"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .expect("swaymsg failed");
+    let all_outputs: Vec<String> = serde_json::from_slice::<serde_json::Value>(&outputs.stdout)
+        .expect("parse outputs")
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|o| o.get("name").and_then(|n| n.as_str()).map(String::from))
+        .filter(|n| n != &fixture.orig_output)
+        .collect();
+    for o in &all_outputs {
+        let _ = Command::new("swaymsg")
+            .args(["output", o, "unplug"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
     if real_db.exists() {
         assert_eq!(
             db_count(
@@ -152,18 +176,7 @@ async fn test_22_optional_output_fallback() {
     );
 
     // --- Cleanup: auto-delete test group ---
-    fixture
-        .swayg(&["group", "select", GROUP, "--output", &virtual_output])
-        .success();
-    fixture
-        .swayg(&[
-            "group",
-            "select",
-            &orig_group,
-            "--output",
-            &fixture.orig_output,
-        ])
-        .success();
+    fixture.swayg(&["group", "delete", GROUP, "--force"]).success();
     assert_eq!(
         db_count(
             &fixture.db_path,

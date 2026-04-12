@@ -33,5 +33,5 @@ fi
 $HOME/.cargo/bin/swayg workspace move "$current_ws" --groups "$group"
 
 first_group=$(echo "$group" | cut -d',' -f1)
-$HOME/.cargo/bin/swayg group select "$current_output" "$first_group"
+$HOME/.cargo/bin/swayg group select "$first_group" --output "$current_output"
 $HOME/.cargo/bin/swayg nav go "$current_ws"

@@ -1,25 +1,11 @@
 #!/bin/sh
-# Switch active group on the current output via rofi.
+# Switch active group via rofi.
+# Output is auto-resolved from group state.
 
-output=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
-import json, sys
-for w in json.load(sys.stdin):
-    if w['focused']:
-        print(w['output'])
-        break
-")
-
-if [ -z "$output" ]; then
-    notify-send "swayg" "Cannot determine current output."
-    exit 1
-fi
-
-active=$($HOME/.cargo/bin/swayg group active "$output")
-
-group=$($HOME/.cargo/bin/swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | rofi -dmenu -p "Select group:" -a "$active")
+group=$($HOME/.cargo/bin/swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | rofi -dmenu -p "Select group:")
 if [ -z "$group" ]; then
     notify-send "swayg" "Group selection cancelled."
     exit 0
 fi
 
-$HOME/.cargo/bin/swayg group select "$output" "$group" --create
+$HOME/.cargo/bin/swayg group select "$group" --create

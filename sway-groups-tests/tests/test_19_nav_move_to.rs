@@ -124,8 +124,9 @@ async fn test_19_nav_move_to() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP,
+            "--output",
+            &fixture.orig_output,
             "--create",
         ])
         .success();

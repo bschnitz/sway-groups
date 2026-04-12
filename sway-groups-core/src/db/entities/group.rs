@@ -19,6 +19,12 @@ pub struct Model {
 
     #[sea_orm(nullable)]
     pub updated_at: Option<DateTime>,
+
+    #[sea_orm(nullable)]
+    pub last_visited: Option<DateTime>,
+
+    #[sea_orm(nullable)]
+    pub last_active_output: Option<String>,
 }
 
 /// Active model for group.

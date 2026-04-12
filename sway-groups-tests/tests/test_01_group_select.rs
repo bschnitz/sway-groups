@@ -72,7 +72,7 @@ async fn test_01_group_select() {
 
     // --- Test: group select --create ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, TEST_GROUP, "--create"])
+        .swayg(&["group", "select", TEST_GROUP, "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(
@@ -86,7 +86,7 @@ async fn test_01_group_select() {
 
     // --- Test: switch back to original group (auto-delete) ---
     fixture
-        .swayg(&["group", "select", &fixture.orig_output, &orig_group])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(

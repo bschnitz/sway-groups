@@ -96,8 +96,9 @@ async fn test_10_workspace_rename_simple() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             GROUP,
+            "--output",
+            &fixture.orig_output,
             "--create",
         ])
         .success();
@@ -207,8 +208,9 @@ async fn test_10_workspace_rename_simple() {
         .swayg(&[
             "group",
             "select",
-            &fixture.orig_output,
             &orig_group,
+            "--output",
+            &fixture.orig_output,
         ])
         .success();
     assert_eq!(
