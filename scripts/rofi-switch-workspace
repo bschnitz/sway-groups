@@ -1,7 +1,23 @@
 #!/bin/sh
-# Switch to a visible workspace (chosen via rofi).
+# Switch to a workspace via rofi.
+# Shows all workspaces with their group (one line per workspace+group).
+# Global workspaces appear once per group they belong to.
+# Output is auto-resolved via group state when switching.
 
-ws=$($HOME/.cargo/bin/swayg workspace list --visible --plain 2>/dev/null | rofi -dmenu -p "Switch to:")
-if [ -n "$ws" ]; then
-    $HOME/.cargo/bin/swayg nav go "$ws"
+current_output=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
+import json, sys
+for w in json.load(sys.stdin):
+    if w['focused']:
+        print(w['output'])
+        break
+")
+
+active_group=$($HOME/.cargo/bin/swayg group active "$current_output" 2>/dev/null)
+
+choice=$($HOME/.cargo/bin/swayg workspace list --plain --groups --flatten 2>/dev/null | rofi -dmenu -p "Switch to:" -a "$active_group")
+if [ -z "$choice" ]; then
+    exit 0
 fi
+
+workspace=$(echo "$choice" | cut -d'│' -f1)
+$HOME/.cargo/bin/swayg nav go "$workspace"

@@ -127,6 +127,8 @@ enum WorkspaceAction {
         plain: bool,
         #[arg(long)]
         groups: bool,
+        #[arg(long)]
+        flatten: bool,
     },
     Add {
         workspace: String,
@@ -359,7 +361,7 @@ async fn run_workspace(
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
-        WorkspaceAction::List { output, group, visible, plain, groups } => {
+        WorkspaceAction::List { output, group, visible, plain, groups, flatten } => {
             if visible {
                 let output_name = output.as_deref()
                     .map(|s| s.to_string())
@@ -382,7 +384,7 @@ async fn run_workspace(
                         println!("No workspaces found.");
                     }
                 } else {
-                    let active_group_name = if !plain && group.is_none() {
+                    let active_group_name = if group.is_none() {
                         let output_name = output.as_deref()
                             .map(|s| s.to_string())
                             .or_else(|| ipc_client.get_primary_output().ok());
@@ -400,17 +402,27 @@ async fn run_workspace(
                         println!("Workspaces in group \"{}\" on \"{}\":", group_label, output_label);
                     }
                     for ws in &workspaces {
-                        if plain {
-                            if groups {
-                                let groups_str = ws.groups.join(",");
-                                if groups_str.is_empty() {
-                                    println!("{}│", ws.name);
-                                } else {
-                                    println!("{}│{}", ws.name, groups_str);
+                        if plain && groups && flatten {
+                            let mut sorted_groups: Vec<&String> = ws.groups.iter().collect();
+                            sorted_groups.sort_by(|a, b| {
+                                if let Some(ref active) = active_group_name {
+                                    if *a == active { return std::cmp::Ordering::Less; }
+                                    if *b == active { return std::cmp::Ordering::Greater; }
                                 }
-                            } else {
-                                println!("{}", ws.name);
+                                a.cmp(b)
+                            });
+                            for g in &sorted_groups {
+                                println!("{}│{}", ws.name, g);
                             }
+                        } else if plain && groups {
+                            let groups_str = ws.groups.join(",");
+                            if groups_str.is_empty() {
+                                println!("{}│", ws.name);
+                            } else {
+                                println!("{}│{}", ws.name, groups_str);
+                            }
+                        } else if plain {
+                            println!("{}", ws.name);
                         } else {
                             let status = if ws.is_global {
                                 "(global)"

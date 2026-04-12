@@ -238,6 +238,71 @@ async fn test_23_workspace_list_groups_flag() {
         none_line
     );
 
+    // --- Test: workspace list --plain --groups --flatten ---
+    // Switch to GROUP_B to test active-group-first sorting
+    fixture
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
+        .success();
+
+    let flatten_out = swayg_output(
+        &fixture.db_path,
+        &["workspace", "list", "--plain", "--groups", "--flatten"],
+    );
+
+    // WS_MULTI: two lines (one per group), GROUP_B first (active), then GROUP_A
+    let mut multi_lines: Vec<&str> = flatten_out.lines()
+        .filter(|l| l.starts_with(&format!("{}│", WS_MULTI)))
+        .collect();
+    assert_eq!(
+        multi_lines.len(), 2,
+        "'{}' has 2 lines in --flatten output",
+        WS_MULTI
+    );
+    // Active group (GROUP_B) first
+    assert_eq!(
+        multi_lines[0],
+        format!("{}│{}", WS_MULTI, GROUP_B),
+        "'{}' first line has active group {}",
+        WS_MULTI, GROUP_B
+    );
+    assert_eq!(
+        multi_lines[1],
+        format!("{}│{}", WS_MULTI, GROUP_A),
+        "'{}' second line has other group {}",
+        WS_MULTI, GROUP_A
+    );
+
+    // WS_SINGLE: one line (only GROUP_A)
+    let single_lines: Vec<&str> = flatten_out.lines()
+        .filter(|l| l.starts_with(&format!("{}│", WS_SINGLE)))
+        .collect();
+    assert_eq!(
+        single_lines.len(), 1,
+        "'{}' has 1 line in --flatten output",
+        WS_SINGLE
+    );
+    assert_eq!(
+        single_lines[0],
+        format!("{}│{}", WS_SINGLE, GROUP_A),
+        "'{}' line has group {}",
+        WS_SINGLE, GROUP_A
+    );
+
+    // WS_NONE: no lines (empty groups, nothing to flatten)
+    let none_lines: Vec<&str> = flatten_out.lines()
+        .filter(|l| l.starts_with(&format!("{}│", WS_NONE)))
+        .collect();
+    assert_eq!(
+        none_lines.len(), 0,
+        "'{}' has 0 lines in --flatten output (no groups)",
+        WS_NONE
+    );
+
+    // Switch back to orig_group
+    fixture
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .success();
+
     // --- Cleanup ---
     fixture.swayg(&["nav", "go", &orig_ws]).success();
     std::thread::sleep(std::time::Duration::from_millis(100));
