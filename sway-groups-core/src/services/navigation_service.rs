@@ -395,7 +395,7 @@ impl NavigationService {
             None => return Ok(()),
         };
 
-        let output_name = self.ipc_client.get_primary_output().unwrap_or_default();
+        let output_name = self.ipc_client.get_primary_output().unwrap_or_else(|_| String::new());
         let active_group = OutputEntity::find_by_name(&output_name)
             .one(self.db.conn())
             .await?
@@ -468,7 +468,7 @@ impl NavigationService {
             let ws = active.insert(self.db.conn()).await?;
             info!("Created workspace '{}' in DB (from container move)", workspace_name);
 
-            let output_name = self.ipc_client.get_primary_output().unwrap_or_default();
+            let output_name = self.ipc_client.get_primary_output().unwrap_or_else(|_| String::new());
             let active_group = OutputEntity::find_by_name(&output_name)
                 .one(self.db.conn())
                 .await?

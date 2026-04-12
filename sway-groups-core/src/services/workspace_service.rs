@@ -958,7 +958,7 @@ impl WorkspaceService {
         }
 
         // --- Prune empty groups ---
-        let removed_groups = group_service.prune_groups(&[]).await.unwrap_or(0);
+        let removed_groups = group_service.prune_groups(&[]).await.unwrap_or_else(|e| { tracing::warn!("prune_groups failed: {}", e); 0 });
 
         info!("repair: removed {} stale workspaces, added {} new workspaces, pruned {} empty groups",
               removed_ws, added_ws, removed_groups);

@@ -180,7 +180,13 @@ impl GroupService {
         info!("Deleted group: {}", name);
 
         // Clean up orphaned workspaces: move to group "0" if still in sway, delete if not
-        let sway_workspaces = self.ipc_client.get_workspaces().unwrap_or_default();
+        let sway_workspaces = match self.ipc_client.get_workspaces() {
+            Ok(ws) => ws,
+            Err(e) => {
+                tracing::warn!("Could not fetch workspaces from sway: {}. Proceeding with empty list.", e);
+                Vec::new()
+            }
+        };
         let sway_names: std::collections::HashSet<String> = sway_workspaces
             .iter()
             .map(|w| w.name.clone())

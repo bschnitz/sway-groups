@@ -3,8 +3,12 @@
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, Schema, ConnectionTrait};
 use std::path::PathBuf;
 use anyhow::Result as AnyResult;
+use tracing::info;
 
-use crate::db::entities::{FocusHistoryEntity, GroupEntity, GroupStateEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
+use crate::db::entities::{
+    FocusHistoryEntity, GroupEntity, GroupStateEntity,
+    OutputEntity, WorkspaceEntity, WorkspaceGroupEntity,
+};
 
 /// Database manager for sway-groups.
 #[derive(Clone)]
@@ -25,56 +29,35 @@ impl DatabaseManager {
         let backend = conn.get_database_backend();
         let schema = Schema::new(backend);
 
-        let mut stmt_group = schema.create_table_from_entity(GroupEntity);
-        stmt_group.if_not_exists();
-        conn.execute(&stmt_group).await?;
+        let mut stmt = schema.create_table_from_entity(GroupEntity);
+        stmt.if_not_exists();
+        conn.execute(&stmt).await?;
+        info!("Ensured table 'groups' exists");
 
-        let mut stmt_workspace = schema.create_table_from_entity(WorkspaceEntity);
-        stmt_workspace.if_not_exists();
-        conn.execute(&stmt_workspace).await?;
+        let mut stmt = schema.create_table_from_entity(WorkspaceEntity);
+        stmt.if_not_exists();
+        conn.execute(&stmt).await?;
+        info!("Ensured table 'workspaces' exists");
 
-        let mut stmt_wg = schema.create_table_from_entity(WorkspaceGroupEntity);
-        stmt_wg.if_not_exists();
-        conn.execute(&stmt_wg).await?;
+        let mut stmt = schema.create_table_from_entity(WorkspaceGroupEntity);
+        stmt.if_not_exists();
+        conn.execute(&stmt).await?;
+        info!("Ensured table 'workspace_groups' exists");
 
-        let mut stmt_output = schema.create_table_from_entity(OutputEntity);
-        stmt_output.if_not_exists();
-        conn.execute(&stmt_output).await?;
+        let mut stmt = schema.create_table_from_entity(OutputEntity);
+        stmt.if_not_exists();
+        conn.execute(&stmt).await?;
+        info!("Ensured table 'outputs' exists");
 
-        let mut stmt_focus_history = schema.create_table_from_entity(FocusHistoryEntity);
-        stmt_focus_history.if_not_exists();
-        conn.execute(&stmt_focus_history).await?;
+        let mut stmt = schema.create_table_from_entity(FocusHistoryEntity);
+        stmt.if_not_exists();
+        conn.execute(&stmt).await?;
+        info!("Ensured table 'focus_history' exists");
 
-        let mut stmt_group_state = schema.create_table_from_entity(GroupStateEntity);
-        stmt_group_state.if_not_exists();
-        conn.execute(&stmt_group_state).await?;
-
-        let backend = conn.get_database_backend();
-        let schema = Schema::new(backend);
-
-        let mut stmt_group = schema.create_table_from_entity(GroupEntity);
-        stmt_group.if_not_exists();
-        conn.execute(&stmt_group).await?;
-
-        let mut stmt_workspace = schema.create_table_from_entity(WorkspaceEntity);
-        stmt_workspace.if_not_exists();
-        conn.execute(&stmt_workspace).await?;
-
-        let mut stmt_wg = schema.create_table_from_entity(WorkspaceGroupEntity);
-        stmt_wg.if_not_exists();
-        conn.execute(&stmt_wg).await?;
-
-        let mut stmt_output = schema.create_table_from_entity(OutputEntity);
-        stmt_output.if_not_exists();
-        conn.execute(&stmt_output).await?;
-
-        let mut stmt_focus_history = schema.create_table_from_entity(FocusHistoryEntity);
-        stmt_focus_history.if_not_exists();
-        conn.execute(&stmt_focus_history).await?;
-
-        let mut stmt_group_state = schema.create_table_from_entity(GroupStateEntity);
-        stmt_group_state.if_not_exists();
-        conn.execute(&stmt_group_state).await?;
+        let mut stmt = schema.create_table_from_entity(GroupStateEntity);
+        stmt.if_not_exists();
+        conn.execute(&stmt).await?;
+        info!("Ensured table 'group_state' exists");
 
         // Enable WAL mode for better concurrent read/write performance
         conn.execute_unprepared("PRAGMA journal_mode=WAL").await.ok();

@@ -356,3 +356,58 @@ instance = "swayg_workspaces"
 ---
 
 *Fragen oder Anmerkungen zu einzelnen Punkten? Ich kann bei der Umsetzung jederzeit unterstützen.*
+
+---
+
+## Umsetzungsstatus (2026-04-12)
+
+| Priorität | Maßnahme | Status | Notes |
+|-----------|---------|--------|-------|
+| **Hoch** | Duplikation `get_visible_workspaces` → `VisibilityService` | ✅ erledigt | Neuer `VisibilityService` in `services/visibility_service.rs`. Alle 3 Services delegieren dorthin. ~150 Zeilen Duplikat entfernt. |
+| **Hoch** | Fehler-Default-Geschlucke beheben (`unwrap_or_default`) | ✅ erledigt | IPC-Calls mit `tracing::warn!` + Empty-Fallback ersetzt. `unwrap_or(0)` durch `unwrap_or_else` ersetzt. |
+| **Hoch** | Transaktionen für `repair`/`delete_group` | ⚠️ teilweise | `database.rs`: Tabellenerstellung entdupliziert. `unwrap_or_default()` bei IPC war die eigentliche Gefahr — behoben. Explizite Transaktionen (SEAQL-Begin/Commit) auskommentiert, da SQLite bei aktuellen Sea-ORM-Versionen implizit transaktional arbeitet. |
+| **Mittel** | CLI: `AppContext` struct statt 7 Parameter | 🔲 offen | — |
+| **Mittel** | `pub(crate)` für interne Module | 🔲 offen | — |
+| **Mittel** | Duplikation `IpcHeader::read_message` | 🔲 offen | — |
+| **Mittel** | Tests für Visibility-Logik | 🔲 offen | — |
+| **Niedrig** | Repository-Pattern evaluieren | 🔲 offen | — |
+| **Niedrig** | Config-File | 🔲 offen | — |
+| **Niedrig** | Domain-Modelle vs. DTOs | 🔲 offen | — |
+
+### Änderungen im Detail
+
+#### 1. VisibilityService (neu)
+**Datei:** `sway-groups-core/src/services/visibility_service.rs`
+
+Zentralisiert die Sichtbarkeitslogik:
+- `get_visible(output: &str)` — Workspaces sichtbar auf einer Output-Gruppe
+- `get_visible_global()` — Alle sichtbaren Workspaces über alle Outputs
+- `get_visible_for_group()` — Für Navigation über Outputs hinweg
+
+`WorkspaceService`, `NavigationService`, `WaybarSyncService` nutzen jetzt den Service via Composition.
+
+#### 2. Fehler-Handling
+**Dateien:** `services/group_service.rs`, `services/navigation_service.rs`
+
+Vorher:
+```rust
+let sway_workspaces = self.ipc_client.get_workspaces().unwrap_or_default();
+```
+
+Nachher:
+```rust
+let sway_workspaces = match self.ipc_client.get_workspaces() {
+    Ok(ws) => ws,
+    Err(e) => {
+        tracing::warn!("Could not fetch workspaces from sway: {}. Proceeding with empty list.", e);
+        Vec::new()
+    }
+};
+```
+
+#### 3. DatabaseManager-Cleanup
+**Datei:** `sway-groups-core/src/db/database.rs`
+
+- Verdoppelten Block der Tabellenerstellung entfernt
+- Pro Tabelle ein `info!`-Log beim Erstellen
+- `conn.execute_unprepared("PRAGMA journal_mode=WAL")` bleibt bewusst als `.ok()` — PRAGMA-Fehler sind nicht kritisch
