@@ -345,10 +345,10 @@ instance = "swayg_workspaces"
 | **Hoch** | Duplikation `get_visible_workspaces` → `VisibilityService` | Mittel | Gering |
 | **Hoch** | Fehler-Default-Geschlucke beheben (`unwrap_or_default`) | Niedrig | Mittel |
 | **Hoch** | Transaktionen für `repair`/`delete_group` | Niedrig | Hoch |
-| **Mittel** | CLI: `AppContext` struct statt 7 Parameter | Niedrig | Gering |
-| **Mittel** | `pub(crate)` für interne Module | Niedrig | Gering |
-| **Mittel** | Duplikation `IpcHeader::read_message` | Niedrig | Gering |
-| **Mittel** | Tests für Visibility-Logik | Mittel | — |
+| **Mittel** | Duplikation `IpcHeader::read_message` | ✅ erledigt | `read_ipc_frame()` als freie Funktion vor den Structs. EventStream + SwayIpcClient nutzen sie. || CLI: `AppContext` struct statt 7 Parameter | Niedrig | Gering |
+| **Mittel** | Duplikation `IpcHeader::read_message` | ✅ erledigt | `read_ipc_frame()` als freie Funktion vor den Structs. EventStream + SwayIpcClient nutzen sie. || `pub(crate)` für interne Module | Niedrig | Gering |
+| **Mittel** | Duplikation `IpcHeader::read_message` | ✅ erledigt | `read_ipc_frame()` als freie Funktion vor den Structs. EventStream + SwayIpcClient nutzen sie. || Duplikation `IpcHeader::read_message` | Niedrig | Gering |
+| **Mittel** | Duplikation `IpcHeader::read_message` | ✅ erledigt | `read_ipc_frame()` als freie Funktion vor den Structs. EventStream + SwayIpcClient nutzen sie. || Tests für Visibility-Logik | Mittel | — |
 | **Niedrig** | Repository-Pattern evaluieren | Hoch | Gering |
 | **Niedrig** | Config-File | Mittel | Gering |
 | **Niedrig** | Domain-Modelle vs. DTOs | Mittel | Gering |
@@ -366,10 +366,10 @@ instance = "swayg_workspaces"
 | **Hoch** | Duplikation `get_visible_workspaces` → `VisibilityService` | ✅ erledigt | Neuer `VisibilityService` in `services/visibility_service.rs`. Alle 3 Services delegieren dorthin. ~150 Zeilen Duplikat entfernt. |
 | **Hoch** | Fehler-Default-Geschlucke beheben (`unwrap_or_default`) | ✅ erledigt | IPC-Calls mit `tracing::warn!` + Empty-Fallback ersetzt. `unwrap_or(0)` durch `unwrap_or_else` ersetzt. |
 | **Hoch** | Transaktionen für `repair`/`delete_group` | ⚠️ teilweise | `database.rs`: Tabellenerstellung entdupliziert. `unwrap_or_default()` bei IPC war die eigentliche Gefahr — behoben. Explizite Transaktionen (SEAQL-Begin/Commit) auskommentiert, da SQLite bei aktuellen Sea-ORM-Versionen implizit transaktional arbeitet. |
-| **Mittel** | CLI: `AppContext` struct statt 7 Parameter | 🔲 offen | — |
-| **Mittel** | `pub(crate)` für interne Module | 🔲 offen | — |
-| **Mittel** | Duplikation `IpcHeader::read_message` | 🔲 offen | — |
-| **Mittel** | Tests für Visibility-Logik | 🔲 offen | — |
+| **Mittel** | Duplikation `IpcHeader::read_message` | ✅ erledigt | `read_ipc_frame()` als freie Funktion vor den Structs. EventStream + SwayIpcClient nutzen sie. || CLI: `AppContext` struct statt 7 Parameter | 🔲 offen | — |
+| **Mittel** | Duplikation `IpcHeader::read_message` | ✅ erledigt | `read_ipc_frame()` als freie Funktion vor den Structs. EventStream + SwayIpcClient nutzen sie. || `pub(crate)` für interne Module | 🔲 offen | — |
+| **Mittel** | Duplikation `IpcHeader::read_message` | ✅ erledigt | `read_ipc_frame()` als freie Funktion vor den Structs. EventStream + SwayIpcClient nutzen sie. || Duplikation `IpcHeader::read_message` | 🔲 offen | — |
+| **Mittel** | Duplikation `IpcHeader::read_message` | ✅ erledigt | `read_ipc_frame()` als freie Funktion vor den Structs. EventStream + SwayIpcClient nutzen sie. || Tests für Visibility-Logik | 🔲 offen | — |
 | **Niedrig** | Repository-Pattern evaluieren | 🔲 offen | — |
 | **Niedrig** | Config-File | 🔲 offen | — |
 | **Niedrig** | Domain-Modelle vs. DTOs | 🔲 offen | — |
