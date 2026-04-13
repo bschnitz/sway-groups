@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
 
 use anyhow::{Context, Result};
 use assert_cmd::cargo::CommandCargoExt;
@@ -7,6 +8,11 @@ use assert_cmd::assert::OutputAssertExt;
 
 pub const TEST_DB_PATH: &str = "/tmp/swayg-integration-test.db";
 pub const TEST_PREFIX: &str = "zz_test_";
+const DAEMON_STATE_FILE: &str = "/tmp/swayg-daemon-test.state";
+const SIGUSR1: libc::c_int = 10;
+const SIGUSR2: libc::c_int = 12;
+
+static TEST_DAEMON: Mutex<Option<Child>> = Mutex::new(None);
 
 // ---------------------------------------------------------------------------
 // swayg CLI helper
@@ -48,6 +54,113 @@ pub fn swayg_live(args: &[&str]) -> assert_cmd::assert::Assert {
         .expect("swayg binary not found")
         .args(args)
         .assert()
+}
+
+// ---------------------------------------------------------------------------
+// Shared test daemon
+// ---------------------------------------------------------------------------
+
+fn daemon_binary() -> PathBuf {
+    std::env::var("CARGO_BIN_EXE_swayg-daemon")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            manifest_dir
+                .parent()
+                .unwrap_or(&manifest_dir)
+                .join("target")
+                .join("debug")
+                .join("swayg-daemon")
+        })
+}
+
+fn read_daemon_state() -> Option<String> {
+    std::fs::read_to_string(DAEMON_STATE_FILE)
+        .ok()
+        .map(|s| s.trim().to_string())
+}
+
+fn poll_daemon_state(expected: &str, timeout: std::time::Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    while std::time::Instant::now() < deadline {
+        if read_daemon_state().as_deref() == Some(expected) {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    false
+}
+
+fn send_signal(pid: u32, sig: libc::c_int) {
+    unsafe {
+        libc::kill(pid as libc::pid_t, sig);
+    }
+}
+
+pub fn start_test_daemon() {
+    let mut guard = TEST_DAEMON.lock().unwrap();
+    if guard.is_some() {
+        return;
+    }
+
+    let _ = std::fs::remove_file(DAEMON_STATE_FILE);
+
+    let child = Command::new(daemon_binary())
+        .arg(TEST_DB_PATH)
+        .arg(DAEMON_STATE_FILE)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to spawn swayg-daemon for tests");
+
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    if !poll_daemon_state("running", std::time::Duration::from_secs(2)) {
+        let mut child = child;
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("Test daemon did not start (state file not written)");
+    }
+
+    *guard = Some(child);
+}
+
+pub fn resume_test_daemon() {
+    let guard = TEST_DAEMON.lock().unwrap();
+    let child = guard.as_ref().expect("Test daemon not started");
+    send_signal(child.id(), SIGUSR2);
+    drop(guard);
+
+    if !poll_daemon_state("running", std::time::Duration::from_secs(2)) {
+        panic!("Test daemon did not resume (state file not updated to 'running')");
+    }
+}
+
+pub fn pause_test_daemon() {
+    let guard = TEST_DAEMON.lock().unwrap();
+    let child = guard.as_ref().expect("Test daemon not started");
+    send_signal(child.id(), SIGUSR1);
+    drop(guard);
+
+    if !poll_daemon_state("paused", std::time::Duration::from_secs(2)) {
+        panic!("Test daemon did not pause (state file not updated to 'paused')");
+    }
+}
+
+pub fn stop_test_daemon() {
+    let mut guard = TEST_DAEMON.lock().unwrap();
+    if let Some(ref mut child) = *guard {
+        let _ = child.kill();
+        let _ = child.wait();
+        *guard = None;
+    }
+    let _ = std::fs::remove_file(DAEMON_STATE_FILE);
+}
+
+pub fn daemon_state() -> Option<String> {
+    read_daemon_state()
 }
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 
-use sway_groups_tests::common::{TestFixture, get_focused_workspace, get_primary_output};
+use sway_groups_tests::common::{TestFixture, pause_test_daemon, resume_test_daemon, start_test_daemon};
 
 const WS_EXT: &str = "zz_test_ws_ext";
 
@@ -14,46 +14,6 @@ fn db_query(db_path: &PathBuf, sql: &str) -> String {
         .output()
         .expect("sqlite3 failed");
     String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
-
-fn swayg_output(db_path: &PathBuf, args: &[&str]) -> String {
-    sway_groups_tests::common::swayg_output(db_path, args)
-}
-
-struct DaemonHandle {
-    child: Child,
-}
-
-impl DaemonHandle {
-    fn spawn(db_path: &PathBuf) -> Self {
-        let daemon_bin = std::env::var("CARGO_BIN_EXE_swayg-daemon")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-                    .map(PathBuf::from)
-                    .unwrap_or_default();
-                manifest_dir
-                    .parent()
-                    .unwrap_or(&manifest_dir)
-                    .join("target")
-                    .join("debug")
-                    .join("swayg-daemon")
-            });
-        let child = Command::new(&daemon_bin)
-            .arg(db_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("Failed to spawn swayg-daemon");
-        Self { child }
-    }
-}
-
-impl Drop for DaemonHandle {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
 }
 
 fn workspace_count_in_sway(name: &str) -> i64 {
@@ -99,10 +59,9 @@ async fn test_27_daemon_catches_external_workspace() {
     let orig_output = fixture.orig_output.clone();
     let orig_ws = fixture.orig_workspace.clone();
 
-    let _daemon = DaemonHandle::spawn(&fixture.db_path);
-    std::thread::sleep(std::time::Duration::from_millis(500));
-
     fixture.init().success();
+    start_test_daemon();
+    resume_test_daemon();
 
     assert_eq!(
         db_query(&fixture.db_path, &format!(
@@ -144,6 +103,8 @@ async fn test_27_daemon_catches_external_workspace() {
         group_count, "1",
         "external workspace '{}' should be assigned to a group", WS_EXT
     );
+
+    pause_test_daemon();
 
     cleanup_external_workspace(WS_EXT, &orig_output);
     std::thread::sleep(std::time::Duration::from_millis(500));

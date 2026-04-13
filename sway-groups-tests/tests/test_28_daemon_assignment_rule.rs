@@ -1,7 +1,10 @@
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 
-use sway_groups_tests::common::{TestFixture, DummyWindowHandle, get_focused_workspace};
+use sway_groups_tests::common::{
+    TestFixture, DummyWindowHandle, get_focused_workspace,
+    pause_test_daemon, resume_test_daemon, start_test_daemon,
+};
 
 const TEST_GROUP: &str = "zz_test_assign_group";
 const APP_ID: &str = "assignment-test-id";
@@ -22,40 +25,6 @@ fn swayg_output(db_path: &PathBuf, args: &[&str]) -> String {
     sway_groups_tests::common::swayg_output(db_path, args)
 }
 
-struct DaemonHandle {
-    child: Child,
-}
-
-impl DaemonHandle {
-    fn spawn(db_path: &PathBuf) -> Self {
-        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_default();
-        let daemon_bin = manifest_dir
-            .parent()
-            .unwrap_or(&manifest_dir)
-            .join("target")
-            .join("debug")
-            .join("swayg-daemon");
-        let log_file = std::fs::File::create("/tmp/swayg-daemon-test.log").expect("create daemon log");
-        let child = Command::new(&daemon_bin)
-            .arg(db_path)
-            .env("RUST_LOG", "sway_groups_daemon=info")
-            .stdout(Stdio::null())
-            .stderr(Stdio::from(log_file))
-            .spawn()
-            .expect("Failed to spawn swayg-daemon");
-        Self { child }
-    }
-}
-
-impl Drop for DaemonHandle {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
 fn check_assignment_rule() {
     let config_path = dirs::home_dir()
         .unwrap_or_default()
@@ -66,7 +35,7 @@ fn check_assignment_rule() {
             "ASSIGNMENT CONFIG NOT FOUND at {}.\n\
              Please create it with:\n\
              \n\
-             assign [app_id=\"assignment-test-id\"] workspace test_workspace_1\n",
+             for_window [app_id=\"assignment-test-id\"] workspace test_workspace_1\n",
             config_path.display()
         );
     }
@@ -85,23 +54,6 @@ fn check_assignment_rule() {
             config_path.display()
         );
     }
-}
-
-fn workspace_count_in_sway(name: &str) -> i64 {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_workspaces"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let workspaces: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse workspaces");
-    workspaces
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|w| w.get("name").and_then(|n| n.as_str()) == Some(name))
-        .count() as i64
 }
 
 fn workspace_in_group_count(db_path: &PathBuf, ws: &str, group: &str) -> i64 {
@@ -128,9 +80,8 @@ async fn test_28_daemon_with_assignment_rule() {
     let orig_output = fixture.orig_output.clone();
 
     fixture.init().success();
-
-    let _daemon = DaemonHandle::spawn(&fixture.db_path);
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    start_test_daemon();
+    resume_test_daemon();
 
     fixture
         .swayg(&["group", "select", TEST_GROUP, "--output", &orig_output, "--create"])
@@ -163,7 +114,6 @@ async fn test_28_daemon_with_assignment_rule() {
     );
 
     let active_group = swayg_output(&fixture.db_path, &["group", "active", &orig_output]);
-    eprintln!("[DEBUG] active_group before move: {}", active_group);
 
     fixture
         .swayg(&["workspace", "move", ASSIGNED_WS, "--groups", TEST_GROUP])
@@ -178,11 +128,12 @@ async fn test_28_daemon_with_assignment_rule() {
     );
 
     let active_after_move = swayg_output(&fixture.db_path, &["group", "active", &orig_output]);
-    eprintln!("[DEBUG] active_group after move: {}", active_after_move);
     assert_eq!(
         active_after_move, TEST_GROUP,
         "active_group should still be TEST_GROUP after workspace move"
     );
+
+    pause_test_daemon();
 
     drop(_win);
     std::thread::sleep(std::time::Duration::from_millis(500));

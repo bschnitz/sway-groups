@@ -1,7 +1,10 @@
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 
-use sway_groups_tests::common::{TestFixture, DummyWindowHandle, get_focused_workspace};
+use sway_groups_tests::common::{
+    TestFixture, DummyWindowHandle, get_focused_workspace,
+    pause_test_daemon, resume_test_daemon, start_test_daemon,
+};
 
 const WS_DEL: &str = "zz_test_ws_del";
 
@@ -20,48 +23,18 @@ fn swayg_output(db_path: &PathBuf, args: &[&str]) -> String {
     sway_groups_tests::common::swayg_output(db_path, args)
 }
 
-struct DaemonHandle {
-    child: Child,
-}
-
-impl DaemonHandle {
-    fn spawn(db_path: &PathBuf) -> Self {
-        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_default();
-        let daemon_bin = manifest_dir
-            .parent()
-            .unwrap_or(&manifest_dir)
-            .join("target")
-            .join("debug")
-            .join("swayg-daemon");
-        let child = Command::new(&daemon_bin)
-            .arg(db_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("Failed to spawn swayg-daemon");
-        Self { child }
-    }
-}
-
-impl Drop for DaemonHandle {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
+fn workspace_of_window(app_id: &str) -> Option<String> {
+    sway_groups_tests::common::workspace_of_window(app_id)
 }
 
 #[tokio::test]
 async fn test_29_daemon_removes_destroyed_workspace() {
     let fixture = TestFixture::new().await.expect("fixture setup");
     let orig_ws = fixture.orig_workspace.clone();
-    let orig_output = fixture.orig_output.clone();
 
     fixture.init().success();
-
-    let _daemon = DaemonHandle::spawn(&fixture.db_path);
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    start_test_daemon();
+    resume_test_daemon();
 
     swayg_output(&fixture.db_path, &["workspace", "add", WS_DEL, "--groups", "0"]);
 
@@ -110,4 +83,6 @@ async fn test_29_daemon_removes_destroyed_workspace() {
          WHERE w.name = '{}'", WS_DEL
     ));
     assert_eq!(wg_after, "0", "workspace_group entries should be cleaned up");
+
+    pause_test_daemon();
 }

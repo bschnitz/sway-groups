@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use anyhow::Result;
 use sea_orm::{ActiveModelTrait, ModelTrait, Set};
@@ -21,8 +23,37 @@ fn default_db_path() -> PathBuf {
     }
 }
 
+fn default_state_file() -> PathBuf {
+    PathBuf::from("/tmp/swayg-daemon-test.state")
+}
+
+fn write_state(state_file: &std::path::Path, state: &str) {
+    let tmp = state_file.with_extension("tmp");
+    if let Ok(mut f) = std::fs::File::create(&tmp) {
+        use std::io::Write;
+        let _ = f.write_all(state.as_bytes());
+        let _ = f.write_all(b"\n");
+        let _ = std::fs::rename(&tmp, state_file);
+    }
+}
+
+fn read_state(state_file: &std::path::Path) -> Option<String> {
+    std::fs::read_to_string(state_file).ok().map(|s| s.trim().to_string())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    let mut args = std::env::args().skip(1);
+    let db_path = args
+        .next()
+        .map(PathBuf::from)
+        .unwrap_or_else(default_db_path);
+
+    let state_file: PathBuf = args
+        .next()
+        .map(PathBuf::from)
+        .unwrap_or_else(default_state_file);
+
     let db_parent = default_db_path()
         .parent()
         .unwrap_or(&PathBuf::from("."))
@@ -37,24 +68,54 @@ async fn main() -> Result<()> {
         .with_ansi(false)
         .init();
 
-    info!("swayg-daemon starting");
+    let paused = Arc::new(AtomicBool::new(false));
 
-    let db_path = std::env::args()
-        .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(default_db_path);
+    let paused_loop = Arc::clone(&paused);
+    let paused_thread = Arc::clone(&paused);
+    let sf = state_file.clone();
+    let mut signals = signal_hook::iterator::Signals::new(&[
+        signal_hook::consts::signal::SIGUSR1,
+        signal_hook::consts::signal::SIGUSR2,
+    ])?;
+    std::thread::spawn(move || {
+        for sig in signals.forever() {
+            match sig {
+                signal_hook::consts::signal::SIGUSR1 => {
+                    paused_thread.store(true, Ordering::Relaxed);
+                    write_state(&sf, "paused");
+                    info!("Daemon paused via SIGUSR1");
+                }
+                signal_hook::consts::signal::SIGUSR2 => {
+                    paused_thread.store(false, Ordering::Relaxed);
+                    write_state(&sf, "running");
+                    info!("Daemon resumed via SIGUSR2");
+                }
+                _ => {}
+            }
+        }
+    });
 
-    let db = DatabaseManager::new(db_path).await?;
+    write_state(&state_file, "running");
+    info!("swayg-daemon starting (db={}, state_file={})", db_path.display(), state_file.display());
+
     let ipc = SwayIpcClient::new()?;
 
     info!("Subscribing to sway workspace events");
     let mut event_stream = ipc.subscribe(&["workspace"])?;
 
     loop {
+        if paused_loop.load(Ordering::Relaxed) {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            continue;
+        }
+
         match event_stream.read_event() {
             Ok((event_type, payload)) => {
+                if paused_loop.load(Ordering::Relaxed) {
+                    continue;
+                }
                 if event_type == sway_groups_core::sway::SwayEventType::Workspace as u32 {
-                    handle_workspace_event(&db, &ipc, &payload).await;
+                    handle_workspace_event(&db_path, &ipc, &payload).await;
                 }
             }
             Err(e) => {
@@ -65,7 +126,7 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn handle_workspace_event(db: &DatabaseManager, ipc: &SwayIpcClient, payload: &[u8]) {
+async fn handle_workspace_event(db_path: &PathBuf, ipc: &SwayIpcClient, payload: &[u8]) {
     let event: serde_json::Value = match serde_json::from_slice(payload) {
         Ok(v) => v,
         Err(e) => {
@@ -91,12 +152,20 @@ async fn handle_workspace_event(db: &DatabaseManager, ipc: &SwayIpcClient, paylo
 
     info!("Workspace event: change={}, name={}", change, ws_name);
 
+    let db = match DatabaseManager::new(db_path.clone()).await {
+        Ok(db) => db,
+        Err(e) => {
+            error!("Failed to open DB '{}': {}", db_path.display(), e);
+            return;
+        }
+    };
+
     if change == "empty" {
-        handle_workspace_destroyed(db, ipc, &ws_name).await;
+        handle_workspace_destroyed(&db, ipc, &ws_name).await;
         return;
     }
 
-    handle_workspace_created(db, ipc, &ws_name, ws_info).await;
+    handle_workspace_created(&db, ipc, &ws_name, ws_info).await;
 }
 
 async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_name: &str, ws_info: &serde_json::Map<String, serde_json::Value>) {
