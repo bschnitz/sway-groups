@@ -51,7 +51,10 @@ enum Command {
         #[arg(short, long)]
         outputs: bool,
     },
-    Init,
+    Init {
+        #[arg(long)]
+        restart_daemon_service: bool,
+    },
     Repair,
     Status,
 }
@@ -215,13 +218,13 @@ pub async fn run(
     match cli.command {
         Command::Group { action } => run_group(action, group_service, waybar_sync, ipc_client).await?,
         Command::Workspace { action } => run_workspace(action, workspace_service, group_service, waybar_sync, ipc_client).await?,
-        Command::Nav { action } => run_nav(action, nav_service, waybar_sync, ipc_client).await?,
+        Command::Nav { action } => run_nav(action, nav_service, workspace_service, waybar_sync, ipc_client).await?,
         Command::Container { action } => run_container(action, nav_service, group_service, workspace_service, waybar_sync, ipc_client).await?,
         Command::Sync { all, workspaces, groups, outputs } => {
             run_sync(all, workspaces, groups, outputs, workspace_service, waybar_sync).await?;
         }
-        Command::Init => {
-            run_init(db_path, workspace_service, group_service, waybar_sync).await?;
+        Command::Init { restart_daemon_service } => {
+            run_init(db_path, workspace_service, group_service, waybar_sync, restart_daemon_service).await?;
         }
         Command::Repair => {
             run_repair(workspace_service, group_service, waybar_sync, ipc_client).await?;
@@ -485,13 +488,21 @@ async fn run_workspace(
             println!("Removed workspace \"{}\" from group \"{}\"", workspace, source_group);
         }
         WorkspaceAction::Rename { old_name, new_name } => {
-            let merged = workspace_service.rename_workspace(&old_name, &new_name).await?;
-            waybar_sync.update_waybar().await?;
-            if merged {
-                println!("Merged workspace \"{}\" into \"{}\"", old_name, new_name);
-            } else {
-                println!("Renamed workspace \"{}\" to \"{}\"", old_name, new_name);
+            let pending_id = workspace_service.register_pending_event(&new_name, "rename").await.ok();
+            let result: anyhow::Result<()> = async {
+                let merged = workspace_service.rename_workspace(&old_name, &new_name).await?;
+                waybar_sync.update_waybar().await?;
+                if merged {
+                    println!("Merged workspace \"{}\" into \"{}\"", old_name, new_name);
+                } else {
+                    println!("Renamed workspace \"{}\" to \"{}\"", old_name, new_name);
+                }
+                Ok(())
+            }.await;
+            if let Some(id) = pending_id {
+                workspace_service.remove_pending_event(id).await.ok();
             }
+            result?;
         }
         WorkspaceAction::Global { workspace } => {
             workspace_service.set_global(&workspace, true).await?;
@@ -519,6 +530,7 @@ async fn run_workspace(
 async fn run_nav(
     action: NavAction,
     nav_service: &NavigationService,
+    workspace_service: &WorkspaceService,
     waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
@@ -560,9 +572,28 @@ async fn run_nav(
             }
         }
         NavAction::Go { workspace, output: _ } => {
-            nav_service.go_workspace(&workspace).await?;
-            waybar_sync.update_waybar().await?;
-            println!("Navigated to \"{}\"", workspace);
+            let is_new_workspace = ipc_client.get_workspaces()
+                .map(|ws| !ws.iter().any(|w| w.name == workspace))
+                .unwrap_or(true);
+
+            let pending_id = if is_new_workspace {
+                workspace_service.register_pending_event(&workspace, "add").await.ok()
+            } else {
+                None
+            };
+
+            let result: anyhow::Result<()> = async {
+                nav_service.go_workspace(&workspace).await?;
+                waybar_sync.update_waybar().await?;
+                println!("Navigated to \"{}\"", workspace);
+                Ok(())
+            }.await;
+
+            if let Some(id) = pending_id {
+                workspace_service.remove_pending_event(id).await.ok();
+            }
+
+            result?;
         }
         NavAction::Back => {
             if let Some(target) = nav_service.go_back().await? {
@@ -586,26 +617,44 @@ async fn run_container(
 ) -> anyhow::Result<()> {
     match action {
         ContainerAction::Move { workspace, switch_to_workspace } => {
-            nav_service.move_to_workspace(&workspace).await?;
+            let is_new_workspace = ipc_client.get_workspaces()
+                .map(|ws| !ws.iter().any(|w| w.name == workspace))
+                .unwrap_or(true);
 
-            if switch_to_workspace {
-                nav_service.focus_workspace(&workspace).await?;
+            let pending_id = if is_new_workspace {
+                workspace_service.register_pending_event(&workspace, "add").await.ok()
+            } else {
+                None
+            };
 
-                // Update active group if workspace belongs to a different group
-                if let Ok(groups) = workspace_service.get_groups_for_workspace(&workspace).await {
-                    if !groups.is_empty() {
-                        if let Some(output) = ipc_client.get_primary_output().ok() {
-                            let current = group_service.get_active_group(&output).await.unwrap_or_default();
-                            if !groups.contains(&current) {
-                                group_service.update_active_group_quiet(&output, &groups[0]).await?;
+            let result: anyhow::Result<()> = async {
+                nav_service.move_to_workspace(&workspace).await?;
+
+                if switch_to_workspace {
+                    nav_service.focus_workspace(&workspace).await?;
+
+                    if let Ok(groups) = workspace_service.get_groups_for_workspace(&workspace).await {
+                        if !groups.is_empty() {
+                            if let Some(output) = ipc_client.get_primary_output().ok() {
+                                let current = group_service.get_active_group(&output).await.unwrap_or_default();
+                                if !groups.contains(&current) {
+                                    group_service.update_active_group_quiet(&output, &groups[0]).await?;
+                                }
                             }
                         }
                     }
                 }
+
+                waybar_sync.update_waybar().await?;
+                println!("Moved container to \"{}\"", workspace);
+                Ok(())
+            }.await;
+
+            if let Some(id) = pending_id {
+                workspace_service.remove_pending_event(id).await.ok();
             }
 
-            waybar_sync.update_waybar().await?;
-            println!("Moved container to \"{}\"", workspace);
+            result?;
         }
     }
     Ok(())
@@ -663,6 +712,7 @@ async fn run_init(
     _workspace_service: &WorkspaceService,
     _group_service: &GroupService,
     _waybar_sync: &WaybarSyncService,
+    restart_daemon_service: bool,
 ) -> anyhow::Result<()> {
     if db_path.exists() {
         std::fs::remove_file(&db_path)?;
@@ -680,6 +730,19 @@ async fn run_init(
     waybar_sync_svc.update_waybar().await?;
 
     println!("Initialized: created database, synced workspaces and outputs.");
+
+    if restart_daemon_service {
+        let result = std::process::Command::new("systemctl")
+            .args(["--user", "restart", "swayg-daemon.service"])
+            .output()?;
+        if result.status.success() {
+            println!("Restarted swayg-daemon service.");
+        } else {
+            eprintln!("Failed to restart swayg-daemon service: {}",
+                String::from_utf8_lossy(&result.stderr));
+        }
+    }
+
     Ok(())
 }
 

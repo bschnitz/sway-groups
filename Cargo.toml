@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "sway-groups-core",
     "sway-groups-cli",
+    "sway-groups-daemon",
     "sway-groups-dummy-window",
     "sway-groups-tests",
 ]

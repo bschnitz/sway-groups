@@ -2801,6 +2801,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "sway-groups-daemon"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "directories",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "sway-groups-core",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "sway-groups-dummy-window"
 version = "0.1.0"
 dependencies = [
@@ -2819,6 +2837,7 @@ dependencies = [
  "assert_cmd",
  "dirs",
  "serde_json",
+ "sway-groups-daemon",
  "sway-groups-dummy-window",
  "tokio",
 ]

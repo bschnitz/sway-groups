@@ -7,7 +7,8 @@ use tracing::info;
 
 use crate::db::entities::{
     FocusHistoryEntity, GroupEntity, GroupStateEntity,
-    OutputEntity, WorkspaceEntity, WorkspaceGroupEntity,
+    OutputEntity, PendingWorkspaceEventEntity,
+    WorkspaceEntity, WorkspaceGroupEntity,
 };
 
 /// Database manager for sway-groups.
@@ -54,10 +55,15 @@ impl DatabaseManager {
         conn.execute(&stmt).await?;
         info!("Ensured table 'focus_history' exists");
 
-        let mut stmt = schema.create_table_from_entity(GroupStateEntity);
-        stmt.if_not_exists();
-        conn.execute(&stmt).await?;
-        info!("Ensured table 'group_state' exists");
+    let mut stmt = schema.create_table_from_entity(GroupStateEntity);
+    stmt.if_not_exists();
+    conn.execute(&stmt).await?;
+    info!("Ensured table 'group_state' exists");
+
+    let mut stmt = schema.create_table_from_entity(PendingWorkspaceEventEntity);
+    stmt.if_not_exists();
+    conn.execute(&stmt).await?;
+    info!("Ensured table 'pending_workspace_events' exists");
 
         // Enable WAL mode for better concurrent read/write performance
         conn.execute_unprepared("PRAGMA journal_mode=WAL").await.ok();

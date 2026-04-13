@@ -1,0 +1,14 @@
+[Unit]
+Description=swayg daemon - track external sway workspace events
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.cargo/bin/swayg-daemon
+Restart=on-failure
+RestartSec=5
+Environment=RUST_LOG=sway_groups_daemon=info
+
+[Install]
+WantedBy=graphical-session.target

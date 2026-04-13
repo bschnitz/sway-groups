@@ -18,3 +18,4 @@ assert_cmd = "2.2"
 
 [dev-dependencies]
 sway-groups-dummy-window = { path = "../sway-groups-dummy-window" }
+sway-groups-daemon = { path = "../sway-groups-daemon" }

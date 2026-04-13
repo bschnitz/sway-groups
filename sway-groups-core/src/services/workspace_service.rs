@@ -1,7 +1,7 @@
 //! Workspace management service.
 
-use crate::db::entities::{group, output, workspace, workspace_group};
-use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity, FocusHistoryEntity, GroupStateEntity};
+use crate::db::entities::{group, output, pending_workspace_event, workspace, workspace_group};
+use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity, FocusHistoryEntity, GroupStateEntity, PendingWorkspaceEventEntity};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
@@ -964,6 +964,32 @@ impl WorkspaceService {
               removed_ws, added_ws, removed_groups);
 
         Ok((removed_ws, added_ws, removed_groups))
+    }
+
+    /// Register a pending workspace event to prevent the daemon from picking it up.
+    /// Call before executing a sway command that creates or renames a workspace.
+    /// Returns the id of the inserted pending event (for later removal).
+    pub async fn register_pending_event(&self, workspace_name: &str, event_type: &str) -> Result<i32> {
+        let now = chrono::Utc::now().naive_utc();
+        let active = pending_workspace_event::ActiveModel {
+            workspace_name: Set(workspace_name.to_string()),
+            event_type: Set(event_type.to_string()),
+            created_at: Set(now),
+            ..Default::default()
+        };
+        let model = active.insert(self.db.conn()).await?;
+        Ok(model.id)
+    }
+
+    /// Remove a pending workspace event after the sway command has completed.
+    pub async fn remove_pending_event(&self, id: i32) -> Result<()> {
+        if let Some(model) = PendingWorkspaceEventEntity::find_by_id(id)
+            .one(self.db.conn())
+            .await?
+        {
+            model.delete(self.db.conn()).await?;
+        }
+        Ok(())
     }
 
 }
