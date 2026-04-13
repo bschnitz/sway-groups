@@ -239,6 +239,13 @@ async fn test_05b_multi_group_container_move() {
         WS2, WS1
     );
 
+    // Guard block updates active_group to GROUP_A when switching to WS1 (cross-group move)
+    let active_after_move = swayg_output(
+        &fixture.db_path,
+        &["group", "active", &fixture.orig_output],
+    );
+    assert_eq!(active_after_move, GROUP_A, "active group updated to GROUP_A (guard block)");
+
     assert_eq!(
         db_count(
             &fixture.db_path,
@@ -271,8 +278,7 @@ async fn test_05b_multi_group_container_move() {
         WS1
     );
 
-    // container move does NOT change group visibility — WS1 is still in GROUP_A,
-    // so it does NOT appear in GROUP_B's visible workspace list
+    // active_group is now GROUP_A, so WS1 IS visible
     let visible = swayg_output(
         &fixture.db_path,
         &[
@@ -285,12 +291,23 @@ async fn test_05b_multi_group_container_move() {
         ],
     );
     assert!(
-        !visible.lines().any(|l| l.contains(WS1)),
-        "{} NOT visible in Group B (belongs to Group A)",
+        visible.lines().any(|l| l.contains(WS1)),
+        "{} IS visible (active_group = GROUP_A, WS1 in GROUP_A)",
         WS1
     );
 
-    // --- Switch back to original group (GROUP_B is empty → auto-deleted) ---
+    // --- Switch back: first to GROUP_B to trigger its auto-delete ---
+    fixture
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_B,
+            "--output",
+            &fixture.orig_output,
+        ])
+        .success();
+
+    // GROUP_B is empty → auto-deleted when switching away
     fixture
         .swayg(&[
             "group",

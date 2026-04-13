@@ -532,6 +532,47 @@ impl GroupService {
         Ok(())
     }
 
+    /// Update active group in DB only, without touching sway focus or visibility.
+    /// Used by container move --switch-to-workspace when cross-group switching.
+    pub async fn update_active_group_quiet(
+        &self,
+        _output: &str,
+        _group: &str,
+    ) -> Result<()> {
+        let old_group = self.get_active_group(_output).await.unwrap_or_else(|_| "0".to_string());
+        if old_group != _group {
+            self.save_current_workspace(_output, &old_group).await?;
+        }
+
+        let output_model = OutputEntity::find_by_name(_output)
+            .one(self.db.conn())
+            .await?;
+
+        let now = chrono::Utc::now().naive_utc();
+
+        if let Some(existing) = output_model {
+            let mut active = existing.into_active_model();
+            active.active_group = Set(_group.to_string());
+            active.updated_at = Set(Some(now));
+            active.update(self.db.conn()).await?;
+        } else {
+            let active = output::ActiveModel {
+                name: Set(_output.to_string()),
+                active_group: Set(_group.to_string()),
+                created_at: Set(Some(now)),
+                updated_at: Set(Some(now)),
+                ..Default::default()
+            };
+            active.insert(self.db.conn()).await?;
+        }
+
+        self.update_group_last_visited(_group, _output).await?;
+
+        info!("Updated active group for {} to '{}' (quiet)", _output, _group);
+
+        Ok(())
+    }
+
     /// Switch to next group alphabetically (all groups).
     pub async fn next_group(&self, output: &str, wrap: bool) -> Result<Option<String>> {
         let output = self.resolve_output(output).await?;

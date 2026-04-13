@@ -216,7 +216,7 @@ pub async fn run(
         Command::Group { action } => run_group(action, group_service, waybar_sync, ipc_client).await?,
         Command::Workspace { action } => run_workspace(action, workspace_service, group_service, waybar_sync, ipc_client).await?,
         Command::Nav { action } => run_nav(action, nav_service, waybar_sync, ipc_client).await?,
-        Command::Container { action } => run_container(action, nav_service, waybar_sync).await?,
+        Command::Container { action } => run_container(action, nav_service, group_service, workspace_service, waybar_sync, ipc_client).await?,
         Command::Sync { all, workspaces, groups, outputs } => {
             run_sync(all, workspaces, groups, outputs, workspace_service, waybar_sync).await?;
         }
@@ -579,7 +579,10 @@ async fn run_nav(
 async fn run_container(
     action: ContainerAction,
     nav_service: &NavigationService,
+    group_service: &GroupService,
+    workspace_service: &WorkspaceService,
     waybar_sync: &WaybarSyncService,
+    ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
         ContainerAction::Move { workspace, switch_to_workspace } => {
@@ -587,6 +590,18 @@ async fn run_container(
 
             if switch_to_workspace {
                 nav_service.focus_workspace(&workspace).await?;
+
+                // Update active group if workspace belongs to a different group
+                if let Ok(groups) = workspace_service.get_groups_for_workspace(&workspace).await {
+                    if !groups.is_empty() {
+                        if let Some(output) = ipc_client.get_primary_output().ok() {
+                            let current = group_service.get_active_group(&output).await.unwrap_or_default();
+                            if !groups.contains(&current) {
+                                group_service.update_active_group_quiet(&output, &groups[0]).await?;
+                            }
+                        }
+                    }
+                }
             }
 
             waybar_sync.update_waybar().await?;

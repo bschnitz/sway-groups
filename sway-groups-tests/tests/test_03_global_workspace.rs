@@ -86,6 +86,10 @@ fn output_contains(haystack: &str, needle: &str) -> bool {
     haystack.lines().any(|line| line.contains(needle))
 }
 
+fn get_active_group(db_path: &PathBuf, output: &str) -> String {
+    swayg_output(db_path, &["group", "active", output])
+}
+
 #[tokio::test]
 async fn test_03_global_workspace() {
     let fixture = TestFixture::new().await.expect("fixture setup");
@@ -140,10 +144,18 @@ async fn test_03_global_workspace() {
     // --- 1. Init fresh DB ---
     fixture.init().success();
 
+    let ag_after_init = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after init: active_group = {:?}", ag_after_init);
+    assert_eq!(ag_after_init, "0", "after init: active_group should be '0'");
+
     // --- 2. Select test group (with --create) ---
     fixture
         .swayg(&["group", "select", TEST_GROUP, "--output", &fixture.orig_output, "--create"])
         .success();
+
+    let ag_after_select = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after group select {}: active_group = {:?}", TEST_GROUP, ag_after_select);
+    assert_eq!(ag_after_select, TEST_GROUP, "after group select: active_group should be TEST_GROUP");
 
     assert_eq!(
         db_count(&fixture.db_path, "groups", "name", TEST_GROUP),
@@ -159,6 +171,10 @@ async fn test_03_global_workspace() {
         .swayg(&["container", "move", WS1, "--switch-to-workspace"])
         .success();
 
+    let ag_after_move1 = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after container move WS1 --switch: active_group = {:?}", ag_after_move1);
+    assert_eq!(ag_after_move1, TEST_GROUP, "after container move WS1: active_group should still be TEST_GROUP");
+
     assert_eq!(
         get_focused_workspace().unwrap(),
         WS1,
@@ -173,6 +189,10 @@ async fn test_03_global_workspace() {
         .swayg(&["container", "move", WS2, "--switch-to-workspace"])
         .success();
 
+    let ag_after_move2 = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after container move WS2 --switch: active_group = {:?}", ag_after_move2);
+    assert_eq!(ag_after_move2, TEST_GROUP, "after container move WS2: active_group should still be TEST_GROUP");
+
     assert_eq!(
         get_focused_workspace().unwrap(),
         WS2,
@@ -184,6 +204,9 @@ async fn test_03_global_workspace() {
         .swayg(&["workspace", "global", WS1])
         .success();
 
+    let ag_after_global1 = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after workspace global WS1: active_group = {:?}", ag_after_global1);
+
     let ws1_global: String = db_query(
         &fixture.db_path,
         &format!("SELECT is_global FROM workspaces WHERE name = '{}'", WS1),
@@ -194,6 +217,10 @@ async fn test_03_global_workspace() {
     fixture
         .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
+
+    let ag_after_switch_back = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after group select {}: active_group = {:?}", orig_group, ag_after_switch_back);
+    assert_eq!(ag_after_switch_back, orig_group, "after switch back: active_group should be orig_group");
 
     assert_eq!(
         get_focused_workspace().unwrap(),
@@ -237,6 +264,9 @@ async fn test_03_global_workspace() {
         .swayg(&["workspace", "unglobal", WS1])
         .success();
 
+    let ag_after_unglobal = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after workspace unglobal WS1: active_group = {:?}", ag_after_unglobal);
+
     let ws1_not_global: String = db_query(
         &fixture.db_path,
         &format!("SELECT is_global FROM workspaces WHERE name = '{}'", WS1),
@@ -259,10 +289,16 @@ async fn test_03_global_workspace() {
         .swayg(&["group", "select", TEST_GROUP, "--output", &fixture.orig_output])
         .success();
 
+    let ag_after_select2 = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after group select TEST_GROUP (11a): active_group = {:?}", ag_after_select2);
+
     // Set WS2 as global
     fixture
         .swayg(&["workspace", "global", WS2])
         .success();
+
+    let ag_after_global2 = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after workspace global WS2: active_group = {:?}", ag_after_global2);
 
     let ws2_global: String = db_query(
         &fixture.db_path,
@@ -307,6 +343,9 @@ async fn test_03_global_workspace() {
         .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
 
+    let ag_after_autodel1 = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after group select {} (auto-del 1): active_group = {:?}", orig_group, ag_after_autodel1);
+
     assert_eq!(
         get_focused_workspace().unwrap(),
         orig_ws,
@@ -326,6 +365,9 @@ async fn test_03_global_workspace() {
         .swayg(&["group", "select", TEST_GROUP, "--output", &fixture.orig_output, "--create"])
         .success();
 
+    let ag_after_recreate = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after group select TEST_GROUP --create (11b): active_group = {:?}", ag_after_recreate);
+
     // Launch dummy window WS1 again
     let _win1b = DummyWindowHandle::spawn(WS1).expect("spawn dummy window WS1 (again)");
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -334,9 +376,16 @@ async fn test_03_global_workspace() {
         .swayg(&["container", "move", WS1, "--switch-to-workspace"])
         .success();
 
+    let ag_after_move1b = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after container move WS1 --switch (11b): active_group = {:?}", ag_after_move1b);
+    assert_eq!(ag_after_move1b, "0", "after container move WS1 (11b): active_group should be '0' (guard block reassigned WS1 to group 0)");
+
     fixture
         .swayg(&["workspace", "global", WS1])
         .success();
+
+    let ag_after_global1b = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after workspace global WS1 (11b): active_group = {:?}", ag_after_global1b);
 
     let ws1_global_b: String = db_query(
         &fixture.db_path,
@@ -353,10 +402,22 @@ async fn test_03_global_workspace() {
         "test group still exists (has global workspace)"
     );
 
-    // Switch back to original group (from empty workspace, should auto-delete)
+    // active_group is "0" (set by guard block), so we need to switch to TEST_GROUP first,
+    // then back to orig_group to trigger auto-delete
+    fixture
+        .swayg(&["group", "select", TEST_GROUP, "--output", &fixture.orig_output])
+        .success();
+
+    let ag_after_reselect = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after group select TEST_GROUP (re-select, 11b): active_group = {:?}", ag_after_reselect);
+    assert_eq!(ag_after_reselect, TEST_GROUP, "after re-select TEST_GROUP: active_group should be TEST_GROUP");
+
     fixture
         .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
+
+    let ag_after_autodel2 = get_active_group(&fixture.db_path, &fixture.orig_output);
+    eprintln!("[DEBUG] after group select {} (auto-del 2): active_group = {:?}", orig_group, ag_after_autodel2);
 
     assert_eq!(
         get_focused_workspace().unwrap(),
