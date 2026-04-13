@@ -43,6 +43,13 @@ pub fn swayg_output(db_path: &PathBuf, args: &[&str]) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
+pub fn swayg_live(args: &[&str]) -> assert_cmd::assert::Assert {
+    Command::cargo_bin("swayg")
+        .expect("swayg binary not found")
+        .args(args)
+        .assert()
+}
+
 // ---------------------------------------------------------------------------
 // TestFixture
 // ---------------------------------------------------------------------------
@@ -58,6 +65,30 @@ impl TestFixture {
         let db_path = PathBuf::from(TEST_DB_PATH);
         if db_path.exists() {
             std::fs::remove_file(&db_path).context("Failed to remove stale test DB")?;
+        }
+
+        // Clean up stale HEADLESS outputs from previous failed test runs
+        let outputs = Command::new("swaymsg")
+            .args(["-t", "get_outputs"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .ok();
+        if let Some(outputs) = outputs {
+            if let Ok(all) = serde_json::from_slice::<serde_json::Value>(&outputs.stdout) {
+                if let Some(arr) = all.as_array() {
+                    for o in arr.iter().filter_map(|o| o.get("name").and_then(|n| n.as_str())) {
+                        if o.starts_with("HEADLESS") {
+                            let _ = Command::new("swaymsg")
+                                .args(["output", o, "unplug"])
+                                .stdout(Stdio::null())
+                                .stderr(Stdio::null())
+                                .status();
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+            }
         }
 
         let orig_output = get_primary_output()?;

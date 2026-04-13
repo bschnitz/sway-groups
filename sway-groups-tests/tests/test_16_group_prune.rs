@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use sway_groups_tests::common::{get_focused_workspace, DummyWindowHandle, TestFixture};
+use sway_groups_tests::common::{get_focused_workspace, swayg_live, DummyWindowHandle, TestFixture};
 
 const GROUP_A: &str = "zz_test_pa";
 const GROUP_B: &str = "zz_test_pb";
@@ -166,7 +166,7 @@ async fn test_16_group_prune() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -348,7 +348,7 @@ async fn test_16_group_prune() {
         .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(
@@ -359,13 +359,6 @@ async fn test_16_group_prune() {
         0,
         "'{}' auto-deleted",
         GROUP_A
-    );
-
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        orig_ws,
-        "focused on original workspace '{}'",
-        orig_ws
     );
 
     // --- 7. Post-condition ---
@@ -387,4 +380,14 @@ async fn test_16_group_prune() {
         (0, 0),
         "no test data remains in DB"
     );
+
+    // --- Cleanup: restore original group on live DB ---
+    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .success();
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &orig_ws])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 }

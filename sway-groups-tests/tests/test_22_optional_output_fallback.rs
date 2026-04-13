@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    create_virtual_output, get_focused_output, get_focused_workspace, swayg_output,
+    create_virtual_output, get_focused_output, get_focused_workspace, swayg_live, swayg_output,
     unplug_output, TestFixture,
 };
 
@@ -159,16 +159,21 @@ async fn test_22_optional_output_fallback() {
         virtual_output
     );
 
-    // --- Cleanup: switch back to original group ---
-    fixture
-        .swayg(&[
-            "group",
-            "select",
-            &orig_group,
-            "--output",
-            &fixture.orig_output,
-        ])
-        .success();
+    // --- Cleanup: switch back to original group (live DB) ---
+    swayg_live(&[
+        "group",
+        "select",
+        &orig_group,
+        "--output",
+        &fixture.orig_output,
+    ])
+    .success();
+    let _ = Command::new("swaymsg")
+        .args(["workspace", &fixture.orig_workspace])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
     assert_eq!(
         get_focused_workspace().unwrap(),
         fixture.orig_workspace,

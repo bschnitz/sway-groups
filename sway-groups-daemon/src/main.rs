@@ -5,7 +5,7 @@ use sea_orm::{ActiveModelTrait, ModelTrait, Set};
 use sway_groups_core::db::DatabaseManager;
 use sway_groups_core::db::entities::{
     workspace, workspace_group,
-    GroupEntity, OutputEntity, PendingWorkspaceEventEntity, WorkspaceEntity,
+    GroupEntity, OutputEntity, PendingWorkspaceEventEntity, WorkspaceEntity, WorkspaceGroupEntity,
 };
 use sway_groups_core::sway::SwayIpcClient;
 use tracing::{info, warn, error};
@@ -89,11 +89,20 @@ async fn handle_workspace_event(db: &DatabaseManager, ipc: &SwayIpcClient, paylo
         None => return,
     };
 
+    info!("Workspace event: change={}, name={}", change, ws_name);
+
+    if change == "empty" {
+        handle_workspace_destroyed(db, ipc, &ws_name).await;
+        return;
+    }
+
+    handle_workspace_created(db, ipc, &ws_name, ws_info).await;
+}
+
+async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_name: &str, ws_info: &serde_json::Map<String, serde_json::Value>) {
     let ws_output = ws_info.get("output").and_then(|v| v.as_str()).unwrap_or("").to_string();
     let ws_num = ws_info.get("num").and_then(|v| v.as_i64());
     let now = chrono::Utc::now().naive_utc();
-
-    info!("Workspace event: change={}, name={}, output={}", change, ws_name, ws_output);
 
     let timeout = chrono::Duration::seconds(5);
 
@@ -109,7 +118,7 @@ async fn handle_workspace_event(db: &DatabaseManager, ipc: &SwayIpcClient, paylo
         info!("Cleaned up {} stale pending events", stale.len());
     }
 
-    let pending: Vec<_> = PendingWorkspaceEventEntity::find_by_name(&ws_name)
+    let pending: Vec<_> = PendingWorkspaceEventEntity::find_by_name(ws_name)
         .all(db.conn())
         .await
         .unwrap_or_default();
@@ -119,7 +128,7 @@ async fn handle_workspace_event(db: &DatabaseManager, ipc: &SwayIpcClient, paylo
         return;
     }
 
-    let existing = WorkspaceEntity::find_by_name(&ws_name)
+    let existing = WorkspaceEntity::find_by_name(ws_name)
         .one(db.conn())
         .await
         .unwrap_or(None);
@@ -131,7 +140,7 @@ async fn handle_workspace_event(db: &DatabaseManager, ipc: &SwayIpcClient, paylo
     info!("External workspace detected: '{}' on output '{}', adding to active group", ws_name, ws_output);
 
     let ws_active = workspace::ActiveModel {
-        name: Set(ws_name.clone()),
+        name: Set(ws_name.to_string()),
         number: Set(ws_num.map(|n| n as i32)),
         output: Set(Some(ws_output.clone())),
         is_global: Set(false),
@@ -177,6 +186,41 @@ async fn handle_workspace_event(db: &DatabaseManager, ipc: &SwayIpcClient, paylo
     } else {
         warn!("Active group '{}' not found for output '{}', workspace '{}' not assigned to any group", active_group, ws_output, ws_name);
     }
+
+    let waybar_client = sway_groups_core::sway::WaybarClient::new();
+    let waybar_sync = sway_groups_core::services::WaybarSyncService::new(db.clone(), ipc.clone(), waybar_client);
+    if let Err(e) = waybar_sync.update_waybar().await {
+        warn!("Failed to update waybar: {}", e);
+    }
+}
+
+async fn handle_workspace_destroyed(db: &DatabaseManager, ipc: &SwayIpcClient, ws_name: &str) {
+    let existing = WorkspaceEntity::find_by_name(ws_name)
+        .one(db.conn())
+        .await
+        .unwrap_or(None);
+
+    if existing.is_none() {
+        return;
+    }
+
+    let ws = existing.unwrap();
+
+    let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
+        .all(db.conn())
+        .await
+        .unwrap_or_default();
+
+    for m in &memberships {
+        let _: Result<_, _> = m.clone().delete(db.conn()).await;
+    }
+
+    if let Err(e) = ws.delete(db.conn()).await {
+        error!("Failed to delete workspace '{}': {}", ws_name, e);
+        return;
+    }
+
+    info!("Removed destroyed workspace '{}' from DB ({} memberships cleaned)", ws_name, memberships.len());
 
     let waybar_client = sway_groups_core::sway::WaybarClient::new();
     let waybar_sync = sway_groups_core::services::WaybarSyncService::new(db.clone(), ipc.clone(), waybar_client);

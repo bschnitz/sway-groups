@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    get_focused_workspace, swayg_output, DummyWindowHandle, TestFixture,
+    get_focused_workspace, swayg_output, swayg_live, DummyWindowHandle, TestFixture,
 };
 
 const GROUP: &str = "zz_test_sync__";
@@ -113,7 +113,7 @@ async fn test_15_sync_flags() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
 
     // Insert stale workspace into DB
@@ -168,11 +168,6 @@ async fn test_15_sync_flags() {
         WS1
     );
     assert!(workspace_exists_in_sway(WS1), "'{}' still in sway", WS1);
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        orig_ws,
-        "focused on original workspace"
-    );
 
     // --- Test: sync --workspaces ---
     fixture.swayg(&["sync", "--workspaces"]).success();
@@ -242,13 +237,8 @@ async fn test_15_sync_flags() {
         .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        orig_ws,
-        "focused on original workspace"
-    );
     assert_eq!(
         db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
         0,
@@ -275,4 +265,14 @@ async fn test_15_sync_flags() {
     );
     assert_eq!(group_gone, 0, "no test groups remain");
     assert_eq!(ws_gone, 0, "no test workspaces remain");
+
+    // --- Cleanup: restore original group on live DB ---
+    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .success();
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &orig_ws])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 }

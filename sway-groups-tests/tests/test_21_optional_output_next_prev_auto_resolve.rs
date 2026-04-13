@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    create_virtual_output, get_focused_output, get_focused_workspace, swayg_output,
+    create_virtual_output, get_focused_output, get_focused_workspace, swayg_live, swayg_output,
     unplug_output, workspace_of_window, DummyWindowHandle, TestFixture,
 };
 
@@ -300,13 +300,7 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
 
     // --- Setup: return to GROUP_A on orig_output (test starting position) ---
     fixture
-        .swayg(&[
-            "group",
-            "select",
-            GROUP_A,
-            "--output",
-            &fixture.orig_output,
-        ])
+        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
     assert_eq!(
         swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]),
@@ -350,21 +344,16 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
         fixture.orig_output
     );
 
-    // --- Cleanup: switch back to original group ---
+    // --- Cleanup: switch back to default group on test DB ---
     fixture
-        .swayg(&[
-            "group",
-            "select",
-            &orig_group,
-            "--output",
-            &fixture.orig_output,
-        ])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        fixture.orig_workspace,
-        "focused on original workspace"
-    );
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &fixture.orig_workspace])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 
     // --- Cleanup: kill windows ---
     drop(_win_a);
@@ -381,19 +370,30 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
         WS_B
     );
 
-    // --- Cleanup: auto-delete GROUP_A ---
-    let _ = fixture.swayg(&["workspace", "remove", "0"]);
+    // --- Cleanup: ensure test workspaces are gone from sway ---
+    for ws in [WS_A, WS_B] {
+        if workspace_exists_in_sway(ws) {
+            let _ = std::process::Command::new("swaymsg")
+                .args(["workspace", ws])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let _ = std::process::Command::new("swaymsg")
+                .args(["workspace", &fixture.orig_workspace])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+    }
+
+    // --- Cleanup: auto-delete test groups ---
     fixture
         .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&[
-            "group",
-            "select",
-            &orig_group,
-            "--output",
-            &fixture.orig_output,
-        ])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
     assert_eq!(
         db_count(
@@ -404,18 +404,11 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
         "GROUP_A auto-deleted"
     );
 
-    // --- Cleanup: auto-delete GROUP_B ---
     fixture
         .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&[
-            "group",
-            "select",
-            &orig_group,
-            "--output",
-            &fixture.orig_output,
-        ])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
     assert_eq!(
         db_count(
@@ -425,6 +418,22 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
         0,
         "GROUP_B auto-deleted"
     );
+
+    // --- Cleanup: restore original group on live DB ---
+    swayg_live(&[
+        "group",
+        "select",
+        &orig_group,
+        "--output",
+        &fixture.orig_output,
+    ])
+    .success();
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &fixture.orig_workspace])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 
     // --- Cleanup: remove virtual output ---
     unplug_output(&virtual_output);

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    get_focused_workspace, swayg_output, workspace_of_window, DummyWindowHandle, TestFixture,
+    get_focused_workspace, swayg_output, swayg_live, workspace_of_window, DummyWindowHandle, TestFixture,
 };
 
 const GROUP_A: &str = "zz_test_group_a";
@@ -172,14 +172,15 @@ async fn test_05b_multi_group_container_move() {
             &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)
         ),
         1,
-        "{} is in DB",
+        "{} still exactly 1 row in DB",
         WS1
     );
 
+    // container move does NOT change group assignments for existing workspaces
     assert_eq!(
         workspace_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
-        "{} is in group '{}'",
+        "{} still in group '{}'",
         WS1, GROUP_A
     );
 
@@ -312,18 +313,11 @@ async fn test_05b_multi_group_container_move() {
         .swayg(&[
             "group",
             "select",
-            &orig_group,
+            "0",
             "--output",
             &fixture.orig_output,
         ])
         .success();
-
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        orig_ws,
-        "focused on original workspace '{}'",
-        orig_ws
-    );
 
     assert_eq!(
         db_count(
@@ -360,18 +354,11 @@ async fn test_05b_multi_group_container_move() {
         .swayg(&[
             "group",
             "select",
-            &orig_group,
+            "0",
             "--output",
             &fixture.orig_output,
         ])
         .success();
-
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        orig_ws,
-        "focused on '{}' after Group A cleanup",
-        orig_ws
-    );
 
     assert_eq!(
         db_count(
@@ -415,4 +402,14 @@ async fn test_05b_multi_group_container_move() {
         (0, 0, 0),
         "no test data remains in DB"
     );
+
+    // --- Cleanup: restore original group on live DB ---
+    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .success();
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &orig_ws])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 }

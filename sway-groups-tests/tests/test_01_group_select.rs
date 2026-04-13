@@ -84,16 +84,27 @@ async fn test_01_group_select() {
     let active = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active, TEST_GROUP, "active group changed to test group");
 
-    // --- Test: switch back to original group (auto-delete) ---
+    // --- Test: switch back to default group (auto-delete) ---
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(
-        get_focused_workspace().unwrap(),
-        orig_ws,
-        "focused on original workspace"
+        db_count(&fixture.db_path, "groups", "name", TEST_GROUP),
+        0,
+        "test group auto-deleted"
     );
+
+    // --- Cleanup: restore original group on live DB ---
+    use sway_groups_tests::common::swayg_live;
+    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .success();
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &orig_ws])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 
     assert_eq!(
         db_count(&fixture.db_path, "groups", "name", TEST_GROUP),

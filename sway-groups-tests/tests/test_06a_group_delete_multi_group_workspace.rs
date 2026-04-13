@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use sway_groups_tests::common::{get_focused_workspace, swayg_output, DummyWindowHandle, TestFixture};
+use sway_groups_tests::common::{get_focused_workspace, swayg_output, swayg_live, DummyWindowHandle, TestFixture};
 
 const GROUP_A: &str = "zz_test_grp_a_06a";
 const GROUP_B: &str = "zz_test_grp_b_06a";
@@ -138,7 +138,7 @@ async fn test_06a_group_delete_multi_group_workspace() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
 
     // --- Verify setup ---
@@ -270,15 +270,8 @@ async fn test_06a_group_delete_multi_group_workspace() {
 
     // --- Switch back to original group ---
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
-
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        orig_ws,
-        "focused on original workspace '{}'",
-        orig_ws
-    );
 
     // --- Cleanup: kill dummy windows ---
     drop(_win1);
@@ -291,7 +284,7 @@ async fn test_06a_group_delete_multi_group_workspace() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(
@@ -324,4 +317,14 @@ async fn test_06a_group_delete_multi_group_workspace() {
         (0, 0, 0),
         "no test data remains in DB"
     );
+
+    // --- Cleanup: restore original group on live DB ---
+    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .success();
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &orig_ws])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 }

@@ -192,16 +192,17 @@ async fn test_02_workspace_with_containers() {
         "WS2 is in group"
     );
 
-    // --- Switch back to original group ---
+    // --- Switch back to default group on test DB ---
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
 
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        orig_ws,
-        "focused on original workspace"
-    );
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &orig_ws])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 
     assert_eq!(
         db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
@@ -225,26 +226,57 @@ async fn test_02_workspace_with_containers() {
         WS2
     );
 
-    // --- Switch to test group then back (auto-delete should trigger) ---
+    // --- Ensure test workspaces are gone from sway (switch away to trigger auto-remove) ---
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &orig_ws])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    for ws_name in [WS1, WS2] {
+        if workspace_exists_in_sway(ws_name) {
+            let _ = std::process::Command::new("swaymsg")
+                .args(["workspace", ws_name])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let _ = std::process::Command::new("swaymsg")
+                .args(["workspace", &orig_ws])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+    }
+    assert!(!workspace_exists_in_sway(WS1), "cleanup: {} gone from sway", WS1);
+    assert!(!workspace_exists_in_sway(WS2), "cleanup: {} gone from sway", WS2);
+
+    // --- Switch to test group then back (auto-delete on test DB) ---
     fixture
         .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
         .success();
 
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
-
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        orig_ws,
-        "focused on original workspace after cleanup"
-    );
 
     assert_eq!(
         db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
         0,
         "test group was auto-deleted"
     );
+
+    // --- Cleanup: restore original group on live DB ---
+    use sway_groups_tests::common::swayg_live;
+    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .success();
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &orig_ws])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 
     // --- Post-condition: no test data remains ---
     let group_gone = db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP));

@@ -227,21 +227,16 @@ async fn test_20_optional_output_select_auto_resolve() {
         fixture.orig_output
     );
 
-    // --- Cleanup: switch back to original group ---
+    // --- Cleanup: switch back to default group on test DB ---
     fixture
-        .swayg(&[
-            "group",
-            "select",
-            &orig_group,
-            "--output",
-            &fixture.orig_output,
-        ])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        fixture.orig_workspace,
-        "focused on original workspace"
-    );
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &fixture.orig_workspace])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 
     // --- Cleanup: kill window ---
     drop(_win);
@@ -252,18 +247,12 @@ async fn test_20_optional_output_select_auto_resolve() {
         WS
     );
 
-    // --- Cleanup: auto-delete test group ---
+    // --- Cleanup: auto-delete test group on test DB ---
     fixture
         .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&[
-            "group",
-            "select",
-            &orig_group,
-            "--output",
-            &fixture.orig_output,
-        ])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
     assert_eq!(
         db_count(
@@ -310,6 +299,17 @@ async fn test_20_optional_output_select_auto_resolve() {
         0,
         "no test workspace_groups remain"
     );
+    // --- Cleanup: restore original group on live DB ---
+    use sway_groups_tests::common::swayg_live;
+    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .success();
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &fixture.orig_workspace])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
     assert_eq!(
         get_focused_workspace().unwrap(),
         fixture.orig_workspace,

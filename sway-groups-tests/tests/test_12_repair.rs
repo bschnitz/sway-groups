@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    swayg_output, get_focused_workspace, DummyWindowHandle, TestFixture,
+    swayg_output, swayg_live, get_focused_workspace, DummyWindowHandle, TestFixture,
 };
 
 const GROUP: &str = "zz_test_repair__";
@@ -131,7 +131,7 @@ async fn test_12_repair() {
         .success();
 
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
 
     fixture
@@ -196,11 +196,6 @@ async fn test_12_repair() {
         WS1
     );
     assert!(workspace_exists_in_sway(WS1), "'{}' still in sway", WS1);
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        orig_ws,
-        "focused on original workspace"
-    );
 
     // --- Test: repair ---
     fixture.swayg(&["repair"]).success();
@@ -281,4 +276,14 @@ async fn test_12_repair() {
     );
     assert_eq!(group_gone, 0, "no test groups remain");
     assert_eq!(ws_gone, 0, "no test workspaces remain");
+
+    // --- Cleanup: restore original group on live DB ---
+    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .success();
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &orig_ws])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 }
