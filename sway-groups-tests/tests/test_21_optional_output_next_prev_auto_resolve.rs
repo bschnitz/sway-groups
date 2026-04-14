@@ -346,7 +346,7 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
 
     // --- Cleanup: switch back to default group on test DB ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
     let _ = std::process::Command::new("swaymsg")
         .args(["workspace", &fixture.orig_workspace])
@@ -393,7 +393,7 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
         .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
     assert_eq!(
         db_count(
@@ -408,7 +408,7 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
         .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
     assert_eq!(
         db_count(

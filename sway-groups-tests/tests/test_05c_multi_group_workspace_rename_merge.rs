@@ -387,7 +387,7 @@ async fn test_05c_multi_group_workspace_rename_merge() {
 
     // --- Switch back to default group on test DB ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     // --- Kill dummy windows ---
@@ -412,7 +412,7 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(
@@ -431,7 +431,7 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(

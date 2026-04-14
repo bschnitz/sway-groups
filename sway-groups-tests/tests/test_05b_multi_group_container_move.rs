@@ -316,6 +316,7 @@ async fn test_05b_multi_group_container_move() {
             "0",
             "--output",
             &fixture.orig_output,
+            "--create",
         ])
         .success();
 
@@ -357,6 +358,7 @@ async fn test_05b_multi_group_container_move() {
             "0",
             "--output",
             &fixture.orig_output,
+            "--create",
         ])
         .success();
 
@@ -366,7 +368,7 @@ async fn test_05b_multi_group_container_move() {
             &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)
         ),
         0,
-        "{} auto-deleted",
+        "'{}' auto-deleted",
         GROUP_A
     );
 

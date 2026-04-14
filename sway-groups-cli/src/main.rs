@@ -57,8 +57,6 @@ async fn main() -> AnyResult<()> {
     let waybar_sync = WaybarSyncService::new(db.clone(), ipc_client.clone(), waybar_client);
     let nav_service = NavigationService::new(db.clone(), ipc_client.clone());
 
-    group_service.ensure_default_group().await?;
-
     commands::run(cli, &group_service, &workspace_service, &waybar_sync, &nav_service, &ipc_client, db_path).await?;
 
     Ok(())

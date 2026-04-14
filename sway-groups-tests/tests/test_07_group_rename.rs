@@ -296,20 +296,20 @@ async fn test_07_group_rename() {
         "no group created for nonexistent source"
     );
 
-    // --- Test: rename group "0" (error) ---
+    // --- Test: rename group "0" (now allowed — no special protection) ---
     fixture
-        .swayg(&["group", "rename", "0", "should_not_work_zz__"])
-        .failure();
+        .swayg(&["group", "rename", "0", "should_work_zz__"])
+        .success();
 
     assert_eq!(
         db_count(&fixture.db_path, "SELECT count(*) FROM groups WHERE name = '0'"),
-        1,
-        "group '0' NOT renamed"
+        0,
+        "group '0' renamed away"
     );
     assert_eq!(
-        db_count(&fixture.db_path, "SELECT count(*) FROM groups WHERE name = 'should_not_work_zz__'"),
-        0,
-        "'should_not_work_zz__' NOT created"
+        db_count(&fixture.db_path, "SELECT count(*) FROM groups WHERE name = 'should_work_zz__'"),
+        1,
+        "'should_work_zz__' created from renamed '0'"
     );
 
     // --- Cleanup: switch back to original workspace ---
@@ -332,7 +332,7 @@ async fn test_07_group_rename() {
     let group_gone = db_count(
         &fixture.db_path,
         &format!(
-            "SELECT count(*) FROM groups WHERE name IN ('{}', '{}', '{}', 'should_not_work_zz__')",
+            "SELECT count(*) FROM groups WHERE name IN ('{}', '{}', '{}', 'should_work_zz__')",
             GROUP_A, GROUP_B, GROUP_RENAMED
         ),
     );

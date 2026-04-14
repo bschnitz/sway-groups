@@ -230,27 +230,30 @@ async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_
 
     let active_group = output_model
         .as_ref()
-        .map(|o| o.active_group.clone())
-        .unwrap_or_else(|| "0".to_string());
+        .and_then(|o| o.active_group.clone());
 
-    if let Some(group) = GroupEntity::find_by_name(&active_group)
-        .one(db.conn())
-        .await
-        .unwrap_or(None)
-    {
-        let membership = workspace_group::ActiveModel {
-            workspace_id: Set(ws.id),
-            group_id: Set(group.id),
-            created_at: Set(Some(now)),
-            ..Default::default()
-        };
-        if let Err(e) = membership.insert(db.conn()).await {
-            error!("Failed to add workspace '{}' to group '{}': {}", ws_name, active_group, e);
-            return;
+    if let Some(ref ag) = active_group {
+        if let Some(group) = GroupEntity::find_by_name(ag)
+            .one(db.conn())
+            .await
+            .unwrap_or(None)
+        {
+            let membership = workspace_group::ActiveModel {
+                workspace_id: Set(ws.id),
+                group_id: Set(group.id),
+                created_at: Set(Some(now)),
+                ..Default::default()
+            };
+            if let Err(e) = membership.insert(db.conn()).await {
+                error!("Failed to add workspace '{}' to group '{}': {}", ws_name, ag, e);
+                return;
+            }
+            info!("Added external workspace '{}' to group '{}'", ws_name, ag);
+        } else {
+            warn!("Active group '{}' not found for output '{}', workspace '{}' not assigned to any group", ag, ws_output, ws_name);
         }
-        info!("Added external workspace '{}' to group '{}'", ws_name, active_group);
     } else {
-        warn!("Active group '{}' not found for output '{}', workspace '{}' not assigned to any group", active_group, ws_output, ws_name);
+        info!("No active group for output '{}', workspace '{}' not assigned", ws_output, ws_name);
     }
 
     let waybar_client = sway_groups_core::sway::WaybarClient::new();

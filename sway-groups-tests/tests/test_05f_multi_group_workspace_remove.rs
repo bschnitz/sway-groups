@@ -219,7 +219,7 @@ async fn test_05f_multi_group_workspace_remove() {
 
     // --- Switch back to orig group (Group A should NOT auto-delete, WS1 still in sway) ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
     assert_eq!(
         db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
@@ -243,7 +243,7 @@ async fn test_05f_multi_group_workspace_remove() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(

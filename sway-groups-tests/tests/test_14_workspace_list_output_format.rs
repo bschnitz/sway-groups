@@ -137,7 +137,7 @@ async fn test_14_workspace_list_output_format() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -279,7 +279,7 @@ async fn test_14_workspace_list_output_format() {
         .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(

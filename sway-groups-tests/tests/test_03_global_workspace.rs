@@ -146,7 +146,7 @@ async fn test_03_global_workspace() {
 
     let ag_after_init = get_active_group(&fixture.db_path, &fixture.orig_output);
     eprintln!("[DEBUG] after init: active_group = {:?}", ag_after_init);
-    assert_eq!(ag_after_init, "0", "after init: active_group should be '0'");
+    assert_eq!(ag_after_init, "", "after init: active_group should be empty (none set)");
 
     // --- 2. Select test group (with --create) ---
     fixture
@@ -215,7 +215,7 @@ async fn test_03_global_workspace() {
 
     // --- 6. Switch back to original group ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     let ag_after_switch_back = get_active_group(&fixture.db_path, &fixture.orig_output);
@@ -333,7 +333,7 @@ async fn test_03_global_workspace() {
 
     // Switch back from global workspace (should auto-delete test group)
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     let ag_after_autodel1 = get_active_group(&fixture.db_path, &fixture.orig_output);
@@ -365,7 +365,7 @@ async fn test_03_global_workspace() {
 
     let ag_after_move1b = get_active_group(&fixture.db_path, &fixture.orig_output);
     eprintln!("[DEBUG] after container move WS1 --switch (11b): active_group = {:?}", ag_after_move1b);
-    assert_eq!(ag_after_move1b, "0", "after container move WS1 (11b): active_group should be '0' (guard block reassigned WS1 to group 0)");
+    assert_eq!(ag_after_move1b, TEST_GROUP, "after container move WS1 (11b): active_group stays as TEST_GROUP (WS1 is global, no group reassignment)");
 
     fixture
         .swayg(&["workspace", "global", WS1])
@@ -400,7 +400,7 @@ async fn test_03_global_workspace() {
     assert_eq!(ag_after_reselect, TEST_GROUP, "after re-select TEST_GROUP: active_group should be TEST_GROUP");
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     let ag_after_autodel2 = get_active_group(&fixture.db_path, &fixture.orig_output);

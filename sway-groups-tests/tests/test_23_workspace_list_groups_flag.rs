@@ -88,7 +88,15 @@ async fn test_23_workspace_list_groups_flag() {
     }
 
     // --- Remember original state ---
-    let orig_group = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
+    let orig_group = {
+        let output = Command::new("swayg")
+            .args(["group", "active", &fixture.orig_output])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .expect("swayg group active failed");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
     assert!(!orig_group.is_empty(), "original group must not be empty");
     let orig_ws = get_focused_workspace().expect("get focused workspace");
 
@@ -135,7 +143,7 @@ async fn test_23_workspace_list_groups_flag() {
 
     // Switch back to original group
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output, "--create"])
         .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -300,7 +308,7 @@ async fn test_23_workspace_list_groups_flag() {
 
     // Switch back to orig_group
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output, "--create"])
         .success();
 
     // --- Cleanup ---
@@ -322,7 +330,7 @@ async fn test_23_workspace_list_groups_flag() {
             .swayg(&["group", "select", g, "--output", &fixture.orig_output])
             .success();
         fixture
-            .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+            .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output, "--create"])
             .success();
     }
 

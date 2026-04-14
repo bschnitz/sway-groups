@@ -61,7 +61,15 @@ async fn test_26_container_move_switch_to_other_group() {
         }
     }
 
-    let orig_group = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
+    let orig_group = {
+        let output = Command::new("swayg")
+            .args(["group", "active", &fixture.orig_output])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .expect("swayg group active failed");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
     assert!(!orig_group.is_empty(), "original group not empty");
     let orig_ws = get_focused_workspace().expect("focused ws");
 
@@ -139,7 +147,7 @@ async fn test_26_container_move_switch_to_other_group() {
 
     for g in [GROUP_A, GROUP_B] {
         fixture.swayg(&["group", "select", g, "--output", &fixture.orig_output]).success();
-        fixture.swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output]).success();
+        fixture.swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output, "--create"]).success();
     }
 
     fixture.init().success();

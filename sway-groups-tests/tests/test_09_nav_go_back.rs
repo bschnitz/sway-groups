@@ -1,7 +1,7 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    get_focused_workspace, swayg_output, workspace_of_window, DummyWindowHandle, TestFixture,
+    get_focused_workspace, workspace_of_window, DummyWindowHandle, TestFixture,
 };
 
 const GROUP: &str = "zz_test_nav2";
@@ -42,10 +42,15 @@ fn workspace_exists_in_sway(ws: &str) -> bool {
 async fn test_09_nav_go_back() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    let orig_group = swayg_output(
-        &fixture.db_path,
-        &["group", "active", &fixture.orig_output],
-    );
+    let orig_group = {
+        let output = Command::new("swayg")
+            .args(["group", "active", &fixture.orig_output])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .expect("swayg group active failed");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
     let orig_ws = get_focused_workspace().expect("get focused workspace");
@@ -109,9 +114,15 @@ async fn test_09_nav_go_back() {
             &orig_group,
             "--output",
             &fixture.orig_output,
+            "--create",
         ])
         .success();
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &orig_ws])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 
     // --- Verify setup ---
     assert_eq!(
@@ -228,8 +239,16 @@ async fn test_09_nav_go_back() {
             &orig_group,
             "--output",
             &fixture.orig_output,
+            "--create",
         ])
         .success();
+
+    let _ = std::process::Command::new("swaymsg")
+        .args(["workspace", &orig_ws])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
 
     assert_eq!(
         db_count(

@@ -140,11 +140,6 @@ impl GroupService {
 
     /// Delete a group.
     pub async fn delete_group(&self, name: &str, force: bool) -> Result<()> {
-        // Cannot delete the default group "0"
-        if name == "0" {
-            return Err(Error::InvalidArgs("Cannot delete the default group '0'".to_string()));
-        }
-
         let group = GroupEntity::find_by_name(name)
             .one(self.db.conn())
             .await?
@@ -244,11 +239,6 @@ impl GroupService {
 
     /// Rename a group.
     pub async fn rename_group(&self, old_name: &str, new_name: &str) -> Result<()> {
-        // Cannot rename the default group "0"
-        if old_name == "0" {
-            return Err(Error::InvalidArgs("Cannot rename the default group '0'".to_string()));
-        }
-
         let mut group = GroupEntity::find_by_name(old_name)
             .one(self.db.conn())
             .await?
@@ -272,12 +262,12 @@ impl GroupService {
         group.update(self.db.conn()).await?;
 
         // Update outputs that reference the old group name
-        let affected_outputs = OutputEntity::find_by_active_group(old_name)
+        let affected_outputs = OutputEntity::find_by_active_group(&Some(old_name.to_string()))
             .all(self.db.conn())
             .await?;
         for output in affected_outputs {
             let mut active = output.into_active_model();
-            active.active_group = Set(new_name.to_string());
+            active.active_group = Set(Some(new_name.to_string()));
             active.updated_at = Set(Some(chrono::Utc::now().naive_utc()));
             active.update(self.db.conn()).await?;
         }
@@ -297,7 +287,7 @@ impl GroupService {
     }
 
     /// Get the active group for an output.
-    pub async fn get_active_group(&self, output: &str) -> Result<String> {
+    pub async fn get_active_group(&self, output: &str) -> Result<Option<String>> {
         let output = OutputEntity::find_by_name(output)
             .one(self.db.conn())
             .await?
@@ -419,13 +409,15 @@ impl GroupService {
         }
 
         // Save currently focused workspace for the old group
-        let old_group = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
-        if old_group != group {
-            self.save_current_workspace(output, &old_group).await?;
+        let old_group = self.get_active_group(output).await.unwrap_or(None);
+        if old_group.as_deref() != Some(group) {
+            if let Some(ref og) = old_group {
+                self.save_current_workspace(output, og).await?;
+            }
         }
-        debug!("set_active_group: output={}, old_group='{}', new_group='{}'", output, old_group, group);
+        debug!("set_active_group: output={}, old_group={:?}, new_group='{}'", output, old_group, group);
 
-        let old_group_needs_cleanup = old_group != group && old_group != "0";
+        let old_group_needs_cleanup = old_group.is_some() && old_group.as_deref() != Some(group);
 
         // Get or create output
         let output_model = OutputEntity::find_by_name(output)
@@ -436,13 +428,13 @@ impl GroupService {
 
         if let Some(existing) = output_model {
             let mut active = existing.into_active_model();
-            active.active_group = Set(group.to_string());
+            active.active_group = Set(Some(group.to_string()));
             active.updated_at = Set(Some(now));
             active.update(self.db.conn()).await?;
         } else {
             let active = output::ActiveModel {
                 name: Set(output.to_string()),
-                active_group: Set(group.to_string()),
+                active_group: Set(Some(group.to_string())),
                 created_at: Set(Some(now)),
                 updated_at: Set(Some(now)),
                 ..Default::default()
@@ -515,16 +507,18 @@ impl GroupService {
         // After switching: if old group needs cleanup, check if any non-global
         // workspaces from old group still exist in sway. If none do, delete group.
         if old_group_needs_cleanup {
-            match self.should_delete_old_group(&old_group).await {
-                Ok(true) => {
-                    self.delete_group(&old_group, true).await?;
-                    info!("Auto-removed empty group '{}' after switch (no workspaces left in sway)", old_group);
-                }
-                Ok(false) => {
-                    debug!("set_active_group: old group '{}' still has workspaces in sway, not deleting", old_group);
-                }
-                Err(e) => {
-                    debug!("set_active_group: error checking old group '{}': {}", old_group, e);
+            if let Some(ref old) = old_group {
+                match self.should_delete_old_group(old).await {
+                    Ok(true) => {
+                        self.delete_group(old, true).await?;
+                        info!("Auto-removed empty group '{}' after switch (no workspaces left in sway)", old);
+                    }
+                    Ok(false) => {
+                        debug!("set_active_group: old group '{}' still has workspaces in sway, not deleting", old);
+                    }
+                    Err(e) => {
+                        debug!("set_active_group: error checking old group '{}': {}", old, e);
+                    }
                 }
             }
         }
@@ -539,9 +533,11 @@ impl GroupService {
         _output: &str,
         _group: &str,
     ) -> Result<()> {
-        let old_group = self.get_active_group(_output).await.unwrap_or_else(|_| "0".to_string());
-        if old_group != _group {
-            self.save_current_workspace(_output, &old_group).await?;
+        let old_group = self.get_active_group(_output).await.unwrap_or(None);
+        if old_group.as_deref() != Some(_group) {
+            if let Some(ref og) = old_group {
+                self.save_current_workspace(_output, og).await?;
+            }
         }
 
         let output_model = OutputEntity::find_by_name(_output)
@@ -552,13 +548,13 @@ impl GroupService {
 
         if let Some(existing) = output_model {
             let mut active = existing.into_active_model();
-            active.active_group = Set(_group.to_string());
+            active.active_group = Set(Some(_group.to_string()));
             active.updated_at = Set(Some(now));
             active.update(self.db.conn()).await?;
         } else {
             let active = output::ActiveModel {
                 name: Set(_output.to_string()),
-                active_group: Set(_group.to_string()),
+                active_group: Set(Some(_group.to_string())),
                 created_at: Set(Some(now)),
                 updated_at: Set(Some(now)),
                 ..Default::default()
@@ -648,45 +644,45 @@ impl GroupService {
     }
 
     pub async fn next_group_name(&self, output: &str, wrap: bool) -> Result<Option<String>> {
-        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
+        let current = self.get_active_group(output).await.unwrap_or(None);
         let group_names = self.list_all_group_names().await?;
         if group_names.is_empty() {
             return Ok(None);
         }
-        let current_idx = group_names.iter().position(|g| g == &current);
+        let current_idx = current.as_ref().and_then(|c| group_names.iter().position(|g| g == c));
         let next_idx = Self::compute_next_idx(current_idx, group_names.len(), wrap);
         Ok(next_idx.map(|i| group_names[i].clone()))
     }
 
     pub async fn next_group_on_output_name(&self, output: &str, wrap: bool) -> Result<Option<String>> {
-        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
+        let current = self.get_active_group(output).await.unwrap_or(None);
         let group_names = self.list_group_names_on_output(output).await?;
         if group_names.is_empty() {
             return Ok(None);
         }
-        let current_idx = group_names.iter().position(|g| g == &current);
+        let current_idx = current.as_ref().and_then(|c| group_names.iter().position(|g| g == c));
         let next_idx = Self::compute_next_idx(current_idx, group_names.len(), wrap);
         Ok(next_idx.map(|i| group_names[i].clone()))
     }
 
     pub async fn prev_group_name(&self, output: &str, wrap: bool) -> Result<Option<String>> {
-        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
+        let current = self.get_active_group(output).await.unwrap_or(None);
         let group_names = self.list_all_group_names().await?;
         if group_names.is_empty() {
             return Ok(None);
         }
-        let current_idx = group_names.iter().position(|g| g == &current);
+        let current_idx = current.as_ref().and_then(|c| group_names.iter().position(|g| g == c));
         let prev_idx = Self::compute_prev_idx(current_idx, group_names.len(), wrap);
         Ok(prev_idx.map(|i| group_names[i].clone()))
     }
 
     pub async fn prev_group_on_output_name(&self, output: &str, wrap: bool) -> Result<Option<String>> {
-        let current = self.get_active_group(output).await.unwrap_or_else(|_| "0".to_string());
+        let current = self.get_active_group(output).await.unwrap_or(None);
         let group_names = self.list_group_names_on_output(output).await?;
         if group_names.is_empty() {
             return Ok(None);
         }
-        let current_idx = group_names.iter().position(|g| g == &current);
+        let current_idx = current.as_ref().and_then(|c| group_names.iter().position(|g| g == c));
         let prev_idx = Self::compute_prev_idx(current_idx, group_names.len(), wrap);
         Ok(prev_idx.map(|i| group_names[i].clone()))
     }
@@ -702,11 +698,6 @@ impl GroupService {
                 continue;
             }
 
-            // Skip default group "0"
-            if group.name == "0" {
-                continue;
-            }
-
             if self.is_effectively_empty(&group.name).await? {
                 self.delete_group(&group.name, true).await?;
                 removed += 1;
@@ -715,15 +706,6 @@ impl GroupService {
 
         info!("Pruned {} empty groups", removed);
         Ok(removed)
-    }
-
-    /// Ensure the default group "0" exists.
-    pub async fn ensure_default_group(&self) -> Result<()> {
-        if !GroupEntity::has_default_group(self.db.conn()).await? {
-            self.create_group("0").await?;
-            info!("Created default group '0'");
-        }
-        Ok(())
     }
 
     /// Check if a group has no non-global workspaces.

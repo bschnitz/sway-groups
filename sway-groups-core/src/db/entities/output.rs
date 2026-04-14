@@ -13,7 +13,8 @@ pub struct Model {
     #[sea_orm(unique)]
     pub name: String,
 
-    pub active_group: String,
+    #[sea_orm(nullable)]
+    pub active_group: Option<String>,
 
     #[sea_orm(nullable)]
     pub created_at: Option<DateTime>,
@@ -26,9 +27,18 @@ pub struct Model {
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Entity {
-    pub fn find_by_active_group(active_group: &str) -> Select<Self> {
+    pub fn find_by_active_group(active_group: &Option<String>) -> Select<Self> {
         use sea_orm::{ColumnTrait, QueryFilter};
-        Self::find()
-            .filter(Column::ActiveGroup.eq(active_group))
+        match active_group {
+            Some(group) => Self::find()
+                .filter(Column::ActiveGroup.eq(group.clone())),
+            None => Self::find()
+                .filter(Column::ActiveGroup.is_null()),
+        }
+    }
+
+    pub fn find_all_ordered() -> Select<Self> {
+        use sea_orm::QueryOrder;
+        Self::find().order_by_asc(Column::Name)
     }
 }

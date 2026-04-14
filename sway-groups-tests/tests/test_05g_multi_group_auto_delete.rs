@@ -175,7 +175,7 @@ async fn test_05g_multi_group_auto_delete() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     // --- Verify setup ---
@@ -244,7 +244,7 @@ async fn test_05g_multi_group_auto_delete() {
     assert_eq!(active, GROUP_A, "active group = {}", GROUP_A);
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(
@@ -289,7 +289,7 @@ async fn test_05g_multi_group_auto_delete() {
     assert_eq!(active, GROUP_A, "active group = {}", GROUP_A);
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(
@@ -305,7 +305,7 @@ async fn test_05g_multi_group_auto_delete() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(
@@ -331,7 +331,7 @@ async fn test_05g_multi_group_auto_delete() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(

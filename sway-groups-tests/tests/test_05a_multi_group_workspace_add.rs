@@ -268,6 +268,7 @@ async fn test_05a_multi_group_workspace_add() {
             "0",
             "--output",
             &fixture.orig_output,
+            "--create",
         ])
         .success();
 
@@ -293,6 +294,7 @@ async fn test_05a_multi_group_workspace_add() {
             "0",
             "--output",
             &fixture.orig_output,
+            "--create",
         ])
         .success();
 
@@ -318,6 +320,7 @@ async fn test_05a_multi_group_workspace_add() {
             "0",
             "--output",
             &fixture.orig_output,
+            "--create",
         ])
         .success();
 

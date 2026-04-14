@@ -296,7 +296,7 @@ async fn test_13_group_next_prev() {
 
     // --- Cleanup: switch to original workspace FIRST (so sway can remove empty workspaces) ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     drop(_win_a);
@@ -322,7 +322,7 @@ async fn test_13_group_next_prev() {
             .swayg(&["group", "select", g, "--output", &fixture.orig_output])
             .success();
         fixture
-            .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+            .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
             .success();
     }
 

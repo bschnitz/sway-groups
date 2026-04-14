@@ -60,6 +60,16 @@ async fn test_27_daemon_catches_external_workspace() {
     let orig_ws = fixture.orig_workspace.clone();
 
     fixture.init().success();
+    fixture
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
+        .success();
     start_test_daemon();
     resume_test_daemon();
 
@@ -108,6 +118,8 @@ async fn test_27_daemon_catches_external_workspace() {
 
     cleanup_external_workspace(WS_EXT, &orig_output);
     std::thread::sleep(std::time::Duration::from_millis(500));
+
+    fixture.init().success();
 
     let _ = Command::new("swaymsg")
         .args(["workspace", &orig_ws])

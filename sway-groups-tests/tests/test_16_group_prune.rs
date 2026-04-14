@@ -165,9 +165,6 @@ async fn test_16_group_prune() {
         .swayg(&["container", "move", WS1, "--switch-to-workspace"])
         .success();
 
-    fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
-        .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     // --- 3. Verify setup ---
@@ -265,8 +262,8 @@ async fn test_16_group_prune() {
             &fixture.db_path,
             "SELECT count(*) FROM groups WHERE name = '0'"
         ),
-        1,
-        "group '0' NOT pruned (default group)"
+        0,
+        "group '0' pruned (no special protection)"
     );
 
     // --- 5. Test: group prune with --keep ---
@@ -348,7 +345,7 @@ async fn test_16_group_prune() {
         .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(

@@ -51,7 +51,7 @@ impl WaybarSyncService {
                 .one(self.db.conn())
                 .await?
                 .map(|o| o.active_group)
-                .unwrap_or_else(|| "0".to_string());
+                .unwrap_or(None);
 
             let is_output_focused = focused_output.as_deref() == Some(&output.name);
 
@@ -85,13 +85,13 @@ impl WaybarSyncService {
                         if let Some(group) = GroupEntity::find_by_id(m.group_id)
                             .one(self.db.conn())
                             .await?
-                            && group.name == active_group {
+                            && active_group.as_deref() == Some(&group.name) {
                             in_active_group = true;
                             break;
                         }
                     }
 
-                    let no_group_and_default = memberships.is_empty() && active_group == "0";
+                    let no_group_and_default = memberships.is_empty() && active_group.is_none();
 
                     if !in_active_group && !no_group_and_default {
                         continue;
@@ -131,8 +131,8 @@ impl WaybarSyncService {
                 .one(self.db.conn())
                 .await?
                 .map(|o| o.active_group)
-                .unwrap_or_else(|| "0".to_string()),
-            None => "0".to_string(),
+                .unwrap_or(None),
+            None => None,
         };
 
         let groups = GroupEntity::find()
@@ -143,7 +143,7 @@ impl WaybarSyncService {
 
         for group in &groups {
             let mut classes = Vec::new();
-            if group.name == active_group {
+            if active_group.as_deref() == Some(&group.name) {
                 classes.push("active".to_string());
             }
 

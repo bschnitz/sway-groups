@@ -37,7 +37,7 @@ impl WorkspaceService {
             .one(self.db.conn())
             .await?
             .map(|o| o.active_group)
-            .unwrap_or_else(|| "0".to_string());
+            .unwrap_or(None);
 
         let sway_workspaces = self.ipc_client.get_workspaces()?;
         let mut visible = Vec::new();
@@ -69,14 +69,14 @@ impl WorkspaceService {
                     if let Some(group) = GroupEntity::find_by_id(m.group_id)
                         .one(self.db.conn())
                         .await?
-                        && group.name == active_group {
+                        && active_group.as_deref() == Some(&group.name) {
                             visible.push(base_name.clone());
                             found = true;
                             break;
                         }
                 }
 
-                if !found && memberships.is_empty() && active_group == "0" {
+                if !found && memberships.is_empty() && active_group.is_none() {
                     visible.push(base_name.clone());
                     found = true;
                 }
@@ -458,11 +458,13 @@ impl WorkspaceService {
                         .one(self.db.conn())
                         .await?
                     {
-                        if let Some(g) = GroupEntity::find_by_name(&out.active_group)
-                            .one(self.db.conn())
-                            .await?
-                        {
-                            ids.insert(g.id);
+                        if let Some(ref ag) = out.active_group {
+                            if let Some(g) = GroupEntity::find_by_name(ag)
+                                .one(self.db.conn())
+                                .await?
+                            {
+                                ids.insert(g.id);
+                            }
                         }
                     }
                 }
@@ -523,20 +525,21 @@ impl WorkspaceService {
                     .one(self.db.conn())
                     .await?
                     .map(|o| o.active_group)
-                    .unwrap_or_else(|| "0".to_string());
+                    .unwrap_or(None);
 
-                let group = GroupEntity::find_by_name(&active_group)
-                    .one(self.db.conn())
-                    .await?;
-
-                if let Some(group) = group {
-                    let existing = WorkspaceGroupEntity::find_membership(ws_id, group.id)
+                if let Some(ref ag) = active_group {
+                    let group = GroupEntity::find_by_name(ag)
                         .one(self.db.conn())
                         .await?;
-                    if existing.is_none() {
-                        let now = chrono::Utc::now().naive_utc();
-                        let membership = workspace_group::ActiveModel {
-                            workspace_id: Set(ws_id),
+
+                    if let Some(group) = group {
+                        let existing = WorkspaceGroupEntity::find_membership(ws_id, group.id)
+                            .one(self.db.conn())
+                            .await?;
+                        if existing.is_none() {
+                            let now = chrono::Utc::now().naive_utc();
+                            let membership = workspace_group::ActiveModel {
+                                workspace_id: Set(ws_id),
                             group_id: Set(group.id),
                             created_at: Set(Some(now)),
                             ..Default::default()
@@ -544,9 +547,10 @@ impl WorkspaceService {
                         membership.insert(self.db.conn()).await?;
                         info!(
                             "Added global workspace '{}' back to group '{}'",
-                            workspace_name, active_group
+                            workspace_name, ag
                         );
                     }
+                }
                 }
             } else {
                 info!(
@@ -729,13 +733,13 @@ impl WorkspaceService {
             } else {
                 let active = output::ActiveModel {
                     name: Set(sway_out.name.clone()),
-                    active_group: Set("0".to_string()),
+                    active_group: Set(None),
                     created_at: Set(Some(now)),
                     updated_at: Set(Some(now)),
                     ..Default::default()
                 };
                 active.insert(self.db.conn()).await?;
-                info!("Created output '{}' with default group '0'", sway_out.name);
+                info!("Created output '{}'", sway_out.name);
             }
         }
 
@@ -761,7 +765,7 @@ impl WorkspaceService {
 
                 // Determine group: prefer output's active_group from DB
                 let active_group = {
-                    let mut group_name = "0".to_string();
+                    let mut group_name: Option<String> = None;
                     if let Some(output) = OutputEntity::find_by_name(&ws_output)
                         .one(self.db.conn())
                         .await
@@ -786,17 +790,19 @@ impl WorkspaceService {
                 };
                 let ws = active.insert(self.db.conn()).await?;
 
-                if let Some(group) = GroupEntity::find_by_name(&active_group)
-                    .one(self.db.conn())
-                    .await?
-                {
-                    let membership = workspace_group::ActiveModel {
-                        workspace_id: Set(ws.id),
-                        group_id: Set(group.id),
-                        created_at: Set(Some(now)),
-                        ..Default::default()
-                    };
-                    membership.insert(self.db.conn()).await?;
+                if let Some(ref ag) = active_group {
+                    if let Some(group) = GroupEntity::find_by_name(ag)
+                        .one(self.db.conn())
+                        .await?
+                    {
+                        let membership = workspace_group::ActiveModel {
+                            workspace_id: Set(ws.id),
+                            group_id: Set(group.id),
+                            created_at: Set(Some(now)),
+                            ..Default::default()
+                        };
+                        membership.insert(self.db.conn()).await?;
+                    }
                 }
             }
         }
@@ -890,7 +896,7 @@ impl WorkspaceService {
             } else {
                 let active = output::ActiveModel {
                     name: Set(sway_out.name.clone()),
-                    active_group: Set("0".to_string()),
+                    active_group: Set(None),
                     created_at: Set(Some(now)),
                     updated_at: Set(Some(now)),
                     ..Default::default()

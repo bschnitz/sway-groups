@@ -1,19 +1,13 @@
-//! Visibility resolution service.
-//!
-//! Centralizes the logic for determining which workspaces are visible
-//! on a given output, given the active group.
-//!
-//! This logic was previously duplicated across WorkspaceService,
-//! NavigationService, and WaybarSyncService.
+use anyhow::Result;
 
-use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
-use crate::db::DatabaseManager;
-use crate::error::Result;
 use sea_orm::EntityTrait;
-use crate::sway::SwayIpcClient;
 
-/// Service for resolving workspace visibility.
-#[derive(Clone)]
+use crate::db::entities::{
+    GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity,
+};
+use crate::sway::SwayIpcClient;
+use crate::db::DatabaseManager;
+
 pub struct VisibilityService {
     db: DatabaseManager,
     ipc_client: SwayIpcClient,
@@ -29,7 +23,7 @@ impl VisibilityService {
     /// A workspace is visible if:
     /// - It is global (`is_global = true`), OR
     /// - It belongs to the active group for this output, OR
-    /// - The active group is "0" and the workspace has no group memberships
+    /// - No group is active and the workspace has no group memberships
     ///
     /// Results are sorted alphabetically.
     pub async fn get_visible(&self, output_name: &str) -> Result<Vec<String>> {
@@ -65,7 +59,7 @@ impl VisibilityService {
                     if let Some(group) = GroupEntity::find_by_id(m.group_id)
                         .one(self.db.conn())
                         .await?
-                        && group.name == active_group
+                        && active_group.as_deref() == Some(&group.name)
                     {
                         visible.push(base_name.clone());
                         found = true;
@@ -73,7 +67,7 @@ impl VisibilityService {
                     }
                 }
 
-                if !found && memberships.is_empty() && active_group == "0" {
+                if !found && memberships.is_empty() && active_group.is_none() {
                     visible.push(base_name.clone());
                     found = true;
                 }
@@ -155,12 +149,11 @@ impl VisibilityService {
     }
 
     /// Resolves the active group for a given output.
-    /// Falls back to "0" if the output is not tracked.
-    async fn resolve_active_group(&self, output_name: &str) -> Result<String> {
+    async fn resolve_active_group(&self, output_name: &str) -> Result<Option<String>> {
         Ok(OutputEntity::find_by_name(output_name)
             .one(self.db.conn())
             .await?
             .map(|o| o.active_group)
-            .unwrap_or_else(|| "0".to_string()))
+            .unwrap_or(None))
     }
 }

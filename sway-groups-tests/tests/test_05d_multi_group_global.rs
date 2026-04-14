@@ -277,7 +277,7 @@ async fn test_05d_multi_group_global() {
 
     // --- Switch back to original group ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(

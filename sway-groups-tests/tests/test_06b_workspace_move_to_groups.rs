@@ -131,7 +131,7 @@ async fn test_06b_workspace_move_to_groups() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     // --- Verify setup ---
@@ -217,7 +217,7 @@ async fn test_06b_workspace_move_to_groups() {
 
     // --- Cleanup ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     drop(_win1);
@@ -230,7 +230,7 @@ async fn test_06b_workspace_move_to_groups() {
         .swayg(&["group", "select", GROUP_C, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
     assert_eq!(
         db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_C)),
@@ -244,7 +244,7 @@ async fn test_06b_workspace_move_to_groups() {
         .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
     assert_eq!(
         db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
@@ -258,7 +258,7 @@ async fn test_06b_workspace_move_to_groups() {
         .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
     assert_eq!(
         db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)),

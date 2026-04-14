@@ -194,7 +194,7 @@ async fn test_02_workspace_with_containers() {
 
     // --- Switch back to default group on test DB ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     let _ = std::process::Command::new("swaymsg")
@@ -253,12 +253,15 @@ async fn test_02_workspace_with_containers() {
     assert!(!workspace_exists_in_sway(WS2), "cleanup: {} gone from sway", WS2);
 
     // --- Switch to test group then back (auto-delete on test DB) ---
+    // Note: GROUP may already be auto-deleted by the daemon during window cleanup.
+    // --create ensures GROUP exists for the auto-delete trigger.
     fixture
-        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
+        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output, "--create"])
         .success();
 
+    // Switch away to trigger auto-delete of the test group
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(

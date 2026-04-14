@@ -131,7 +131,7 @@ async fn test_12_repair() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     fixture
@@ -167,6 +167,16 @@ async fn test_12_repair() {
     db_exec(
         &fixture.db_path,
         &format!("DELETE FROM workspaces WHERE name = '{}';", WS1),
+    );
+    // Also remove workspace "0" membership from GROUP (added by ensure_workspace_in_group
+    // when GROUP was first selected) so GROUP is truly empty before repair
+    db_exec(
+        &fixture.db_path,
+        &format!(
+            "DELETE FROM workspace_groups WHERE group_id IN (SELECT id FROM groups WHERE name = '{}') \
+             AND workspace_id IN (SELECT id FROM workspaces WHERE name = '0');",
+            GROUP
+        ),
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
 

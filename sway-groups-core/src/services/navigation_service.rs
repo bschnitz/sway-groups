@@ -22,9 +22,9 @@ impl NavigationService {
             .one(self.db.conn())
             .await?
             .map(|o| o.active_group)
-            .unwrap_or_else(|| "0".to_string());
+            .unwrap_or(None);
 
-        info!("get_visible_workspaces: output={}, active_group={}", output_name, active_group);
+        info!("get_visible_workspaces: output={}, active_group={:?}", output_name, active_group);
 
         let sway_workspaces = self.ipc_client.get_workspaces()?;
         let mut visible = Vec::new();
@@ -54,14 +54,14 @@ impl NavigationService {
                     if let Some(group) = GroupEntity::find_by_id(m.group_id)
                         .one(self.db.conn())
                         .await?
-                        && group.name == active_group {
+                        && active_group.as_deref() == Some(&group.name) {
                             visible.push(sway_ws.name.clone());
                             found = true;
                             break;
                         }
                 }
 
-                if !found && memberships.is_empty() && active_group == "0" {
+                if !found && memberships.is_empty() && active_group.is_none() {
                     visible.push(sway_ws.name.clone());
                     found = true;
                 }
@@ -95,9 +95,9 @@ impl NavigationService {
             .one(self.db.conn())
             .await?
             .map(|o| o.active_group)
-            .unwrap_or_else(|| "0".to_string());
+            .unwrap_or(None);
 
-        info!("get_visible_workspaces_all_outputs: base_output={}, active_group={}", output_name, active_group);
+        info!("get_visible_workspaces_all_outputs: base_output={}, active_group={:?}", output_name, active_group);
 
         let sway_workspaces = self.ipc_client.get_workspaces()?;
         let mut visible = Vec::new();
@@ -127,14 +127,14 @@ impl NavigationService {
                     if let Some(group) = GroupEntity::find_by_id(m.group_id)
                         .one(self.db.conn())
                         .await?
-                        && group.name == active_group {
+                        && active_group.as_deref() == Some(&group.name) {
                         visible.push(sway_ws.name.clone());
                         found = true;
                         break;
                     }
                 }
 
-                if !found && memberships.is_empty() && active_group == "0" {
+                if !found && memberships.is_empty() && active_group.is_none() {
                     visible.push(sway_ws.name.clone());
                     seen.insert(sway_ws.name.clone());
                 }
@@ -400,7 +400,7 @@ impl NavigationService {
             .one(self.db.conn())
             .await?
             .map(|o| o.active_group)
-            .unwrap_or_else(|| "0".to_string());
+            .unwrap_or(None);
 
         let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
             .all(self.db.conn())
@@ -413,7 +413,7 @@ impl NavigationService {
                     .one(self.db.conn())
                     .await?
                 {
-                    if group.name == active_group {
+                    if active_group.as_deref() == Some(&group.name) {
                         found = true;
                         break;
                     }
@@ -423,19 +423,21 @@ impl NavigationService {
         };
 
         if !in_group {
-            if let Some(group) = GroupEntity::find_by_name(&active_group)
-                .one(self.db.conn())
-                .await?
-            {
-                let now = chrono::Utc::now().naive_utc();
-                let membership = workspace_group::ActiveModel {
-                    workspace_id: Set(ws.id),
-                    group_id: Set(group.id),
-                    created_at: Set(Some(now)),
-                    ..Default::default()
-                };
-                membership.insert(self.db.conn()).await?;
-                info!("Added workspace '{}' to active group '{}'", workspace_name, active_group);
+            if let Some(ref ag) = active_group {
+                if let Some(group) = GroupEntity::find_by_name(ag)
+                    .one(self.db.conn())
+                    .await?
+                {
+                    let now = chrono::Utc::now().naive_utc();
+                    let membership = workspace_group::ActiveModel {
+                        workspace_id: Set(ws.id),
+                        group_id: Set(group.id),
+                        created_at: Set(Some(now)),
+                        ..Default::default()
+                    };
+                    membership.insert(self.db.conn()).await?;
+                    info!("Added workspace '{}' to active group '{}'", workspace_name, ag);
+                }
             }
         }
         Ok(())
@@ -473,20 +475,22 @@ impl NavigationService {
                 .one(self.db.conn())
                 .await?
                 .map(|o| o.active_group)
-                .unwrap_or_else(|| "0".to_string());
+                .unwrap_or(None);
 
-            if let Some(group) = GroupEntity::find_by_name(&active_group)
-                .one(self.db.conn())
-                .await?
-            {
-                let membership = workspace_group::ActiveModel {
-                    workspace_id: Set(ws.id),
-                    group_id: Set(group.id),
-                    created_at: Set(Some(now)),
-                    ..Default::default()
-                };
-                membership.insert(self.db.conn()).await?;
-                info!("Added workspace '{}' to active group '{}'", workspace_name, active_group);
+            if let Some(ref ag) = active_group {
+                if let Some(group) = GroupEntity::find_by_name(ag)
+                    .one(self.db.conn())
+                    .await?
+                {
+                    let membership = workspace_group::ActiveModel {
+                        workspace_id: Set(ws.id),
+                        group_id: Set(group.id),
+                        created_at: Set(Some(now)),
+                        ..Default::default()
+                    };
+                    membership.insert(self.db.conn()).await?;
+                    info!("Added workspace '{}' to active group '{}'", workspace_name, ag);
+                }
             }
         }
 

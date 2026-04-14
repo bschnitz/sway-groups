@@ -323,7 +323,7 @@ async fn test_05e_multi_group_unglobal() {
 
     // --- Switch back to original group (Group B should NOT auto-delete) ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(
@@ -349,7 +349,7 @@ async fn test_05e_multi_group_unglobal() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(

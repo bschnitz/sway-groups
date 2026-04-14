@@ -86,7 +86,7 @@ async fn test_01_group_select() {
 
     // --- Test: switch back to default group (auto-delete) ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(

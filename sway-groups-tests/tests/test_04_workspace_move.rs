@@ -209,6 +209,7 @@ async fn test_04_workspace_move() {
             "0",
             "--output",
             &fixture.orig_output,
+            "--create",
         ])
         .success();
 
@@ -243,6 +244,7 @@ async fn test_04_workspace_move() {
             "0",
             "--output",
             &fixture.orig_output,
+            "--create",
         ])
         .success();
 

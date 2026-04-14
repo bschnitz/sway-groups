@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    swayg_output, get_focused_workspace, workspace_of_window, DummyWindowHandle, TestFixture,
+    get_focused_workspace, workspace_of_window, DummyWindowHandle, TestFixture,
     create_virtual_output, unplug_output,
 };
 
@@ -46,7 +46,15 @@ async fn test_25_nav_next_prev_all_outputs() {
         }
     }
 
-    let orig_group = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
+    let orig_group = {
+        let output = Command::new("swayg")
+            .args(["group", "active", &fixture.orig_output])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .expect("swayg group active failed");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
     assert!(!orig_group.is_empty(), "original group not empty");
     let orig_ws = get_focused_workspace().expect("focused ws");
 
@@ -116,7 +124,7 @@ async fn test_25_nav_next_prev_all_outputs() {
     // Auto-delete GROUP (empty after window kill)
     for output in [&fixture.orig_output, &virt_output] {
         fixture.swayg(&["group", "select", GROUP, "--output", output]).success();
-        fixture.swayg(&["group", "select", &orig_group, "--output", output]).success();
+        fixture.swayg(&["group", "select", &orig_group, "--output", output, "--create"]).success();
     }
 
     unplug_output(&virt_output);

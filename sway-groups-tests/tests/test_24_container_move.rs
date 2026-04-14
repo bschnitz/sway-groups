@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    swayg_output, get_focused_workspace, DummyWindowHandle, TestFixture,
+    get_focused_workspace, DummyWindowHandle, TestFixture,
 };
 
 const WS1: &str = "zz_tg_cm_ws1";
@@ -76,12 +76,24 @@ async fn test_24_container_move() {
     assert!(!workspace_exists_in_sway(WS2), "precondition: {} not in sway", WS2);
 
     // --- Remember original state ---
-    let orig_group = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
+    let orig_group = {
+        let output = Command::new("swayg")
+            .args(["group", "active", &fixture.orig_output])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .expect("swayg group active failed");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
     assert!(!orig_group.is_empty(), "original group must not be empty");
     let orig_ws = get_focused_workspace().expect("get focused workspace");
 
     // --- Setup: init ---
     fixture.init().success();
+
+    fixture
+        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output, "--create"])
+        .success();
 
     // No group creation needed — we test that container move doesn't touch groups
 

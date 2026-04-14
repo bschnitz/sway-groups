@@ -138,7 +138,7 @@ async fn test_06a_group_delete_multi_group_workspace() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     // --- Verify setup ---
@@ -255,7 +255,7 @@ async fn test_06a_group_delete_multi_group_workspace() {
 
     // --- Verify visibility in group 0 ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     let visible_0 = swayg_output(
@@ -270,7 +270,7 @@ async fn test_06a_group_delete_multi_group_workspace() {
 
     // --- Switch back to original group ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     // --- Cleanup: kill dummy windows ---
@@ -284,7 +284,7 @@ async fn test_06a_group_delete_multi_group_workspace() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
         .success();
 
     assert_eq!(

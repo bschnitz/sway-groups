@@ -166,7 +166,20 @@ fn stop_prod_daemon() {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    for _ in 0..20 {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let output = Command::new("systemctl")
+            .args(["--user", "is-active", "swayg-daemon.service"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .ok();
+        if let Some(o) = output {
+            if String::from_utf8_lossy(&o.stdout).trim() == "inactive" {
+                break;
+            }
+        }
+    }
 }
 
 fn start_prod_daemon() {

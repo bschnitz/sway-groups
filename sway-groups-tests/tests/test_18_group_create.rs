@@ -83,8 +83,8 @@ async fn test_18_group_create() {
 
     let active = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(
-        active, "0",
-        "active group is default after init"
+        active, "",
+        "active group is empty (none set) after init"
     );
 
     // --- 4. Test: create same group again (error) ---
@@ -121,8 +121,8 @@ async fn test_18_group_create() {
 
     let active_still = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(
-        active_still, "0",
-        "active group still default after failed create"
+        active_still, "",
+        "active group still empty after failed create"
     );
 
     // --- 5. Cleanup: switch back to original workspace ---
