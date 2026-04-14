@@ -404,6 +404,14 @@ impl WorkspaceService {
         Ok(groups)
     }
 
+    pub async fn is_global(&self, workspace_name: &str) -> Result<bool> {
+        Ok(WorkspaceEntity::find_by_name(workspace_name)
+            .one(self.db.conn())
+            .await?
+            .map(|e| e.is_global)
+            .unwrap_or(false))
+    }
+
     /// Set workspace global status.
     pub async fn set_global(&self, workspace_name: &str, global: bool) -> Result<()> {
         let workspace = WorkspaceEntity::find_by_name(workspace_name)

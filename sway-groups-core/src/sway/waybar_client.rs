@@ -6,10 +6,11 @@ use std::path::PathBuf;
 
 use crate::error::{Error, Result};
 use serde::Serialize;
-use tracing::warn;
+use tracing::{info, warn};
 
 /// waybar-dynamic instance name used by swayg.
 pub const WAYBAR_INSTANCE_NAME: &str = "swayg_workspaces";
+pub const WAYBAR_GROUPS_INSTANCE_NAME: &str = "swayg_groups";
 
 /// Operation type for waybar-dynamic IPC.
 #[derive(Debug, Clone, Serialize)]
@@ -36,6 +37,12 @@ pub struct WidgetSpec {
     /// Shell command to run on left click.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_click: Option<String>,
+    /// Shell command to run on right click.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_right_click: Option<String>,
+    /// Shell command to run on middle click.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_middle_click: Option<String>,
 }
 
 /// An IPC message sent to waybar-dynamic.
@@ -77,6 +84,12 @@ impl WaybarClient {
         Self { socket_path }
     }
 
+    /// Create a client for the groups instance.
+    pub fn new_groups() -> Self {
+        let socket_path = Self::resolve_socket_path_with_name(WAYBAR_GROUPS_INSTANCE_NAME);
+        Self { socket_path }
+    }
+
     /// Create a new client with a specific instance name (for testing).
     pub fn with_instance_name(name: &str) -> Self {
         let socket_path = Self::resolve_socket_path_with_name(name);
@@ -97,6 +110,16 @@ impl WaybarClient {
     /// Send a message to waybar-dynamic.
     /// If the socket is not available, logs a warning and returns Ok.
     pub fn send(&self, message: &WaybarMessage) -> Result<()> {
+        self.send_inner(message, 0, std::time::Duration::ZERO)
+    }
+
+    /// Send a message with retry. Retries up to `retries` times with `delay` between attempts.
+    /// Only retries if the socket file does not exist.
+    pub fn send_with_retry(&self, message: &WaybarMessage, retries: u32, delay: std::time::Duration) -> Result<()> {
+        self.send_inner(message, retries, delay)
+    }
+
+    fn send_inner(&self, message: &WaybarMessage, retries: u32, delay: std::time::Duration) -> Result<()> {
         let socket_path = match &self.socket_path {
             Some(p) => p,
             None => {
@@ -105,22 +128,51 @@ impl WaybarClient {
             }
         };
 
-        if !socket_path.exists() {
-            warn!(
-                "waybar-dynamic: socket not found at {:?}, skipping send",
-                socket_path
-            );
-            return Ok(());
+        let mut attempts = retries + 1;
+        loop {
+            if !socket_path.exists() {
+                if attempts <= 1 {
+                    warn!(
+                        "waybar-dynamic: socket not found at {:?}, skipping send",
+                        socket_path
+                    );
+                    return Ok(());
+                }
+                attempts -= 1;
+                info!(
+                    "waybar-dynamic: socket not found at {:?}, retrying in {}ms ({} attempts left)",
+                    socket_path,
+                    delay.as_millis(),
+                    attempts
+                );
+                std::thread::sleep(delay);
+                continue;
+            }
+
+            match UnixStream::connect(socket_path) {
+                Ok(mut stream) => {
+                    let payload = serde_json::to_string(message)?;
+                    writeln!(stream, "{}", payload)?;
+                    stream.flush()?;
+                    info!("waybar-dynamic: sent message to {:?} successfully", socket_path);
+                    return Ok(());
+                }
+                Err(e) if e.raw_os_error() == Some(111) && attempts > 1 => {
+                    attempts -= 1;
+                    info!(
+                        "waybar-dynamic: connection refused at {:?}, retrying in {}ms ({} attempts left)",
+                        socket_path,
+                        delay.as_millis(),
+                        attempts
+                    );
+                    std::thread::sleep(delay);
+                }
+                Err(e) => {
+                    warn!("waybar-dynamic: error at {:?}: {}", socket_path, e);
+                    return Err(Error::Io(e));
+                }
+            }
         }
-
-        let mut stream = UnixStream::connect(socket_path)
-            .map_err(|e| Error::Io(e))?;
-
-        let payload = serde_json::to_string(message)?;
-        writeln!(stream, "{}", payload)?;
-        stream.flush()?;
-
-        Ok(())
     }
 
     /// Send a set_all message with the given widgets.

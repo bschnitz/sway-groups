@@ -50,6 +50,18 @@ enum Command {
 
         #[arg(short, long)]
         outputs: bool,
+
+        #[arg(long)]
+        repair: bool,
+
+        #[arg(long)]
+        init_bars: bool,
+
+        #[arg(long, default_value = "5")]
+        init_bars_retries: u32,
+
+        #[arg(long, default_value = "200")]
+        init_bars_delay_ms: u64,
     },
     Init {
         #[arg(long)]
@@ -156,10 +168,12 @@ enum WorkspaceAction {
         workspace: String,
     },
     Global {
-        workspace: String,
+        workspace: Option<String>,
+        #[arg(short, long)]
+        toggle: bool,
     },
     Unglobal {
-        workspace: String,
+        workspace: Option<String>,
     },
 }
 
@@ -220,8 +234,8 @@ pub async fn run(
         Command::Workspace { action } => run_workspace(action, workspace_service, group_service, waybar_sync, ipc_client).await?,
         Command::Nav { action } => run_nav(action, nav_service, workspace_service, waybar_sync, ipc_client).await?,
         Command::Container { action } => run_container(action, nav_service, group_service, workspace_service, waybar_sync, ipc_client).await?,
-        Command::Sync { all, workspaces, groups, outputs } => {
-            run_sync(all, workspaces, groups, outputs, workspace_service, waybar_sync).await?;
+        Command::Sync { all, workspaces, groups, outputs, repair, init_bars, init_bars_retries, init_bars_delay_ms } => {
+            run_sync(all, workspaces, groups, outputs, repair, init_bars, init_bars_retries, init_bars_delay_ms, workspace_service, group_service, waybar_sync).await?;
         }
         Command::Init { restart_daemon_service } => {
             run_init(db_path, workspace_service, group_service, waybar_sync, restart_daemon_service).await?;
@@ -287,14 +301,17 @@ async fn run_group(
         }
         GroupAction::Create { name } => {
             group_service.create_group(&name).await?;
+            waybar_sync.update_waybar_groups().await?;
             println!("Created group \"{}\"", name);
         }
         GroupAction::Delete { name, force } => {
             group_service.delete_group(&name, force).await?;
+            waybar_sync.update_waybar_groups().await?;
             println!("Deleted group \"{}\"", name);
         }
         GroupAction::Rename { old_name, new_name } => {
             group_service.rename_group(&old_name, &new_name).await?;
+            waybar_sync.update_waybar_groups().await?;
             println!("Renamed group \"{}\" to \"{}\"", old_name, new_name);
         }
         GroupAction::Select { output, group, create } => {
@@ -308,6 +325,7 @@ async fn run_group(
             let resolved_output = resolve_group_output(output.as_deref(), &group, group_service, ipc_client).await?;
             group_service.set_active_group(&resolved_output, &group).await?;
             waybar_sync.update_waybar().await?;
+            waybar_sync.update_waybar_groups().await?;
             println!("Set active group for \"{}\" to \"{}\"", resolved_output, group);
         }
         GroupAction::Active { output } => {
@@ -320,6 +338,7 @@ async fn run_group(
                 let resolved_output = resolve_group_output(None, &next_name, group_service, ipc_client).await?;
                 group_service.set_active_group(&resolved_output, &next_name).await?;
                 waybar_sync.update_waybar().await?;
+                waybar_sync.update_waybar_groups().await?;
                 println!("Switched from active group to \"{}\"", next_name);
             }
         }
@@ -327,6 +346,7 @@ async fn run_group(
             let output = resolve_output(output.as_deref(), ipc_client)?;
             if let Some(next) = group_service.next_group_on_output(&output, wrap).await? {
                 waybar_sync.update_waybar().await?;
+                waybar_sync.update_waybar_groups().await?;
                 println!("Switched from active group to \"{}\"", next);
             }
         }
@@ -336,6 +356,7 @@ async fn run_group(
                 let resolved_output = resolve_group_output(None, &prev_name, group_service, ipc_client).await?;
                 group_service.set_active_group(&resolved_output, &prev_name).await?;
                 waybar_sync.update_waybar().await?;
+                waybar_sync.update_waybar_groups().await?;
                 println!("Switched from active group to \"{}\"", prev_name);
             }
         }
@@ -343,6 +364,7 @@ async fn run_group(
             let output = resolve_output(output.as_deref(), ipc_client)?;
             if let Some(prev) = group_service.prev_group_on_output(&output, wrap).await? {
                 waybar_sync.update_waybar().await?;
+                waybar_sync.update_waybar_groups().await?;
                 println!("Switched from active group to \"{}\"", prev);
             }
         }
@@ -351,6 +373,7 @@ async fn run_group(
             if removed == 0 {
                 println!("No empty groups to prune.");
             } else {
+                waybar_sync.update_waybar_groups().await?;
                 println!("Pruned {} empty group(s)", removed);
             }
         }
@@ -504,15 +527,32 @@ async fn run_workspace(
             }
             result?;
         }
-        WorkspaceAction::Global { workspace } => {
-            workspace_service.set_global(&workspace, true).await?;
+        WorkspaceAction::Global { workspace, toggle } => {
+            let ws = match workspace {
+                Some(w) => w,
+                None => ipc_client.get_focused_workspace().map(|ws| ws.name).unwrap_or_default(),
+            };
+            let make_global = if toggle {
+                !workspace_service.is_global(&ws).await.unwrap_or(false)
+            } else {
+                true
+            };
+            workspace_service.set_global(&ws, make_global).await?;
             waybar_sync.update_waybar().await?;
-            println!("Marked workspace \"{}\" as global", workspace);
+            if make_global {
+                println!("Marked workspace \"{}\" as global", ws);
+            } else {
+                println!("Removed global status from workspace \"{}\"", ws);
+            }
         }
         WorkspaceAction::Unglobal { workspace } => {
-            workspace_service.set_global(&workspace, false).await?;
+            let ws = match workspace {
+                Some(w) => w,
+                None => ipc_client.get_focused_workspace().map(|ws| ws.name).unwrap_or_default(),
+            };
+            workspace_service.set_global(&ws, false).await?;
             waybar_sync.update_waybar().await?;
-            println!("Removed global status from workspace \"{}\"", workspace);
+            println!("Removed global status from workspace \"{}\"", ws);
         }
         WorkspaceAction::Groups { workspace } => {
             let groups = workspace_service.get_groups_for_workspace(&workspace).await?;
@@ -665,7 +705,12 @@ async fn run_sync(
     workspaces: bool,
     groups: bool,
     outputs: bool,
+    repair: bool,
+    init_bars: bool,
+    init_bars_retries: u32,
+    init_bars_delay_ms: u64,
     workspace_service: &WorkspaceService,
+    group_service: &GroupService,
     waybar_sync: &WaybarSyncService,
 ) -> anyhow::Result<()> {
     let mut synced_ws = false;
@@ -683,14 +728,31 @@ async fn run_sync(
         synced_out = true;
     }
 
-    if !all && !workspaces && !groups && !outputs {
+    if !all && !workspaces && !groups && !outputs && !repair && !init_bars {
         workspace_service.sync_from_sway().await?;
         synced_ws = true;
         synced_gr = true;
         synced_out = true;
     }
 
-    waybar_sync.update_waybar().await?;
+    if repair {
+        let (removed_ws, added_ws, removed_groups) = workspace_service.repair(group_service).await?;
+        group_service.ensure_default_group().await?;
+        println!("Repair complete:");
+        println!("  Workspaces removed from DB: {}", removed_ws);
+        println!("  Workspaces added to group '0': {}", added_ws);
+        println!("  Empty groups removed: {}", removed_groups);
+    }
+
+    if init_bars {
+        let delay = std::time::Duration::from_millis(init_bars_delay_ms);
+        waybar_sync.update_waybar_with_retry(init_bars_retries, delay).await?;
+        waybar_sync.update_waybar_groups_with_retry(init_bars_retries, delay).await?;
+        println!("Bars initialized (retries={}, delay={}ms).", init_bars_retries, init_bars_delay_ms);
+    } else {
+        waybar_sync.update_waybar().await?;
+        waybar_sync.update_waybar_groups().await?;
+    }
 
     let mut parts = Vec::new();
     if synced_ws {
@@ -701,6 +763,12 @@ async fn run_sync(
     }
     if synced_out {
         parts.push("outputs");
+    }
+    if repair {
+        parts.push("repair");
+    }
+    if init_bars {
+        parts.push("bars");
     }
     println!("Synced: {}", parts.join(", "));
 
@@ -728,6 +796,7 @@ async fn run_init(
     group_svc.ensure_default_group().await?;
     workspace_svc.sync_from_sway().await?;
     waybar_sync_svc.update_waybar().await?;
+    waybar_sync_svc.update_waybar_groups().await?;
 
     println!("Initialized: created database, synced workspaces and outputs.");
 
