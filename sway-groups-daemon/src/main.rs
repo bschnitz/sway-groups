@@ -65,6 +65,8 @@ async fn main() -> Result<()> {
         .with_ansi(false)
         .init();
 
+    let config = sway_groups_config::SwaygConfig::load()?;
+
     let paused = Arc::new(AtomicBool::new(false));
 
     let paused_loop = Arc::clone(&paused);
@@ -112,7 +114,7 @@ async fn main() -> Result<()> {
                     continue;
                 }
                 if event_type == sway_groups_core::sway::SwayEventType::Workspace as u32 {
-                    handle_workspace_event(&db_path, &ipc, &payload).await;
+                    handle_workspace_event(&db_path, &ipc, &payload, &config).await;
                 }
             }
             Err(e) => {
@@ -123,7 +125,7 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn handle_workspace_event(db_path: &PathBuf, ipc: &SwayIpcClient, payload: &[u8]) {
+async fn handle_workspace_event(db_path: &PathBuf, ipc: &SwayIpcClient, payload: &[u8], config: &sway_groups_config::SwaygConfig) {
     let event: serde_json::Value = match serde_json::from_slice(payload) {
         Ok(v) => v,
         Err(e) => {
@@ -158,14 +160,14 @@ async fn handle_workspace_event(db_path: &PathBuf, ipc: &SwayIpcClient, payload:
     };
 
     if change == "empty" {
-        handle_workspace_destroyed(&db, ipc, &ws_name).await;
+        handle_workspace_destroyed(&db, ipc, &ws_name, config).await;
         return;
     }
 
-    handle_workspace_created(&db, ipc, &ws_name, ws_info).await;
+    handle_workspace_created(&db, ipc, &ws_name, ws_info, config).await;
 }
 
-async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_name: &str, ws_info: &serde_json::Map<String, serde_json::Value>) {
+async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_name: &str, ws_info: &serde_json::Map<String, serde_json::Value>, config: &sway_groups_config::SwaygConfig) {
     let ws_output = ws_info.get("output").and_then(|v| v.as_str()).unwrap_or("").to_string();
     let ws_num = ws_info.get("num").and_then(|v| v.as_i64());
     let now = chrono::Utc::now().naive_utc();
@@ -256,14 +258,13 @@ async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_
         info!("No active group for output '{}', workspace '{}' not assigned", ws_output, ws_name);
     }
 
-    let waybar_client = sway_groups_core::sway::WaybarClient::new();
-    let waybar_sync = sway_groups_core::services::WaybarSyncService::new(db.clone(), ipc.clone(), waybar_client);
+    let waybar_sync = sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
     if let Err(e) = waybar_sync.update_waybar().await {
         warn!("Failed to update waybar: {}", e);
     }
 }
 
-async fn handle_workspace_destroyed(db: &DatabaseManager, ipc: &SwayIpcClient, ws_name: &str) {
+async fn handle_workspace_destroyed(db: &DatabaseManager, ipc: &SwayIpcClient, ws_name: &str, config: &sway_groups_config::SwaygConfig) {
     let existing = WorkspaceEntity::find_by_name(ws_name)
         .one(db.conn())
         .await
@@ -291,8 +292,7 @@ async fn handle_workspace_destroyed(db: &DatabaseManager, ipc: &SwayIpcClient, w
 
     info!("Removed destroyed workspace '{}' from DB ({} memberships cleaned)", ws_name, memberships.len());
 
-    let waybar_client = sway_groups_core::sway::WaybarClient::new();
-    let waybar_sync = sway_groups_core::services::WaybarSyncService::new(db.clone(), ipc.clone(), waybar_client);
+    let waybar_sync = sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
     if let Err(e) = waybar_sync.update_waybar().await {
         warn!("Failed to update waybar: {}", e);
     }

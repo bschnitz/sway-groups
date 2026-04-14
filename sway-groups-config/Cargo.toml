@@ -1,0 +1,13 @@
+[package]
+name = "sway-groups-config"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Configuration for sway-groups"
+
+[dependencies]
+serde = { workspace = true }
+toml = { workspace = true }
+directories = { workspace = true }
+anyhow = { workspace = true }

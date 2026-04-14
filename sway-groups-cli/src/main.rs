@@ -12,7 +12,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 use sway_groups_core::db::DatabaseManager;
 use sway_groups_core::services::{GroupService, NavigationService, WorkspaceService, WaybarSyncService};
-use sway_groups_core::sway::{SwayIpcClient, WaybarClient};
+use sway_groups_core::sway::SwayIpcClient;
 
 fn get_data_dir() -> PathBuf {
     if let Some(proj_dirs) = ProjectDirs::from("com", "swayg", "swayg") {
@@ -49,12 +49,16 @@ async fn main() -> AnyResult<()> {
 
     info!("Using database at: {}", db_path.display());
 
+    let config = match &cli.config {
+        Some(path) => sway_groups_config::SwaygConfig::load_from(path)?,
+        None => sway_groups_config::SwaygConfig::load()?,
+    };
+
     let db: DatabaseManager = DatabaseManager::new(db_path.clone()).await?;
     let ipc_client = SwayIpcClient::new()?;
-    let waybar_client = WaybarClient::new();
-    let group_service = GroupService::new(db.clone(), ipc_client.clone());
-    let workspace_service = WorkspaceService::new(db.clone(), ipc_client.clone());
-    let waybar_sync = WaybarSyncService::new(db.clone(), ipc_client.clone(), waybar_client);
+    let group_service = GroupService::with_config(db.clone(), ipc_client.clone(), &config);
+    let workspace_service = WorkspaceService::with_config(db.clone(), ipc_client.clone(), &config);
+    let waybar_sync = WaybarSyncService::with_config(db.clone(), ipc_client.clone(), &config);
     let nav_service = NavigationService::new(db.clone(), ipc_client.clone());
 
     commands::run(cli, &group_service, &workspace_service, &waybar_sync, &nav_service, &ipc_client, db_path).await?;

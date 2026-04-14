@@ -21,3 +21,4 @@ sea-orm.workspace = true
 directories.workspace = true
 signal-hook = "0.3"
 sway-groups-core = { path = "../sway-groups-core" }
+sway-groups-config = { path = "../sway-groups-config" }

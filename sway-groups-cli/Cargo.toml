@@ -18,6 +18,7 @@ tracing-appender.workspace = true
 serde.workspace = true
 directories.workspace = true
 sway-groups-core = { path = "../sway-groups-core" }
+sway-groups-config = { path = "../sway-groups-config" }
 
 [features]
 default = []

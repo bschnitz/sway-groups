@@ -8,18 +8,48 @@ use crate::sway::SwayIpcClient;
 use sea_orm::EntityTrait;
 use tracing::info;
 
+use sway_groups_config::BarDisplay;
+
 #[derive(Clone)]
 pub struct WaybarSyncService {
     db: DatabaseManager,
     ipc_client: SwayIpcClient,
     waybar_client: WaybarClient,
     groups_client: WaybarClient,
+    workspaces_display: BarDisplay,
+    groups_display: BarDisplay,
+    workspaces_show_global: bool,
+    groups_show_empty: bool,
 }
 
 impl WaybarSyncService {
     pub fn new(db: DatabaseManager, ipc_client: SwayIpcClient, waybar_client: WaybarClient) -> Self {
         let groups_client = WaybarClient::new_groups();
-        Self { db, ipc_client, waybar_client, groups_client }
+        Self {
+            db,
+            ipc_client,
+            waybar_client,
+            groups_client,
+            workspaces_display: BarDisplay::All,
+            groups_display: BarDisplay::All,
+            workspaces_show_global: true,
+            groups_show_empty: true,
+        }
+    }
+
+    pub fn with_config(db: DatabaseManager, ipc_client: SwayIpcClient, config: &sway_groups_config::SwaygConfig) -> Self {
+        let waybar_client = WaybarClient::with_instance_name(&config.bar.workspaces.socket_instance);
+        let groups_client = WaybarClient::with_instance_name(&config.bar.groups.socket_instance);
+        Self {
+            db,
+            ipc_client,
+            waybar_client,
+            groups_client,
+            workspaces_display: config.bar.workspaces.display,
+            groups_display: config.bar.groups.display,
+            workspaces_show_global: config.bar.workspaces.show_global,
+            groups_show_empty: config.bar.groups.show_empty,
+        }
     }
 
     pub async fn update_waybar(&self) -> Result<()> {
@@ -39,6 +69,10 @@ impl WaybarSyncService {
     }
 
     async fn update_waybar_inner(&self, retries: u32, delay: std::time::Duration) -> Result<()> {
+        if self.workspaces_display == BarDisplay::None {
+            return Ok(());
+        }
+
         let outputs = self.ipc_client.get_outputs()?;
         let sway_workspaces = self.ipc_client.get_workspaces()?;
         let focused_output = self.ipc_client.get_primary_output().ok();
@@ -67,6 +101,9 @@ impl WaybarSyncService {
                     let is_global = workspace.is_global;
 
                     if is_global {
+                        if !self.workspaces_show_global {
+                            continue;
+                        }
                         let mut classes = vec!["global".to_string()];
                         if sway_ws.focused {
                             classes.push("focused".to_string());
@@ -124,6 +161,10 @@ impl WaybarSyncService {
     }
 
     async fn update_waybar_groups_inner(&self, retries: u32, delay: std::time::Duration) -> Result<()> {
+        if self.groups_display == BarDisplay::None {
+            return Ok(());
+        }
+
         let focused_output = self.ipc_client.get_primary_output().ok();
 
         let active_group = match &focused_output {
@@ -142,8 +183,36 @@ impl WaybarSyncService {
         let mut widgets = Vec::new();
 
         for group in &groups {
+            if !self.groups_show_empty {
+                let memberships = WorkspaceGroupEntity::find_by_group(group.id)
+                    .all(self.db.conn())
+                    .await?;
+                let mut has_non_global = false;
+                for m in &memberships {
+                    if let Some(ws) = WorkspaceEntity::find_by_id(m.workspace_id)
+                        .one(self.db.conn())
+                        .await?
+                    {
+                        if !ws.is_global {
+                            has_non_global = true;
+                            break;
+                        }
+                    }
+                }
+                if !has_non_global {
+                    continue;
+                }
+            }
+
+            let is_active = active_group.as_deref() == Some(&group.name);
+
+            match self.groups_display {
+                BarDisplay::Active if !is_active => continue,
+                _ => {}
+            }
+
             let mut classes = Vec::new();
-            if active_group.as_deref() == Some(&group.name) {
+            if is_active {
                 classes.push("active".to_string());
             }
 

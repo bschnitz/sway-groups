@@ -11,11 +11,24 @@ use crate::db::DatabaseManager;
 pub struct VisibilityService {
     db: DatabaseManager,
     ipc_client: SwayIpcClient,
+    default_group: String,
 }
 
 impl VisibilityService {
     pub fn new(db: DatabaseManager, ipc_client: SwayIpcClient) -> Self {
-        Self { db, ipc_client }
+        Self {
+            db,
+            ipc_client,
+            default_group: "0".to_string(),
+        }
+    }
+
+    pub fn with_config(db: DatabaseManager, ipc_client: SwayIpcClient, config: &sway_groups_config::SwaygConfig) -> Self {
+        Self {
+            db,
+            ipc_client,
+            default_group: config.defaults.default_group.clone(),
+        }
     }
 
     /// Returns all workspace names visible on an output's active group.
@@ -138,7 +151,7 @@ impl VisibilityService {
                     }
                 }
 
-                if !found && memberships.is_empty() && active_group == "0" {
+                if !found && memberships.is_empty() && active_group == self.default_group {
                     visible.push(sway_ws.name.clone());
                 }
             }

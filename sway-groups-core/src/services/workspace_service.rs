@@ -23,12 +23,32 @@ pub struct WorkspaceInfo {
 pub struct WorkspaceService {
     db: DatabaseManager,
     ipc_client: SwayIpcClient,
+    default_group: String,
+    default_workspace: String,
 }
 
 impl WorkspaceService {
     /// Create a new workspace service.
     pub fn new(db: DatabaseManager, ipc_client: SwayIpcClient) -> Self {
-        Self { db, ipc_client }
+        Self {
+            db,
+            ipc_client,
+            default_group: "0".to_string(),
+            default_workspace: "0".to_string(),
+        }
+    }
+
+    pub fn with_config(db: DatabaseManager, ipc_client: SwayIpcClient, config: &sway_groups_config::SwaygConfig) -> Self {
+        Self {
+            db,
+            ipc_client,
+            default_group: config.defaults.default_group.clone(),
+            default_workspace: config.defaults.default_workspace.clone(),
+        }
+    }
+
+    pub fn default_group(&self) -> &str {
+        &self.default_group
     }
 
     /// List workspace names visible in the active group on an output.
@@ -494,7 +514,7 @@ impl WorkspaceService {
                         .one(self.db.conn())
                         .await?
                     {
-                        if ws.name == "0" {
+                        if ws.name == self.default_workspace {
                             continue;
                         }
                         if !ws.is_global && sway_names.contains(&ws.name) {
@@ -953,7 +973,7 @@ impl WorkspaceService {
                 };
                 let ws = active.insert(self.db.conn()).await?;
 
-                if let Some(group) = GroupEntity::find_by_name("0")
+                if let Some(group) = GroupEntity::find_by_name(&self.default_group)
                     .one(self.db.conn())
                     .await?
                 {
@@ -966,7 +986,7 @@ impl WorkspaceService {
                     membership.insert(self.db.conn()).await?;
                 }
 
-                info!("repair: added workspace '{}' to group '0'", sway_ws.name);
+                info!("repair: added workspace '{}' to group '{}'", sway_ws.name, self.default_group);
                 added_ws += 1;
             }
         }

@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "sway-groups-config",
     "sway-groups-core",
     "sway-groups-cli",
     "sway-groups-daemon",
@@ -52,6 +53,9 @@ uuid = { version = "1", features = ["v4"] }
 
 # directories
 directories = "5"
+
+# Config
+toml = "0.8"
 
 # Wayland (for dummy window binary)
 smithay-client-toolkit = { version = "0.20", default-features = false, features = [

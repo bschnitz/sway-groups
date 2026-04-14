@@ -16,6 +16,10 @@ pub struct Cli {
     #[arg(short, long, env = "SWAYG_DB")]
     pub db: Option<PathBuf>,
 
+    /// Path to the config file. Overrides the default location.
+    #[arg(short, long, env = "SWAYG_CONFIG")]
+    pub config: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -69,6 +73,20 @@ enum Command {
     },
     Repair,
     Status,
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// Write the default configuration to stdout or a file.
+    Dump {
+        /// Write to this file instead of stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -245,6 +263,9 @@ pub async fn run(
         }
         Command::Status => {
             run_status(group_service, workspace_service, waybar_sync, ipc_client).await?;
+        }
+        Command::Config { action } => {
+            run_config(action)?;
         }
     }
     Ok(())
@@ -762,11 +783,11 @@ async fn run_sync(
         println!("Repair complete:");
         println!("  Workspaces removed from DB: {}", removed_ws);
         if added_ws > 0 {
-            // Create group "0" if it doesn't exist, to house orphaned workspaces
-            if group_service.list_groups(None).await?.iter().all(|g| g.name != "0") {
-                group_service.create_group("0").await?;
+            let dg = group_service.default_group().to_string();
+            if group_service.list_groups(None).await?.iter().all(|g| g.name != dg) {
+                group_service.create_group(&dg).await?;
             }
-            println!("  Workspaces added to group '0': {}", added_ws);
+            println!("  Workspaces added to group '{}': {}", dg, added_ws);
         }
         println!("  Empty groups removed: {}", removed_groups);
     }
@@ -825,8 +846,9 @@ async fn run_init(
     waybar_sync_svc.update_waybar_groups().await?;
 
     if group_svc.list_groups(None).await?.is_empty() {
-        group_svc.create_group("0").await?;
-        println!("Created default group '0' (no groups found after sync).");
+        let dg = group_svc.default_group().to_string();
+        group_svc.create_group(&dg).await?;
+        println!("Created default group '{}' (no groups found after sync).", dg);
     }
 
     println!("Initialized: created database, synced workspaces and outputs.");
@@ -855,8 +877,9 @@ async fn run_repair(
     let (removed_ws, added_ws, removed_groups) = workspace_service.repair(group_service).await?;
 
     if added_ws > 0 {
-        if group_service.list_groups(None).await?.iter().all(|g| g.name != "0") {
-            group_service.create_group("0").await?;
+        let dg = group_service.default_group().to_string();
+        if group_service.list_groups(None).await?.iter().all(|g| g.name != dg) {
+            group_service.create_group(&dg).await?;
         }
     }
     waybar_sync.update_waybar().await?;
@@ -936,5 +959,23 @@ async fn run_status(
         }
     }
 
+    Ok(())
+}
+
+fn run_config(action: ConfigAction) -> anyhow::Result<()> {
+    let config = sway_groups_config::SwaygConfig::default();
+    match action {
+        ConfigAction::Dump { output } => {
+            match output {
+                Some(path) => {
+                    config.dump_to(&path)?;
+                    println!("Wrote default config to {}", path.display());
+                }
+                None => {
+                    print!("{}", config.dump()?);
+                }
+            }
+        }
+    }
     Ok(())
 }

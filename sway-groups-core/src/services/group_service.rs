@@ -20,11 +20,35 @@ pub struct GroupInfo {
 pub struct GroupService {
     db: DatabaseManager,
     ipc_client: SwayIpcClient,
+    default_group: String,
+    default_workspace: String,
 }
 
 impl GroupService {
     pub fn new(db: DatabaseManager, ipc_client: SwayIpcClient) -> Self {
-        Self { db, ipc_client }
+        Self {
+            db,
+            ipc_client,
+            default_group: "0".to_string(),
+            default_workspace: "0".to_string(),
+        }
+    }
+
+    pub fn with_config(db: DatabaseManager, ipc_client: SwayIpcClient, config: &sway_groups_config::SwaygConfig) -> Self {
+        Self {
+            db,
+            ipc_client,
+            default_group: config.defaults.default_group.clone(),
+            default_workspace: config.defaults.default_workspace.clone(),
+        }
+    }
+
+    pub fn default_group(&self) -> &str {
+        &self.default_group
+    }
+
+    pub fn default_workspace(&self) -> &str {
+        &self.default_workspace
     }
 
     /// List all groups with their workspaces.
@@ -174,7 +198,7 @@ impl GroupService {
         group.delete(self.db.conn()).await?;
         info!("Deleted group: {}", name);
 
-        // Clean up orphaned workspaces: move to group "0" if still in sway, delete if not
+        // Clean up orphaned workspaces: move to default group if still in sway, delete if not
         let sway_workspaces = match self.ipc_client.get_workspaces() {
             Ok(ws) => ws,
             Err(e) => {
@@ -187,13 +211,13 @@ impl GroupService {
             .map(|w| w.name.clone())
             .collect();
 
-        let default_group = match GroupEntity::find_by_name("0")
+        let default_group = match GroupEntity::find_by_name(&self.default_group)
             .one(self.db.conn())
             .await?
         {
             Some(g) => g,
             None => {
-                warn!("Default group '0' not found, cannot reassign orphaned workspaces");
+                warn!("Default group '{}' not found, cannot reassign orphaned workspaces", self.default_group);
                 return Ok(());
             }
         };
@@ -217,7 +241,7 @@ impl GroupService {
                             ..Default::default()
                         };
                         membership.insert(self.db.conn()).await?;
-                        info!("Moved orphaned workspace '{}' to group '0'", ws.name);
+                        info!("Moved orphaned workspace '{}' to group '{}'", ws.name, self.default_group);
                     } else {
                         if let Ok(histories) = FocusHistoryEntity::find_by_workspace_name(&ws.name)
                             .all(self.db.conn())
@@ -452,13 +476,14 @@ impl GroupService {
         debug!("set_active_group: workspaces in group '{}' on '{}': {:?}", group, output, group_workspaces);
 
         if group_workspaces.is_empty() {
-            // Case 1: Group has no workspaces -> focus workspace "0"
-            // If workspace "0" exists on a different output, sway would switch
+            let dw = self.default_workspace.clone();
+            // Case 1: Group has no workspaces -> focus default workspace
+            // If the default workspace exists on a different output, sway would switch
             // to that output instead of creating it on the target output.
             // Remove it from sway first so it gets created on the target output.
             if let Ok(all_ws) = self.ipc_client.get_workspaces() {
                 for ws in &all_ws {
-                    if ws.name == "0" && ws.output != output && ws.output.is_empty() == false {
+                    if ws.name == dw && ws.output != output && ws.output.is_empty() == false {
                         let _ = self.ipc_client.run_command(
                             &format!("workspace \"{}\"", ws.output),
                         );
@@ -466,11 +491,11 @@ impl GroupService {
                     }
                 }
             }
-            debug!("set_active_group: case 1 (empty group), focusing workspace '0'");
-            self.focus_workspace("0")?;
+            debug!("set_active_group: case 1 (empty group), focusing workspace '{}'", dw);
+            self.focus_workspace(&dw)?;
 
-            // Ensure workspace "0" exists in DB and is in this group
-            self.ensure_workspace_in_group("0", group, output).await?;
+            // Ensure default workspace exists in DB and is in this group
+            self.ensure_workspace_in_group(&dw, group, output).await?;
         } else {
             // Check if this group was previously visited on this output
             let last_focused = self.get_last_focused_workspace(output, group).await?;
