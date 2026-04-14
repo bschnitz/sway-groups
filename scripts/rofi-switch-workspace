@@ -14,10 +14,11 @@ for w in json.load(sys.stdin):
 
 active_group=$($HOME/.cargo/bin/swayg group active "$current_output" 2>/dev/null)
 
-choice=$($HOME/.cargo/bin/swayg workspace list --plain --groups --flatten 2>/dev/null | rofi -dmenu -p "Switch to:" -a "$active_group")
+choice=$($HOME/.cargo/bin/swayg workspace list --plain --groups --flatten 2>/dev/null | rofi -dmenu -p "Switch to (+name):" -a "$active_group")
 if [ -z "$choice" ]; then
     exit 0
 fi
 
 workspace="${choice%%│*}"
+workspace="${workspace#+}"
 $HOME/.cargo/bin/swayg nav go "$workspace"

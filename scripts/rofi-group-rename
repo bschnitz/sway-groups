@@ -9,11 +9,13 @@ if [ -z "$current" ]; then
     exit 1
 fi
 
-new_name=$(echo "$current" | rofi -dmenu -p "Rename group '$current' to:")
+new_name=$(echo "$current" | rofi -dmenu -p "Rename group '$current' to (+name):")
 if [ -z "$new_name" ]; then
     notify-send "swayg" "Rename cancelled."
     exit 0
 fi
+
+new_name="${new_name#+}"
 
 if [ "$new_name" = "$current" ]; then
     notify-send "swayg" "Name unchanged."

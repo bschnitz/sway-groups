@@ -1,9 +1,8 @@
 #!/bin/sh
-# Move the focused container to a workspace (chosen via rofi).
+# Add a workspace to the current group (chosen via rofi).
 # Shows all workspaces with their group memberships.
 # Typing a new name creates the workspace in the current group.
 
-# Absoluten Pfad zu swayg festlegen
 SWAYG="$HOME/.cargo/bin/swayg"
 
 current_output=$(swaymsg -t get_workspaces 2>/dev/null | python3 -c "
@@ -18,11 +17,11 @@ current_group=$($SWAYG group active "$current_output" 2>/dev/null | tail -1)
 
 workspaces=$($SWAYG workspace list --plain --groups 2>/dev/null)
 
-choice=$(printf '%s\n' "$workspaces" | rofi -dmenu -p "Move to workspace (+name):")
+choice=$(printf '%s\n' "$workspaces" | rofi -dmenu -p "Add workspace (+name):")
 if [ -z "$choice" ]; then
     exit 0
 fi
 
 target_ws="${choice%%│*}"
 target_ws="${target_ws#+}"
-$SWAYG container move "$target_ws" --switch-to-workspace
+$SWAYG workspace add "$target_ws"

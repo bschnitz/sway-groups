@@ -22,10 +22,12 @@ for w in json.load(sys.stdin):
         break
 ")
 
-workspace=$($HOME/.cargo/bin/swayg workspace list --output "$output" | awk '/^  /{print $1}' | rofi -dmenu -p "Go to workspace:" -a "$current_ws")
+workspace=$($HOME/.cargo/bin/swayg workspace list --output "$output" | awk '/^  /{print $1}' | rofi -dmenu -p "Go to workspace (+name):" -a "$current_ws")
 if [ -z "$workspace" ]; then
     notify-send "swayg" "Navigation cancelled."
     exit 0
 fi
+
+workspace="${workspace#+}"
 
 $HOME/.cargo/bin/swayg nav go "$workspace"

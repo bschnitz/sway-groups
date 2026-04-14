@@ -3,9 +3,11 @@
 # Output is auto-resolved from group state.
 # Entering a new name creates the group.
 
-group=$($HOME/.cargo/bin/swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | rofi -dmenu -p "Select group:")
+group=$($HOME/.cargo/bin/swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | rofi -dmenu -p "Select group (+name to create):")
 if [ -z "$group" ]; then
     exit 0
 fi
+
+group="${group#+}"
 
 $HOME/.cargo/bin/swayg group select "$group" --create

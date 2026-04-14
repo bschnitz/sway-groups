@@ -24,11 +24,13 @@ for w in json.load(sys.stdin):
         break
 ")
 
-group=$($HOME/.cargo/bin/swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | rofi -dmenu -p "Move '$current_ws' to group:")
+group=$($HOME/.cargo/bin/swayg group list | awk '/^Group/{sub(/^Group "/,""); sub(/":$/,""); print}' | rofi -dmenu -p "Move '$current_ws' to group (+name):")
 if [ -z "$group" ]; then
     notify-send "swayg" "Move cancelled."
     exit 0
 fi
+
+group="${group#+}"
 
 $HOME/.cargo/bin/swayg workspace move "$current_ws" --groups "$group"
 

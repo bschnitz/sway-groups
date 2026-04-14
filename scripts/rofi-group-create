@@ -1,11 +1,13 @@
 #!/bin/sh
 # Create a new group via rofi text input.
 
-name=$(echo "" | rofi -dmenu -p "New group name:")
+name=$(echo "" | rofi -dmenu -p "New group name (+name to create):")
 if [ -z "$name" ]; then
     notify-send "swayg" "Group creation cancelled."
     exit 0
 fi
+
+name="${name#+}"
 
 result=$($HOME/.cargo/bin/swayg group create "$name" 2>&1)
 if echo "$result" | grep -qi 'already exists'; then
