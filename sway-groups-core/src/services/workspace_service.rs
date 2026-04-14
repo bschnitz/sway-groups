@@ -1,7 +1,10 @@
 //! Workspace management service.
 
 use crate::db::entities::{group, output, pending_workspace_event, workspace, workspace_group};
-use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity, FocusHistoryEntity, GroupStateEntity, PendingWorkspaceEventEntity};
+use crate::db::entities::{
+    FocusHistoryEntity, GroupEntity, GroupStateEntity, OutputEntity, PendingWorkspaceEventEntity,
+    WorkspaceEntity, WorkspaceGroupEntity,
+};
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
@@ -60,90 +63,60 @@ impl WorkspaceService {
             .unwrap_or(None);
 
         let sway_workspaces = self.ipc_client.get_workspaces()?;
-        let mut visible = Vec::new();
-        let mut seen = std::collections::HashSet::new();
+        let sway_names: Vec<String> = sway_workspaces
+            .iter()
+            .filter(|w| w.output == output_name)
+            .map(|w| w.name.clone())
+            .collect();
 
-        for sway_ws in sway_workspaces.iter().filter(|w| w.output == output_name) {
-            let base_name = sway_ws.name.clone();
-
-            if seen.contains(&base_name) {
-                continue;
-            }
-
-            if let Some(workspace) = WorkspaceEntity::find_by_name(&base_name)
-                .one(self.db.conn())
-                .await?
-            {
-                if workspace.is_global {
-                    visible.push(base_name.clone());
-                    seen.insert(base_name);
-                    continue;
-                }
-
-                let memberships = WorkspaceGroupEntity::find_by_workspace(workspace.id)
-                    .all(self.db.conn())
-                    .await?;
-
-                let mut found = false;
-                for m in &memberships {
-                    if let Some(group) = GroupEntity::find_by_id(m.group_id)
-                        .one(self.db.conn())
-                        .await?
-                        && active_group.as_deref() == Some(&group.name) {
-                            visible.push(base_name.clone());
-                            found = true;
-                            break;
-                        }
-                }
-
-                if !found && memberships.is_empty() && active_group.is_none() {
-                    visible.push(base_name.clone());
-                    found = true;
-                }
-
-                if found {
-                    seen.insert(base_name);
-                }
-            }
-        }
-
-        visible.sort();
-        Ok(visible)
+        crate::db::queries::compute_visible_workspaces(
+            self.db.conn(),
+            &sway_names,
+            active_group.as_deref(),
+        )
+        .await
     }
 
-    /// List all workspaces with their group memberships.
+    /// List all workspaces with their group memberships. Uses 3 batch queries instead of N+1.
     pub async fn list_workspaces(
         &self,
         output_filter: Option<&str>,
         group_filter: Option<&str>,
     ) -> Result<Vec<WorkspaceInfo>> {
-        let workspaces = WorkspaceEntity::find()
-            .all(self.db.conn())
-            .await?;
+        let all_workspaces = WorkspaceEntity::find().all(self.db.conn()).await?;
+
+        let workspaces: Vec<_> = all_workspaces
+            .into_iter()
+            .filter(|ws| {
+                output_filter.is_none() || ws.output.as_deref() == output_filter
+            })
+            .collect();
+
+        if workspaces.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let ws_ids: Vec<i32> = workspaces.iter().map(|ws| ws.id).collect();
+        let memberships_map =
+            crate::db::queries::load_memberships_by_workspace_ids(self.db.conn(), &ws_ids).await?;
+
+        let group_ids: Vec<i32> = memberships_map
+            .values()
+            .flat_map(|ms| ms.iter().map(|m| m.group_id))
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        let group_name_map =
+            crate::db::queries::load_group_names_by_ids(self.db.conn(), &group_ids).await?;
 
         let mut result = Vec::new();
 
         for ws in workspaces {
-            // Filter by output if specified
-            if let Some(output) = output_filter
-                && ws.output.as_ref() != Some(&output.to_string()) {
-                    continue;
-                }
-
-            // Get group memberships
-            let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
-                .all(self.db.conn())
-                .await?;
-
-            let mut group_names = Vec::new();
-            for m in memberships {
-                if let Some(group) = GroupEntity::find_by_id(m.group_id)
-                    .one(self.db.conn())
-                    .await?
-                {
-                    group_names.push(group.name);
-                }
-            }
+            let memberships = memberships_map.get(&ws.id).map(|v| v.as_slice()).unwrap_or(&[]);
+            let group_names: Vec<String> = memberships
+                .iter()
+                .filter_map(|m| group_name_map.get(&m.group_id).cloned())
+                .collect();
 
             // Filter by group if specified
             if let Some(group_name) = group_filter
@@ -398,10 +371,7 @@ impl WorkspaceService {
     }
 
     /// Get groups for a workspace.
-    pub async fn get_groups_for_workspace(
-        &self,
-        workspace_name: &str,
-    ) -> Result<Vec<String>> {
+    pub async fn get_groups_for_workspace(&self, workspace_name: &str) -> Result<Vec<String>> {
         let workspace = WorkspaceEntity::find_by_name(workspace_name)
             .one(self.db.conn())
             .await?
@@ -411,17 +381,11 @@ impl WorkspaceService {
             .all(self.db.conn())
             .await?;
 
-        let mut groups = Vec::new();
-        for m in memberships {
-            if let Some(group) = GroupEntity::find_by_id(m.group_id)
-                .one(self.db.conn())
-                .await?
-            {
-                groups.push(group.name);
-            }
-        }
+        let group_ids: Vec<i32> = memberships.iter().map(|m| m.group_id).collect();
+        let group_name_map =
+            crate::db::queries::load_group_names_by_ids(self.db.conn(), &group_ids).await?;
 
-        Ok(groups)
+        Ok(group_name_map.into_values().collect())
     }
 
     pub async fn is_global(&self, workspace_name: &str) -> Result<bool> {

@@ -721,7 +721,7 @@ async fn run_container(
                             if let Some(output) = ipc_client.get_primary_output().ok() {
                                 let current = group_service.get_active_group(&output).await.unwrap_or(None);
                                 if !groups.iter().any(|g| current.as_deref() == Some(g.as_str())) {
-                                    group_service.update_active_group_quiet(&output, &groups[0]).await?;
+                                    group_service.set_active_group_db_only(&output, &groups[0]).await?;
                                 }
                             }
                         }

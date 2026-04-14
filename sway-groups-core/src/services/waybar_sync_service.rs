@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::db::entities::{GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity};
+use crate::db::entities::{GroupEntity, OutputEntity};
 use crate::db::DatabaseManager;
 use crate::error::Result;
 use crate::sway::waybar_client::{WidgetSpec, WaybarClient, WaybarMessage};
@@ -37,8 +37,13 @@ impl WaybarSyncService {
         }
     }
 
-    pub fn with_config(db: DatabaseManager, ipc_client: SwayIpcClient, config: &sway_groups_config::SwaygConfig) -> Self {
-        let waybar_client = WaybarClient::with_instance_name(&config.bar.workspaces.socket_instance);
+    pub fn with_config(
+        db: DatabaseManager,
+        ipc_client: SwayIpcClient,
+        config: &sway_groups_config::SwaygConfig,
+    ) -> Self {
+        let waybar_client =
+            WaybarClient::with_instance_name(&config.bar.workspaces.socket_instance);
         let groups_client = WaybarClient::with_instance_name(&config.bar.groups.socket_instance);
         Self {
             db,
@@ -57,14 +62,23 @@ impl WaybarSyncService {
     }
 
     pub async fn update_waybar_groups(&self) -> Result<()> {
-        self.update_waybar_groups_inner(0, std::time::Duration::ZERO).await
+        self.update_waybar_groups_inner(0, std::time::Duration::ZERO)
+            .await
     }
 
-    pub async fn update_waybar_with_retry(&self, retries: u32, delay: std::time::Duration) -> Result<()> {
+    pub async fn update_waybar_with_retry(
+        &self,
+        retries: u32,
+        delay: std::time::Duration,
+    ) -> Result<()> {
         self.update_waybar_inner(retries, delay).await
     }
 
-    pub async fn update_waybar_groups_with_retry(&self, retries: u32, delay: std::time::Duration) -> Result<()> {
+    pub async fn update_waybar_groups_with_retry(
+        &self,
+        retries: u32,
+        delay: std::time::Duration,
+    ) -> Result<()> {
         self.update_waybar_groups_inner(retries, delay).await
     }
 
@@ -76,6 +90,24 @@ impl WaybarSyncService {
         let outputs = self.ipc_client.get_outputs()?;
         let sway_workspaces = self.ipc_client.get_workspaces()?;
         let focused_output = self.ipc_client.get_primary_output().ok();
+
+        // Batch load all DB data up front (3 queries total)
+        let all_names: Vec<String> = sway_workspaces.iter().map(|w| w.name.clone()).collect();
+        let ws_map =
+            crate::db::queries::load_workspaces_by_names(self.db.conn(), &all_names).await?;
+
+        let ws_ids: Vec<i32> = ws_map.values().map(|w| w.id).collect();
+        let memberships_map =
+            crate::db::queries::load_memberships_by_workspace_ids(self.db.conn(), &ws_ids).await?;
+
+        let group_ids: Vec<i32> = memberships_map
+            .values()
+            .flat_map(|ms| ms.iter().map(|m| m.group_id))
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let group_name_map =
+            crate::db::queries::load_group_names_by_ids(self.db.conn(), &group_ids).await?;
 
         let mut widgets = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
@@ -94,13 +126,8 @@ impl WaybarSyncService {
                     continue;
                 }
 
-                if let Some(workspace) = WorkspaceEntity::find_by_name(&sway_ws.name)
-                    .one(self.db.conn())
-                    .await?
-                {
-                    let is_global = workspace.is_global;
-
-                    if is_global {
+                if let Some(ws) = ws_map.get(&sway_ws.name) {
+                    if ws.is_global {
                         if !self.workspaces_show_global {
                             continue;
                         }
@@ -113,24 +140,18 @@ impl WaybarSyncService {
                         continue;
                     }
 
-                    let memberships = WorkspaceGroupEntity::find_by_workspace(workspace.id)
-                        .all(self.db.conn())
-                        .await?;
+                    let memberships =
+                        memberships_map.get(&ws.id).map(|v| v.as_slice()).unwrap_or(&[]);
+                    let membership_group_names: Vec<String> = memberships
+                        .iter()
+                        .filter_map(|m| group_name_map.get(&m.group_id).cloned())
+                        .collect();
 
-                    let mut in_active_group = false;
-                    for m in &memberships {
-                        if let Some(group) = GroupEntity::find_by_id(m.group_id)
-                            .one(self.db.conn())
-                            .await?
-                            && active_group.as_deref() == Some(&group.name) {
-                            in_active_group = true;
-                            break;
-                        }
-                    }
-
-                    let no_group_and_default = memberships.is_empty() && active_group.is_none();
-
-                    if !in_active_group && !no_group_and_default {
+                    if !crate::db::queries::is_visible(
+                        false,
+                        &membership_group_names,
+                        active_group.as_deref(),
+                    ) {
                         continue;
                     }
 
@@ -150,9 +171,14 @@ impl WaybarSyncService {
         widgets.sort_by(|a, b| a.label.cmp(&b.label));
 
         let widget_names: Vec<&str> = widgets.iter().map(|w| w.label.as_str()).collect();
-        info!("waybar sync: sending {} widgets: {:?}", widgets.len(), widget_names);
+        info!(
+            "waybar sync: sending {} widgets: {:?}",
+            widgets.len(),
+            widget_names
+        );
         if retries > 0 {
-            self.waybar_client.send_with_retry(&WaybarMessage::set_all(widgets), retries, delay)?;
+            self.waybar_client
+                .send_with_retry(&WaybarMessage::set_all(widgets), retries, delay)?;
         } else {
             self.waybar_client.send_set_all(widgets)?;
         }
@@ -160,7 +186,11 @@ impl WaybarSyncService {
         Ok(())
     }
 
-    async fn update_waybar_groups_inner(&self, retries: u32, delay: std::time::Duration) -> Result<()> {
+    async fn update_waybar_groups_inner(
+        &self,
+        retries: u32,
+        delay: std::time::Duration,
+    ) -> Result<()> {
         if self.groups_display == BarDisplay::None {
             return Ok(());
         }
@@ -176,30 +206,44 @@ impl WaybarSyncService {
             None => None,
         };
 
-        let groups = GroupEntity::find()
-            .all(self.db.conn())
-            .await?;
+        let groups = GroupEntity::find().all(self.db.conn()).await?;
+
+        // Batch load membership + workspace data only if needed for empty-group filtering
+        let non_empty_group_ids: Option<HashSet<i32>> = if !self.groups_show_empty {
+            let group_ids: Vec<i32> = groups.iter().map(|g| g.id).collect();
+            let memberships_map =
+                crate::db::queries::load_memberships_by_group_ids(self.db.conn(), &group_ids)
+                    .await?;
+
+            let all_ws_ids: Vec<i32> = memberships_map
+                .values()
+                .flat_map(|ms| ms.iter().map(|m| m.workspace_id))
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect();
+            let ws_map =
+                crate::db::queries::load_workspaces_by_ids(self.db.conn(), &all_ws_ids).await?;
+
+            let ids = groups
+                .iter()
+                .filter(|g| {
+                    memberships_map
+                        .get(&g.id)
+                        .map(|ms| ms.iter().any(|m| !ws_map.get(&m.workspace_id).map(|w| w.is_global).unwrap_or(true)))
+                        .unwrap_or(false)
+                })
+                .map(|g| g.id)
+                .collect::<HashSet<_>>();
+            Some(ids)
+        } else {
+            None
+        };
 
         let mut widgets = Vec::new();
 
         for group in &groups {
-            if !self.groups_show_empty {
-                let memberships = WorkspaceGroupEntity::find_by_group(group.id)
-                    .all(self.db.conn())
-                    .await?;
-                let mut has_non_global = false;
-                for m in &memberships {
-                    if let Some(ws) = WorkspaceEntity::find_by_id(m.workspace_id)
-                        .one(self.db.conn())
-                        .await?
-                    {
-                        if !ws.is_global {
-                            has_non_global = true;
-                            break;
-                        }
-                    }
-                }
-                if !has_non_global {
+            if let Some(ref non_empty) = non_empty_group_ids {
+                if !non_empty.contains(&group.id) {
                     continue;
                 }
             }
@@ -222,9 +266,14 @@ impl WaybarSyncService {
         widgets.sort_by(|a, b| a.label.cmp(&b.label));
 
         let widget_names: Vec<&str> = widgets.iter().map(|w| w.label.as_str()).collect();
-        info!("waybar groups sync: sending {} groups: {:?}", widgets.len(), widget_names);
+        info!(
+            "waybar groups sync: sending {} groups: {:?}",
+            widgets.len(),
+            widget_names
+        );
         if retries > 0 {
-            self.groups_client.send_with_retry(&WaybarMessage::set_all(widgets), retries, delay)?;
+            self.groups_client
+                .send_with_retry(&WaybarMessage::set_all(widgets), retries, delay)?;
         } else {
             self.groups_client.send_set_all(widgets)?;
         }
