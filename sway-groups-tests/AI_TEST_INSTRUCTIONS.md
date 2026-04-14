@@ -156,6 +156,66 @@ These commands are used in tests (check latest syntax in CLI):
 - `swayg sync [--workspaces] [--groups] [--outputs]` — sync from sway
 - `swayg status` — show current status
 
+## Live DB vs Test DB
+
+51. **`swayg_live()` helper** exists in `common/mod.rs` — calls swayg WITHOUT `--db` flag, for live DB operations only. Used exclusively for:
+    - Reading `orig_group` from live DB (before `fixture.init()`)
+    - Final cleanup: restoring `orig_group` in live DB after test
+
+52. **Tests must NOT operate on the live DB except at the very end for cleanup via `swayg_live()`.** All test-DB operations must use `fixture.swayg(...)`.
+
+53. **`fixture.swayg(&["group", "select", &orig_group, ...])` is WRONG** — `orig_group` doesn't exist in the test DB. Use `fixture.swayg(&["group", "select", "0", ...])` instead.
+
+54. **At the end of each test**, restore live state: `swayg_live(&["group", "select", &orig_group, "--output", ...])` + `swaymsg workspace <orig_ws>`.
+
+## Daemon in Tests
+
+55. **Production `swayg-daemon.service` MUST be stopped before tests** and restarted after. The daemon intercepts sway workspace events and adds test workspaces to the real DB, causing precondition failures.
+
+56. **Test daemon** is started via `start_test_daemon()` in `common/mod.rs`. This spawns `swayg-daemon /tmp/swayg-integration-test.db /tmp/swayg-daemon-test.state`.
+
+57. **Daemon startup order**: The test daemon MUST be started AFTER `fixture.init()`, because `init()` deletes and recreates the DB file, breaking any existing DB connection.
+
+58. **Signal control**: `pause_test_daemon()` (SIGUSR1) blocks event processing, `resume_test_daemon()` (SIGUSR2) re-enables it. `daemon_state()` reads `/tmp/swayg-daemon-test.state`.
+
+59. **Double pause check in daemon**: Flag checked before AND after `read_event()` to prevent race conditions.
+
+## Sway Config Behavior
+
+60. **`exec` lines in sway config are NOT re-executed on `swaymsg reload`.** Only `bindsym` definitions are re-loaded. Their `exec` commands only fire on key press.
+
+61. **`swaymsg exec` does NOT accept `--no-startup-id`.** That's a sway-config-only directive. Use `swaymsg exec "sh -c '...'"` or just `swaymsg exec "command"`.
+
+62. **`$mod+r` calls `~/.config/sway/swayg-reload.sh`** which does `swaymsg reload` then `swayg sync --init-bars`.
+
+## Waybar Dynamic
+
+63. **waybar-dynamic socket timing**: Socket file exists immediately but `connect()` returns ECONNREFUSED (error 111) for ~200ms after waybar starts. `WaybarClient::send_with_retry` catches ECONNREFUSED and socket-not-found.
+
+64. **waybar-dynamic is fire-and-forget**: No response on the socket, no way to query state. WidgetSpec has 7 fields: id, label, classes, tooltip, on_click, on_right_click, on_middle_click.
+
+65. **`swayg sync --init-bars`** uses retry logic (default 5x 200ms) for ECONNREFUSED errors. Configurable via `--init-bars-retries` and `--init-bars-delay-ms`.
+
+## Cross-Output Testing
+
+66. **Virtual outputs**: Use `swaymsg create_output HEADLESS-1` for cross-output tests. Sway auto-increments HEADLESS-N. Use `create_virtual_output()` helper.
+
+67. **Virtual output cleanup**: `swaymsg output HEADLESS-N unplug` + `sleep` in `TestFixture::new()` for test isolation.
+
+68. **`swaymsg focus output <name>`** is correct syntax (NOT `swaymsg output <name> focus`).
+
+69. **Workspace "0" is global by name in sway**: Focus output first, remove "0" from other outputs before cross-output tests.
+
+## Build & Test Commands
+
+70. **`Command::cargo_bin("swayg")` uses the DEBUG build** — must `cargo build -p sway-groups-cli` (not `--release`) before tests.
+
+71. **`assert_cmd` must be in `[dependencies]` not `[dev-dependencies]`** in sway-groups-tests Cargo.toml (used in common module).
+
+72. **Test run**: `cargo test -p sway-groups-tests -- --test-threads=1`
+
+73. **Install**: `cargo build --release && bash install.sh`
+
 ## Shell Test Equivalence
 
 When writing or modifying Rust tests, they MUST match the corresponding shell test in `tests/test*.sh`:

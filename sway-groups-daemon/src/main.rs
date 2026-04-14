@@ -37,9 +37,6 @@ fn write_state(state_file: &std::path::Path, state: &str) {
     }
 }
 
-fn read_state(state_file: &std::path::Path) -> Option<String> {
-    std::fs::read_to_string(state_file).ok().map(|s| s.trim().to_string())
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
