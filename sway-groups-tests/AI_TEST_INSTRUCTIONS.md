@@ -122,7 +122,7 @@ async fn test_01_something() {
 
 26. **Auto-delete only triggers on the OLD active group.** When `group select` switches from group A to group B, only group A is checked for auto-deletion. To auto-delete multiple empty groups, you must iterate: select each group then switch away.
 
-27. **`set_active_group` adds workspace "0" to empty groups.** When switching to an empty group, workspace "0" gets added. This prevents `group prune` from removing the group (since "0" is non-global and exists in sway). Don't rely on `prune` for cleanup after group switches.
+27. **`set_active_group` adds the default workspace (from config, default "0") to empty groups.** When switching to an empty group, the default workspace gets added. This prevents `group prune` from removing the group. Don't rely on `prune` for cleanup after group switches.
 
 ## DB Queries
 
@@ -180,6 +180,7 @@ These commands are used in tests (check latest syntax in CLI):
 - `swayg repair` — full DB↔sway reconciliation
 - `swayg sync [--workspaces] [--groups] [--outputs]` — sync from sway
 - `swayg status` — show current status
+- `swayg config dump [-o <path>]` — write default config to stdout or file
 
 ## Live DB vs Test DB
 
@@ -242,6 +243,20 @@ These commands are used in tests (check latest syntax in CLI):
 72. **Test run**: `cargo test -p sway-groups-tests -- --test-threads=1`
 
 73. **Install**: `cargo build --release && bash install.sh`
+
+## Config System
+
+81. **Config file: `~/.config/swayg/config.toml`** (optional). If absent, all defaults are used. Tests must NOT rely on a config file existing.
+
+82. **Never leave a config file in `~/.config/swayg/` after testing.** If a test writes a config (e.g., `swayg config dump -o`), clean it up afterward. A stray config file can cause flaky failures because `swayg_live()` reads it.
+
+83. **`--config <path>` / `-c <path>` flag** overrides the default config path. `SWAYG_CONFIG` env var also works.
+
+84. **Config defaults**: `default_group = "0"`, `default_workspace = "0"`, `bar.workspaces.socket_instance = "swayg_workspaces"`, `bar.groups.socket_instance = "swayg_groups"`, `display = "all"`, `show_global = true`, `show_empty = true`.
+
+85. **`group select "0"` always needs `--create`.** Group "0" is not special — it can be auto-deleted, pruned, renamed like any other group. Always use `group select "0" --create` in tests.
+
+86. **`swayg config dump`** prints default TOML config to stdout (or `-o <path>` to write a file). Used for creating/editing config.
 
 ## Shell Test Equivalence
 
