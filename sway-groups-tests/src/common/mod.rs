@@ -13,6 +13,7 @@ const SIGUSR1: libc::c_int = 10;
 const SIGUSR2: libc::c_int = 12;
 
 static TEST_DAEMON: Mutex<Option<Child>> = Mutex::new(None);
+static PROD_DAEMON_REF_COUNT: Mutex<u32> = Mutex::new(0);
 
 // ---------------------------------------------------------------------------
 // swayg CLI helper
@@ -159,6 +160,39 @@ pub fn stop_test_daemon() {
     let _ = std::fs::remove_file(DAEMON_STATE_FILE);
 }
 
+fn stop_prod_daemon() {
+    let _ = Command::new("systemctl")
+        .args(["--user", "stop", "swayg-daemon.service"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+}
+
+fn start_prod_daemon() {
+    let _ = Command::new("systemctl")
+        .args(["--user", "start", "swayg-daemon.service"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+fn acquire_prod_daemon_lock() {
+    let mut count = PROD_DAEMON_REF_COUNT.lock().unwrap();
+    *count += 1;
+    if *count == 1 {
+        stop_prod_daemon();
+    }
+}
+
+fn release_prod_daemon_lock() {
+    let mut count = PROD_DAEMON_REF_COUNT.lock().unwrap();
+    if *count == 1 {
+        start_prod_daemon();
+    }
+    *count -= 1;
+}
+
 pub fn daemon_state() -> Option<String> {
     read_daemon_state()
 }
@@ -175,6 +209,8 @@ pub struct TestFixture {
 
 impl TestFixture {
     pub async fn new() -> Result<Self> {
+        acquire_prod_daemon_lock();
+
         let db_path = PathBuf::from(TEST_DB_PATH);
         if db_path.exists() {
             std::fs::remove_file(&db_path).context("Failed to remove stale test DB")?;
@@ -225,11 +261,15 @@ impl TestFixture {
 
 impl Drop for TestFixture {
     fn drop(&mut self) {
+        stop_test_daemon();
+
         let _ = Command::new("swaymsg")
             .args(["workspace", &self.orig_workspace])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
+
+        release_prod_daemon_lock();
     }
 }
 

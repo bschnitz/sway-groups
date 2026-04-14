@@ -25,6 +25,22 @@ Based on `tests/test-instructions.md`, adapted for Rust.
 
 10. **All tests run with `--test-threads=1`.** Sway state is global, tests must be sequential.
 
+## Running Tests
+
+74. **Before running tests, create a manual backup of the live DB:** `cp ~/.local/share/swayg/swayg.db ~/.local/share/swayg/swayg.db.bak.<timestamp>`. This is a safety net — never restore it automatically, only if the user explicitly requests it.
+
+75. **Before running tests, send `notify-send "swayg" "Tests werden ausgeführt..."` and WAIT for the user to confirm.** Tests change sway state (workspaces, groups, windows) which is visible on screen. The user must be aware and give explicit permission.
+
+75. **After all tests complete, send `notify-send "swayg" "Alle Tests bestanden"` (or failure notification).**
+
+76. **Production daemon lifecycle is managed by `TestFixture` via `PROD_DAEMON_REF_COUNT`.** The first `TestFixture::new()` stops the production daemon, the last `TestFixture::drop()` restarts it. Tests must NOT manually start/stop the production daemon.
+
+77. **TestFixture::drop() also stops the test daemon.** `stop_test_daemon()` is called in `Drop` to ensure no stray daemon processes remain between tests.
+
+78. **No direct operations on the live DB.** Tests must never write to, delete from, or "clean up" the live DB. If test data leaks into the live DB (via prod daemon), the fix is stopping the prod daemon, not cleaning up afterward.
+
+79. **After test runs, verify zero artifacts in live DB.** Check `sqlite3 ~/.local/share/swayg/swayg.db "SELECT name FROM groups WHERE name LIKE 'zz_test_%'; SELECT name FROM workspaces WHERE name LIKE 'zz_test_%';"` — must be empty.
+
 ## Naming
 
 11. **Test functions:** `test_<number>_<description>` — e.g., `test_01_group_select`, `test_02_workspace_with_containers`.
@@ -38,11 +54,18 @@ Every test follows this pattern:
 ```rust
 #[tokio::test]
 async fn test_01_something() {
-    // 1. Setup fixture
+    // 1. Setup fixture (stops prod daemon via ref-count)
     let fixture = TestFixture::new().await.unwrap();
 
     // 2. Remember original state (orig_group, orig_ws) BEFORE preconditions
-    let orig_group = swayg_output_without_db(&["group", "active", &fixture.orig_output]);
+    //    orig_group MUST be read from LIVE DB (no --db flag)
+    let orig_group = {
+        let output = Command::new("swayg")
+            .args(["group", "active", &fixture.orig_output])
+            .stdout(Stdio::piped()).stderr(Stdio::null())
+            .output().expect("swayg group active failed");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
 
     // 3. Precondition checks (production DB + sway state)
     //    - Test groups not in production DB
@@ -66,20 +89,22 @@ async fn test_01_something() {
 
     // 8. Assertions (DB + sway state via CLI)
 
-    // 9. Cleanup (kill windows FIRST while on orig group, then auto-delete groups)
+    // 9. Cleanup: kill windows, auto-delete group via "0" in TEST DB
     drop(_win);
     assert!(workspace_of_window(WS1).is_none(), "window gone from sway");
-    for g in &[GROUP_A, GROUP_B] {
-        fixture.swayg(&["group", "select", g, "--output", &fixture.orig_output]).success();
-        fixture.swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output]).success();
-    }
-    assert_eq!(db_count("groups WHERE name = GROUP"), 0, "auto-deleted");
+    fixture.swayg(&["group", "select", "0", "--output", &fixture.orig_output]).success();
 
-    // 10. Post-condition (init sync + verify no test data remains)
+    // 10. Post-condition (init sync + verify no test data remains in TEST DB)
     fixture.init().success();
     assert_eq!(db_count("groups WHERE name IN (GROUP_A, GROUP_B)"), 0);
     assert_eq!(db_count("workspaces WHERE name IN (WS1, WS2)"), 0);
     assert_eq!(db_count("workspace_groups wg JOIN groups g ON ..."), 0);
+
+    // 11. Restore live DB (orig_group via swayg_live, NOT fixture.swayg)
+    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output]).success();
+    let _ = Command::new("swaymsg")
+        .args(["workspace", &orig_ws])
+        .stdout(Stdio::null()).stderr(Stdio::null()).status();
 }
 ```
 
@@ -170,7 +195,7 @@ These commands are used in tests (check latest syntax in CLI):
 
 ## Daemon in Tests
 
-55. **Production `swayg-daemon.service` MUST be stopped before tests** and restarted after. The daemon intercepts sway workspace events and adds test workspaces to the real DB, causing precondition failures.
+55. **Production `swayg-daemon.service` is managed by `TestFixture`.** `PROD_DAEMON_REF_COUNT` (static `Mutex<u32>`) stops the daemon on the first `TestFixture::new()` and restarts it on the last `TestFixture::drop()`. Tests must NOT manually stop/start the production daemon.
 
 56. **Test daemon** is started via `start_test_daemon()` in `common/mod.rs`. This spawns `swayg-daemon /tmp/swayg-integration-test.db /tmp/swayg-daemon-test.state`.
 
@@ -179,6 +204,8 @@ These commands are used in tests (check latest syntax in CLI):
 58. **Signal control**: `pause_test_daemon()` (SIGUSR1) blocks event processing, `resume_test_daemon()` (SIGUSR2) re-enables it. `daemon_state()` reads `/tmp/swayg-daemon-test.state`.
 
 59. **Double pause check in daemon**: Flag checked before AND after `read_event()` to prevent race conditions.
+
+60. **TestFixture::drop() calls `stop_test_daemon()`.** Ensures no stray test daemon processes remain between tests.
 
 ## Sway Config Behavior
 
@@ -229,9 +256,10 @@ When writing or modifying Rust tests, they MUST match the corresponding shell te
 ## Helper Design
 
 46. **`TestFixture`** — RAII guard:
+    - Stops production daemon via `PROD_DAEMON_REF_COUNT` (first fixture stops, last restarts)
     - Creates `/tmp/swayg-integration-test.db`, configures swayg env to use it
     - Saves original workspace + output
-    - `Drop` switches back to original workspace
+    - `Drop` stops test daemon, switches back to original workspace, releases prod daemon lock
     - Fields: `db_path`, `orig_workspace`, `orig_output`
 
 47. **`DummyWindowHandle`** — RAII wrapper:
