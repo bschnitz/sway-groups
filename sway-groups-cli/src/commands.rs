@@ -930,16 +930,14 @@ async fn run_container(
                 if switch_to_workspace {
                     nav_service.focus_workspace(&workspace).await?;
 
-                    if let Ok(groups) = workspace_service.get_groups_for_workspace(&workspace).await {
-                        if !groups.is_empty() {
-                            if let Some(output) = ipc_client.get_primary_output().ok() {
+                    if let Ok(groups) = workspace_service.get_groups_for_workspace(&workspace).await
+                        && !groups.is_empty()
+                            && let Ok(output) = ipc_client.get_primary_output() {
                                 let current = group_service.get_active_group(&output).await.unwrap_or(None);
                                 if !groups.iter().any(|g| current.as_deref() == Some(g.as_str())) {
                                     group_service.set_active_group_db_only(&output, &groups[0]).await?;
                                 }
                             }
-                        }
-                    }
                 }
 
                 waybar_sync.update_waybar().await?;

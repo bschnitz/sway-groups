@@ -277,11 +277,10 @@ impl WaybarSyncService {
         let mut widgets = Vec::new();
 
         for group in &groups {
-            if let Some(ref non_empty) = non_empty_group_ids {
-                if !non_empty.contains(&group.id) {
+            if let Some(ref non_empty) = non_empty_group_ids
+                && !non_empty.contains(&group.id) {
                     continue;
                 }
-            }
 
             let is_active = active_group.as_deref() == Some(&group.name);
 

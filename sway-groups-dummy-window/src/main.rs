@@ -38,7 +38,14 @@ const HEIGHT: u32 = 100;
 struct DummyWindow {
     registry_state: RegistryState,
     output_state: OutputState,
+    // These two fields hold the Wayland protocol global bindings
+    // (wl_compositor and xdg_wm_base). They are not read after the window
+    // is constructed, but must stay alive: `window` is a child object of
+    // these globals, and dropping them would invalidate its underlying
+    // protocol proxies.
+    #[allow(dead_code)]
     compositor_state: CompositorState,
+    #[allow(dead_code)]
     xdg_shell: XdgShell,
     window: Option<Window>,
     running: Arc<AtomicBool>,

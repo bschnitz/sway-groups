@@ -591,16 +591,13 @@ impl WorkspaceService {
                     if let Some(out) = OutputEntity::find_by_name(&o.name)
                         .one(self.db.conn())
                         .await?
-                    {
-                        if let Some(ref ag) = out.active_group {
-                            if let Some(g) = GroupEntity::find_by_name(ag)
+                        && let Some(ref ag) = out.active_group
+                            && let Some(g) = GroupEntity::find_by_name(ag)
                                 .one(self.db.conn())
                                 .await?
                             {
                                 ids.insert(g.id);
                             }
-                        }
-                    }
                 }
                 ids
             };
@@ -780,20 +777,18 @@ impl WorkspaceService {
             if node_type == Some("workspace") && node_name == Some(target_ws) {
                 if let Some(nodes) = node.get("nodes").and_then(|n| n.as_array()) {
                     for child in nodes {
-                        if child.get("type").and_then(|t| t.as_str()) == Some("con") {
-                            if let Some(id) = child.get("id").and_then(|i| i.as_i64()) {
+                        if child.get("type").and_then(|t| t.as_str()) == Some("con")
+                            && let Some(id) = child.get("id").and_then(|i| i.as_i64()) {
                                 ids.push(id);
                             }
-                        }
                     }
                 }
                 if let Some(nodes) = node.get("floating_nodes").and_then(|n| n.as_array()) {
                     for child in nodes {
-                        if child.get("type").and_then(|t| t.as_str()) == Some("floating_con") {
-                            if let Some(id) = child.get("id").and_then(|i| i.as_i64()) {
+                        if child.get("type").and_then(|t| t.as_str()) == Some("floating_con")
+                            && let Some(id) = child.get("id").and_then(|i| i.as_i64()) {
                                 ids.push(id);
                             }
-                        }
                     }
                 }
                 return;
@@ -930,8 +925,8 @@ impl WorkspaceService {
                 };
                 let ws = active.insert(self.db.conn()).await?;
 
-                if let Some(ref ag) = active_group {
-                    if let Some(group) = GroupEntity::find_by_name(ag)
+                if let Some(ref ag) = active_group
+                    && let Some(group) = GroupEntity::find_by_name(ag)
                         .one(self.db.conn())
                         .await?
                     {
@@ -943,7 +938,6 @@ impl WorkspaceService {
                         };
                         membership.insert(self.db.conn()).await?;
                     }
-                }
             }
         }
 

@@ -410,9 +410,9 @@ impl NavigationService {
             .values()
             .any(|n| active_group.as_deref() == Some(n.as_str()));
 
-        if !in_group {
-            if let Some(ref ag) = active_group {
-                if let Some(group) = GroupEntity::find_by_name(ag)
+        if !in_group
+            && let Some(ref ag) = active_group
+                && let Some(group) = GroupEntity::find_by_name(ag)
                     .one(self.db.conn())
                     .await?
                 {
@@ -429,8 +429,6 @@ impl NavigationService {
                         workspace_name, ag
                     );
                 }
-            }
-        }
         Ok(())
     }
 
@@ -474,8 +472,8 @@ impl NavigationService {
                 .map(|o| o.active_group)
                 .unwrap_or(None);
 
-            if let Some(ref ag) = active_group {
-                if let Some(group) = GroupEntity::find_by_name(ag)
+            if let Some(ref ag) = active_group
+                && let Some(group) = GroupEntity::find_by_name(ag)
                     .one(self.db.conn())
                     .await?
                 {
@@ -491,7 +489,6 @@ impl NavigationService {
                         workspace_name, ag
                     );
                 }
-            }
         }
 
         Ok(())

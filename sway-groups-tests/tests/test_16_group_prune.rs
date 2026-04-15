@@ -196,7 +196,7 @@ async fn test_16_group_prune() {
     // Create groups E and F via sqlite3
     let _ = Command::new("sqlite3")
         .arg(&fixture.db_path)
-        .arg(&format!(
+        .arg(format!(
             "INSERT INTO groups (name, created_at, updated_at) VALUES ('{}', datetime('now'), datetime('now'))",
             GROUP_E
         ))
@@ -205,7 +205,7 @@ async fn test_16_group_prune() {
         .status();
     let _ = Command::new("sqlite3")
         .arg(&fixture.db_path)
-        .arg(&format!(
+        .arg(format!(
             "INSERT INTO groups (name, created_at, updated_at) VALUES ('{}', datetime('now'), datetime('now'))",
             GROUP_F
         ))

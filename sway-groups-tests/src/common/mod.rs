@@ -174,11 +174,10 @@ fn stop_prod_daemon() {
             .stderr(Stdio::null())
             .output()
             .ok();
-        if let Some(o) = output {
-            if String::from_utf8_lossy(&o.stdout).trim() == "inactive" {
+        if let Some(o) = output
+            && String::from_utf8_lossy(&o.stdout).trim() == "inactive" {
                 break;
             }
-        }
     }
 }
 
@@ -236,9 +235,9 @@ impl TestFixture {
             .stderr(Stdio::null())
             .output()
             .ok();
-        if let Some(outputs) = outputs {
-            if let Ok(all) = serde_json::from_slice::<serde_json::Value>(&outputs.stdout) {
-                if let Some(arr) = all.as_array() {
+        if let Some(outputs) = outputs
+            && let Ok(all) = serde_json::from_slice::<serde_json::Value>(&outputs.stdout)
+                && let Some(arr) = all.as_array() {
                     for o in arr.iter().filter_map(|o| o.get("name").and_then(|n| n.as_str())) {
                         if o.starts_with("HEADLESS") {
                             let _ = Command::new("swaymsg")
@@ -250,8 +249,6 @@ impl TestFixture {
                     }
                     std::thread::sleep(std::time::Duration::from_millis(200));
                 }
-            }
-        }
 
         let orig_output = get_primary_output()?;
         let orig_workspace = get_focused_workspace()?;
@@ -591,11 +588,10 @@ fn find_app_id(node: &serde_json::Value, app_id: &str) -> bool {
         return true;
     }
     for key in &["nodes", "floating_nodes"] {
-        if let Some(children) = node.get(key).and_then(|v| v.as_array()) {
-            if children.iter().any(|c| find_app_id(c, app_id)) {
+        if let Some(children) = node.get(key).and_then(|v| v.as_array())
+            && children.iter().any(|c| find_app_id(c, app_id)) {
                 return true;
             }
-        }
     }
     false
 }

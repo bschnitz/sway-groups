@@ -373,11 +373,10 @@ impl GroupService {
         }
 
         let old_group = self.get_active_group(output).await.unwrap_or(None);
-        if old_group.as_deref() != Some(group) {
-            if let Some(ref og) = old_group {
+        if old_group.as_deref() != Some(group)
+            && let Some(ref og) = old_group {
                 self.save_current_workspace(output, og).await?;
             }
-        }
         debug!(
             "set_active_group: output={}, old_group={:?}, new_group='{}'",
             output, old_group, group
@@ -464,8 +463,8 @@ impl GroupService {
 
         info!("Set active group for {} to '{}'", output, group);
 
-        if old_group_needs_cleanup {
-            if let Some(ref old) = old_group {
+        if old_group_needs_cleanup
+            && let Some(ref old) = old_group {
                 match self.should_delete_old_group(old).await {
                     Ok(true) => {
                         self.delete_group(old, true).await?;
@@ -488,7 +487,6 @@ impl GroupService {
                     }
                 }
             }
-        }
 
         Ok(())
     }
@@ -497,11 +495,10 @@ impl GroupService {
     /// triggering waybar updates. Used when a container is moved cross-group.
     pub async fn set_active_group_db_only(&self, output: &str, group: &str) -> Result<()> {
         let old_group = self.get_active_group(output).await.unwrap_or(None);
-        if old_group.as_deref() != Some(group) {
-            if let Some(ref og) = old_group {
+        if old_group.as_deref() != Some(group)
+            && let Some(ref og) = old_group {
                 self.save_current_workspace(output, og).await?;
             }
-        }
 
         self.upsert_output_active_group(output, group).await?;
         self.update_group_last_visited(group, output).await?;
@@ -729,11 +726,10 @@ impl GroupService {
     fn focus_output(&self, output_name: &str) -> Result<()> {
         let command = format!("focus output \"{}\"", output_name);
         let results = self.ipc_client.run_command(&command)?;
-        if let Some(result) = results.first() {
-            if result.success {
+        if let Some(result) = results.first()
+            && result.success {
                 return Ok(());
             }
-        }
         Ok(())
     }
 
@@ -879,8 +875,8 @@ impl GroupService {
             crate::db::queries::load_group_names_by_ids(self.db.conn(), &group_ids).await?;
         let already_in_group = group_name_map.values().any(|n| n == group_name);
 
-        if !already_in_group {
-            if let Some(group) = GroupEntity::find_by_name(group_name)
+        if !already_in_group
+            && let Some(group) = GroupEntity::find_by_name(group_name)
                 .one(self.db.conn())
                 .await?
             {
@@ -893,7 +889,6 @@ impl GroupService {
                 membership.insert(self.db.conn()).await?;
                 info!("Added workspace '{}' to group '{}'", ws_name, group_name);
             }
-        }
 
         Ok(())
     }

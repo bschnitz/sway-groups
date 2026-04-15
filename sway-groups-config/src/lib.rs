@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
+#[derive(Default)]
 pub struct SwaygConfig {
     pub defaults: DefaultsConfig,
     pub bar: BarConfig,
@@ -40,14 +41,6 @@ pub enum BarDisplay {
     None,
 }
 
-impl Default for SwaygConfig {
-    fn default() -> Self {
-        Self {
-            defaults: DefaultsConfig::default(),
-            bar: BarConfig::default(),
-        }
-    }
-}
 
 impl Default for DefaultsConfig {
     fn default() -> Self {

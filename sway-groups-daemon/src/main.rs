@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
     let paused_loop = Arc::clone(&paused);
     let paused_thread = Arc::clone(&paused);
     let sf = state_file.clone();
-    let mut signals = signal_hook::iterator::Signals::new(&[
+    let mut signals = signal_hook::iterator::Signals::new([
         signal_hook::consts::signal::SIGUSR1,
         signal_hook::consts::signal::SIGUSR2,
     ])?;
