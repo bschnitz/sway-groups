@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -125,7 +125,7 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn handle_workspace_event(db_path: &PathBuf, ipc: &SwayIpcClient, payload: &[u8], config: &sway_groups_config::SwaygConfig) {
+async fn handle_workspace_event(db_path: &Path, ipc: &SwayIpcClient, payload: &[u8], config: &sway_groups_config::SwaygConfig) {
     let event: serde_json::Value = match serde_json::from_slice(payload) {
         Ok(v) => v,
         Err(e) => {
@@ -151,7 +151,7 @@ async fn handle_workspace_event(db_path: &PathBuf, ipc: &SwayIpcClient, payload:
 
     info!("Workspace event: change={}, name={}", change, ws_name);
 
-    let db = match DatabaseManager::new(db_path.clone()).await {
+    let db = match DatabaseManager::new(db_path.to_path_buf()).await {
         Ok(db) => db,
         Err(e) => {
             error!("Failed to open DB '{}': {}", db_path.display(), e);

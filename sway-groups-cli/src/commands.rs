@@ -955,6 +955,9 @@ async fn run_container(
     Ok(())
 }
 
+// Args mirror the `Command::Sync` clap variant 1:1; bundling them into a
+// struct would just add an extra layer of packing/unpacking.
+#[allow(clippy::too_many_arguments)]
 async fn run_sync(
     all: bool,
     workspaces: bool,
