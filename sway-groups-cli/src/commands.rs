@@ -9,6 +9,7 @@ use sway_groups_core::sway::SwayIpcClient;
 #[command(name = "swayg")]
 #[command(author, version, about = "Sway workspace groups management CLI")]
 pub struct Cli {
+    /// Enable verbose logging (info/debug to stderr).
     #[arg(short, long)]
     pub verbose: bool,
 
@@ -26,53 +27,72 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Manage groups (named workspace collections).
     Group {
         #[command(subcommand)]
         action: GroupAction,
     },
+    /// Manage workspaces and their group membership.
     Workspace {
         #[command(subcommand)]
         action: WorkspaceAction,
     },
+    /// Navigate between workspaces.
     Nav {
         #[command(subcommand)]
         action: NavAction,
     },
+    /// Move the focused container between workspaces.
     Container {
         #[command(subcommand)]
         action: ContainerAction,
     },
+    /// Synchronize state between sway, the DB, and the waybar bars.
     Sync {
+        /// Sync workspaces, groups, and outputs from sway.
         #[arg(short, long)]
         all: bool,
 
+        /// Sync only workspaces from sway into the DB.
         #[arg(short, long)]
         workspaces: bool,
 
+        /// Sync only groups.
         #[arg(short, long)]
         groups: bool,
 
+        /// Sync only outputs from sway.
         #[arg(short, long)]
         outputs: bool,
 
+        /// Run repair pass (reconcile DB with sway, prune stale entries).
         #[arg(long)]
         repair: bool,
 
+        /// Force a full waybar bar refresh; use with retries/delay to wait for
+        /// waybar startup.
         #[arg(long)]
         init_bars: bool,
 
+        /// Max retry attempts when the waybar socket isn't available yet.
         #[arg(long, default_value = "5")]
         init_bars_retries: u32,
 
+        /// Delay in milliseconds between waybar-socket retry attempts.
         #[arg(long, default_value = "200")]
         init_bars_delay_ms: u64,
     },
+    /// Initialize the database and sync current sway state.
     Init {
+        /// Restart the swayg-daemon systemd user service after init.
         #[arg(long)]
         restart_daemon_service: bool,
     },
+    /// Repair DB state by reconciling with sway (removes stale entries).
     Repair,
+    /// Show current group/workspace status per output.
     Status,
+    /// Configuration file operations.
     Config {
         #[command(subcommand)]
         action: ConfigAction,
@@ -91,124 +111,194 @@ enum ConfigAction {
 
 #[derive(Subcommand)]
 enum GroupAction {
+    /// List all groups.
     List {
+        /// Only list groups that have workspaces on this output.
         #[arg(short, long)]
         output: Option<String>,
     },
+    /// Create a new group.
     Create {
+        /// Name of the new group.
         name: String,
     },
+    /// Delete a group.
     Delete {
+        /// Group name to delete.
         name: String,
+        /// Delete even if the group has workspaces; orphans move to default_group.
         #[arg(short, long)]
         force: bool,
     },
+    /// Rename an existing group.
     Rename {
+        /// Current group name.
         old_name: String,
+        /// New group name.
         new_name: String,
     },
+    /// Make a group the active group for an output.
     Select {
+        /// Group to activate.
         group: String,
+        /// Target output (default: focused output).
         #[arg(short, long)]
         output: Option<String>,
+        /// Create the group if it does not exist yet.
         #[arg(short, long)]
         create: bool,
     },
+    /// Print the active group of an output.
     Active {
+        /// Output to query.
         output: String,
     },
+    /// Switch to the next group (alphabetical).
     Next {
+        /// Target output (default: focused output).
         #[arg(short, long)]
         output: Option<String>,
+        /// Wrap around past the last group.
         #[arg(short, long)]
         wrap: bool,
     },
+    /// Switch to the next group in the current output's group list.
     NextOnOutput {
+        /// Target output (default: focused output).
         #[arg(short, long)]
         output: Option<String>,
+        /// Wrap around past the last group.
         #[arg(short, long)]
         wrap: bool,
     },
+    /// Switch to the previous group (alphabetical).
     Prev {
+        /// Target output (default: focused output).
         #[arg(short, long)]
         output: Option<String>,
+        /// Wrap around past the first group.
         #[arg(short, long)]
         wrap: bool,
     },
+    /// Switch to the previous group in the current output's group list.
     PrevOnOutput {
+        /// Target output (default: focused output).
         #[arg(short, long)]
         output: Option<String>,
+        /// Wrap around past the first group.
         #[arg(short, long)]
         wrap: bool,
     },
+    /// Delete all empty groups.
     Prune {
+        /// Do not delete these groups even if they are empty.
         #[arg(long)]
         keep: Vec<String>,
     },
+    /// Unhide all hidden workspaces in a group.
     UnhideAll {
+        /// Group (default: active group on focused output).
         group: Option<String>,
     },
 }
 
 #[derive(Subcommand)]
 enum WorkspaceAction {
+    /// List workspaces.
     List {
+        /// Filter by output.
         #[arg(short, long)]
         output: Option<String>,
+        /// Filter by group.
         #[arg(short, long)]
         group: Option<String>,
+        /// Only show workspaces visible in the active group.
         #[arg(long)]
         visible: bool,
+        /// Plain output (space-separated names) instead of formatted list.
         #[arg(long)]
         plain: bool,
+        /// Include group membership per workspace.
         #[arg(long)]
         groups: bool,
+        /// One workspace per line.
         #[arg(long)]
         flatten: bool,
     },
+    /// Add a workspace to a group.
     Add {
+        /// Workspace name.
         workspace: String,
+        /// Group (default: active group on focused output).
         #[arg(short, long)]
         group: Option<String>,
     },
+    /// Move a workspace to a set of groups (removing from all others).
     Move {
+        /// Workspace name.
         workspace: String,
+        /// Comma-separated list of target groups.
         #[arg(short, long)]
         groups: String,
     },
+    /// Remove a workspace from a group.
     Remove {
+        /// Workspace name.
         workspace: String,
+        /// Group (default: active group on focused output).
         #[arg(short, long)]
         group: Option<String>,
     },
+    /// Rename a workspace. If the target exists, merges source into target.
     Rename {
+        /// Current workspace name.
         old_name: String,
+        /// New workspace name.
         new_name: String,
     },
+    /// List groups a workspace belongs to.
     Groups {
+        /// Workspace name.
         workspace: String,
     },
+    /// Mark a workspace as global (visible in all groups).
     Global {
+        /// Workspace name (default: focused workspace).
         workspace: Option<String>,
+        /// Toggle current state instead of always setting true.
         #[arg(short, long)]
         toggle: bool,
     },
+    /// Remove global status from a workspace.
     Unglobal {
+        /// Workspace name (default: focused workspace).
         workspace: Option<String>,
     },
+    /// Mark a workspace as hidden in a specific group.
     Hide {
+        /// Workspace name (default: focused workspace).
         workspace: Option<String>,
+        /// Group (default: active group on focused output).
         #[arg(short, long)]
         group: Option<String>,
+        /// Toggle current hidden state instead of always setting true.
         #[arg(short, long)]
         toggle: bool,
     },
+    /// Remove the hidden flag from a workspace in a group.
     Unhide {
+        /// Workspace name (default: focused workspace).
         workspace: Option<String>,
+        /// Group (default: active group on focused output).
         #[arg(short, long)]
         group: Option<String>,
     },
+    /// Toggle or enable the global show_hidden_workspaces DB flag.
+    ///
+    /// When true, hidden workspaces are emitted to waybar with the CSS class
+    /// "hidden" and included in navigation. Default: false.
     ShowHidden {
+        /// Toggle current state; otherwise sets true.
         #[arg(short, long)]
         toggle: bool,
     },
@@ -216,42 +306,61 @@ enum WorkspaceAction {
 
 #[derive(Subcommand)]
 enum NavAction {
+    /// Focus the next visible workspace.
     Next {
+        /// Target output (default: focused output).
         #[arg(short, long)]
         output: Option<String>,
+        /// Wrap around past the last workspace.
         #[arg(short, long)]
         wrap: bool,
+        /// Include workspaces from all outputs.
         #[arg(long)]
         all_outputs: bool,
     },
+    /// Focus the next visible workspace on the same output.
     NextOnOutput {
+        /// Wrap around past the last workspace on this output.
         #[arg(short, long)]
         wrap: bool,
     },
+    /// Focus the previous visible workspace.
     Prev {
+        /// Target output (default: focused output).
         #[arg(short, long)]
         output: Option<String>,
+        /// Wrap around past the first workspace.
         #[arg(short, long)]
         wrap: bool,
+        /// Include workspaces from all outputs.
         #[arg(long)]
         all_outputs: bool,
     },
+    /// Focus the previous visible workspace on the same output.
     PrevOnOutput {
+        /// Wrap around past the first workspace on this output.
         #[arg(short, long)]
         wrap: bool,
     },
+    /// Focus a specific workspace (works even for hidden workspaces).
     Go {
+        /// Target workspace name.
         workspace: String,
+        /// Move workspace to this output if it doesn't exist yet.
         #[arg(short, long)]
         output: Option<String>,
     },
+    /// Focus the previously focused workspace.
     Back,
 }
 
 #[derive(Subcommand)]
 enum ContainerAction {
+    /// Move the focused container to a workspace.
     Move {
+        /// Target workspace name.
         workspace: String,
+        /// After moving, follow the container by switching to that workspace.
         #[arg(long)]
         switch_to_workspace: bool,
     },
