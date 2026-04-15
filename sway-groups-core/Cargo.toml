@@ -2,6 +2,13 @@
 name = "sway-groups-core"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Core library for sway-groups: DB entities, services, sway/waybar IPC."
+categories = ["command-line-utilities"]
+keywords = ["sway", "waybar", "workspace", "wayland"]
 
 [lib]
 name = "sway_groups_core"
@@ -16,7 +23,7 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 chrono.workspace = true
-sway-groups-config = { path = "../sway-groups-config" }
+sway-groups-config = { version = "0.1.0", path = "../sway-groups-config" }
 
 [features]
 default = []

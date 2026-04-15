@@ -2,7 +2,10 @@
 name = "sway-groups-dummy-window"
 version.workspace = true
 edition.workspace = true
-description = "Minimal Wayland window for integration testing"
+authors.workspace = true
+license.workspace = true
+description = "Minimal Wayland window used by the sway-groups integration tests."
+publish = false
 
 [[bin]]
 name = "sway-dummy-window"

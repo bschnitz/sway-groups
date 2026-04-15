@@ -4,7 +4,11 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Configuration for sway-groups"
+repository.workspace = true
+homepage.workspace = true
+description = "TOML configuration schema and loader for sway-groups."
+categories = ["config"]
+keywords = ["sway", "waybar", "workspace"]
 
 [dependencies]
 serde = { workspace = true }

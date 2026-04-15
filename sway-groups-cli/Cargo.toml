@@ -2,6 +2,14 @@
 name = "sway-groups-cli"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
+description = "Command-line tool for managing sway workspaces in named groups."
+categories = ["command-line-utilities"]
+keywords = ["sway", "waybar", "workspace", "wayland"]
 
 [[bin]]
 name = "swayg"
@@ -17,8 +25,8 @@ tracing-subscriber.workspace = true
 tracing-appender.workspace = true
 serde.workspace = true
 directories.workspace = true
-sway-groups-core = { path = "../sway-groups-core" }
-sway-groups-config = { path = "../sway-groups-config" }
+sway-groups-core = { version = "0.1.0", path = "../sway-groups-core" }
+sway-groups-config = { version = "0.1.0", path = "../sway-groups-config" }
 
 [features]
 default = []
