@@ -1,28 +1,9 @@
-use sway_groups_tests::common::{TestFixture, get_focused_workspace, swayg_output};
+use sway_groups_tests::common::{
+    TestFixture, get_focused_workspace, swayg_output, swayg_live,
+    db_count, db_query, orig_active_group,
+};
 
 const TEST_GROUP: &str = "zz_test_group_select";
-
-fn db_count(db_path: &std::path::PathBuf, table: &str, column: &str, value: &str) -> i64 {
-    let output = std::process::Command::new("sqlite3")
-        .arg(db_path)
-        .arg(&format!("SELECT count(*) FROM {} WHERE {} = '{}'", table, column, value))
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout).trim().parse().unwrap_or(0)
-}
-
-fn db_query(db_path: &std::path::PathBuf, sql: &str) -> String {
-    let output = std::process::Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
 
 #[tokio::test]
 async fn test_01_group_select() {
@@ -33,29 +14,15 @@ async fn test_01_group_select() {
         .unwrap_or_default()
         .join("swayg")
         .join("swayg.db");
-    let orig_group = {
-        let output = std::process::Command::new("swayg")
-            .args(["group", "active", &fixture.orig_output])
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .output()
-            .expect("swayg group active failed");
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    };
+    let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
     // --- Precondition: test group does not exist in real DB ---
     if real_db.exists() {
-        let real_count: i64 = {
-            let output = std::process::Command::new("sqlite3")
-                .arg(&real_db)
-                .arg(&format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP))
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .output()
-                .expect("sqlite3 failed");
-            String::from_utf8_lossy(&output.stdout).trim().parse().unwrap_or(0)
-        };
+        let real_count = db_count(
+            &real_db,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP),
+        );
         assert_eq!(real_count, 0, "test group must not exist in production DB");
     }
 
@@ -65,7 +32,7 @@ async fn test_01_group_select() {
     fixture.init().success();
 
     assert_eq!(
-        db_count(&fixture.db_path, "groups", "name", TEST_GROUP),
+        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
         0,
         "no test group after init"
     );
@@ -76,7 +43,7 @@ async fn test_01_group_select() {
         .success();
 
     assert_eq!(
-        db_count(&fixture.db_path, "groups", "name", TEST_GROUP),
+        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
         1,
         "group was created"
     );
@@ -90,13 +57,12 @@ async fn test_01_group_select() {
         .success();
 
     assert_eq!(
-        db_count(&fixture.db_path, "groups", "name", TEST_GROUP),
+        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
         0,
         "test group auto-deleted"
     );
 
     // --- Cleanup: restore original group on live DB ---
-    use sway_groups_tests::common::swayg_live;
     swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
     let _ = std::process::Command::new("swaymsg")
@@ -107,13 +73,13 @@ async fn test_01_group_select() {
     std::thread::sleep(std::time::Duration::from_millis(300));
 
     assert_eq!(
-        db_count(&fixture.db_path, "groups", "name", TEST_GROUP),
+        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
         0,
         "test group was auto-deleted"
     );
 
     // --- Post-condition: no test data ---
-    assert_eq!(db_count(&fixture.db_path, "groups", "name", TEST_GROUP), 0);
+    assert_eq!(db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)), 0);
     let wsgrp_gone = db_query(
         &fixture.db_path,
         &format!(

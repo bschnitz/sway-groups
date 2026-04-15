@@ -1,60 +1,14 @@
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use sway_groups_tests::common::{get_focused_workspace, swayg_output, TestFixture};
+use sway_groups_tests::common::{
+    db_count, db_exec, get_focused_workspace, orig_active_group, swayg_output,
+    ws_in_group_count, TestFixture,
+};
 
 const GROUP_A: &str = "zz_test_grp_a_07";
 const GROUP_B: &str = "zz_test_grp_b_07";
 const GROUP_RENAMED: &str = "zz_test_grp_a_renamed_07";
 const WS1: &str = "zz_test_ws1_07";
-
-fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
-
-
-fn db_exec(db_path: &PathBuf, sql: &str) {
-    Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .expect("sqlite3 exec failed");
-}
-
-fn ws_in_group_count(db_path: &PathBuf, ws: &str, group: &str) -> i64 {
-    db_count(
-        db_path,
-        &format!(
-            "SELECT count(*) FROM workspace_groups wg \
-             JOIN groups g ON g.id = wg.group_id \
-             JOIN workspaces w ON w.id = wg.workspace_id \
-             WHERE w.name = '{}' AND g.name = '{}'",
-            ws, group
-        ),
-    )
-}
-
-fn orig_active_group(output_name: &str) -> String {
-    let out = Command::new("swayg")
-        .args(["group", "active", output_name])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swayg group active failed");
-    String::from_utf8_lossy(&out.stdout).trim().to_string()
-}
 
 #[tokio::test]
 async fn test_07_group_rename() {

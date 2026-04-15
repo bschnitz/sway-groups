@@ -1,55 +1,10 @@
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
-
 use sway_groups_tests::common::{
-    get_focused_workspace, DummyWindowHandle, TestFixture,
+    db_count, get_focused_workspace, orig_active_group, workspace_exists_in_sway, ws_in_group_count,
+    DummyWindowHandle, TestFixture,
 };
 
 const WS1: &str = "zz_tg_cm_ws1";
 const WS2: &str = "zz_tg_cm_ws2";
-
-fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
-
-fn workspace_in_group_count(db_path: &PathBuf, ws: &str, group: &str) -> i64 {
-    db_count(
-        db_path,
-        &format!(
-            "SELECT count(*) FROM workspace_groups wg \
-             JOIN groups g ON g.id = wg.group_id \
-             JOIN workspaces w ON w.id = wg.workspace_id \
-             WHERE w.name = '{}' AND g.name = '{}'",
-            ws, group
-        ),
-    )
-}
-
-fn workspace_exists_in_sway(ws: &str) -> bool {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_workspaces"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let workspaces: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse workspaces");
-    workspaces
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|w| w.get("name").and_then(|n| n.as_str()) == Some(ws))
-}
 
 #[tokio::test]
 async fn test_24_container_move() {
@@ -76,15 +31,7 @@ async fn test_24_container_move() {
     assert!(!workspace_exists_in_sway(WS2), "precondition: {} not in sway", WS2);
 
     // --- Remember original state ---
-    let orig_group = {
-        let output = Command::new("swayg")
-            .args(["group", "active", &fixture.orig_output])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .expect("swayg group active failed");
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    };
+    let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
     let orig_ws = get_focused_workspace().expect("get focused workspace");
 
@@ -110,7 +57,7 @@ async fn test_24_container_move() {
 
     // WS1 is now in DB (via go_workspace) and in orig_group
     assert_eq!(
-        workspace_in_group_count(&fixture.db_path, WS1, &orig_group),
+        ws_in_group_count(&fixture.db_path, WS1, &orig_group),
         1,
         "WS1 in orig_group after container move --switch"
     );
@@ -126,14 +73,14 @@ async fn test_24_container_move() {
 
     // WS2 was added to orig_group (new workspace, auto-added by container move)
     assert_eq!(
-        workspace_in_group_count(&fixture.db_path, WS2, &orig_group),
+        ws_in_group_count(&fixture.db_path, WS2, &orig_group),
         1,
         "WS2 added to orig_group by container move"
     );
 
     // WS1 is still in orig_group (unchanged)
     assert_eq!(
-        workspace_in_group_count(&fixture.db_path, WS1, &orig_group),
+        ws_in_group_count(&fixture.db_path, WS1, &orig_group),
         1,
         "WS1 still in orig_group"
     );

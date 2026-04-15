@@ -1,23 +1,10 @@
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use sway_groups_tests::common::{get_focused_workspace, swayg_output, TestFixture};
+use sway_groups_tests::common::{
+    db_count, get_focused_workspace, orig_active_group, swayg_output, swayg_stderr, TestFixture,
+};
 
 const GROUP: &str = "zz_test_create";
-
-fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
 
 
 #[tokio::test]
@@ -25,15 +12,7 @@ async fn test_18_group_create() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
     // Get original group from REAL db (before init)
-    let orig_group = {
-        let output = Command::new("swayg")
-            .args(["group", "active", &fixture.orig_output])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .expect("swayg group active failed");
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    };
+    let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
     let orig_ws = get_focused_workspace().expect("get focused workspace");
@@ -92,17 +71,7 @@ async fn test_18_group_create() {
         .swayg(&["group", "create", GROUP])
         .failure();
 
-    let stderr_output = {
-        let output = std::process::Command::new("swayg")
-            .arg("--db")
-            .arg(&fixture.db_path)
-            .args(["group", "create", GROUP])
-            .stderr(Stdio::piped())
-            .stdout(Stdio::null())
-            .output()
-            .expect("swayg command failed");
-        String::from_utf8_lossy(&output.stderr).to_string()
-    };
+    let stderr_output = swayg_stderr(&fixture.db_path, &["group", "create", GROUP]);
     assert!(
         stderr_output.contains("already exists"),
         "error contains 'already exists' (stderr: {})",

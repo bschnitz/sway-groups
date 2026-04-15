@@ -1,29 +1,13 @@
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    TestFixture, DummyWindowHandle, get_focused_workspace,
-    pause_test_daemon, resume_test_daemon, start_test_daemon,
+    db_query, get_focused_workspace, pause_test_daemon, resume_test_daemon, start_test_daemon,
+    swayg_output, ws_in_group_count, DummyWindowHandle, TestFixture,
 };
 
 const TEST_GROUP: &str = "zz_test_assign_group";
 const APP_ID: &str = "assignment-test-id";
 const ASSIGNED_WS: &str = "test_workspace_1";
-
-fn db_query(db_path: &PathBuf, sql: &str) -> String {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
-
-fn swayg_output(db_path: &PathBuf, args: &[&str]) -> String {
-    sway_groups_tests::common::swayg_output(db_path, args)
-}
 
 fn check_assignment_rule() {
     let config_path = dirs::home_dir()
@@ -54,21 +38,6 @@ fn check_assignment_rule() {
             config_path.display()
         );
     }
-}
-
-fn workspace_in_group_count(db_path: &PathBuf, ws: &str, group: &str) -> i64 {
-    db_query(
-        db_path,
-        &format!(
-            "SELECT count(*) FROM workspace_groups wg \
-             JOIN groups g ON g.id = wg.group_id \
-             JOIN workspaces w ON w.id = wg.workspace_id \
-             WHERE w.name = '{}' AND g.name = '{}'",
-            ws, group
-        ),
-    )
-    .parse()
-    .unwrap_or(0)
 }
 
 #[tokio::test]
@@ -113,7 +82,7 @@ async fn test_28_daemon_with_assignment_rule() {
         "daemon should have added assigned workspace '{}' to DB", ASSIGNED_WS
     );
 
-    let active_group = swayg_output(&fixture.db_path, &["group", "active", &orig_output]);
+    let _active_group = swayg_output(&fixture.db_path, &["group", "active", &orig_output]);
 
     fixture
         .swayg(&["workspace", "move", ASSIGNED_WS, "--groups", TEST_GROUP])
@@ -121,7 +90,7 @@ async fn test_28_daemon_with_assignment_rule() {
 
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    let in_group = workspace_in_group_count(&fixture.db_path, ASSIGNED_WS, TEST_GROUP);
+    let in_group = ws_in_group_count(&fixture.db_path, ASSIGNED_WS, TEST_GROUP);
     assert_eq!(
         in_group, 1,
         "workspace '{}' should be in group '{}' after move", ASSIGNED_WS, TEST_GROUP

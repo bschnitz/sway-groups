@@ -1,82 +1,18 @@
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
 
-use assert_cmd::cargo::CommandCargoExt;
-use sway_groups_tests::common::{get_focused_workspace, swayg_live, DummyWindowHandle, TestFixture};
+use sway_groups_tests::common::{
+    db_count, get_focused_workspace, orig_active_group, swayg_live, swayg_stderr,
+    workspace_exists_in_sway, ws_in_group_count, DummyWindowHandle, TestFixture,
+};
 
 const GROUP_A: &str = "zz_test_grp_err_a_30";
 const GROUP_B: &str = "zz_test_grp_err_b_30";
 const WS1: &str = "zz_test_ws_err_30";
 
-fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
-
-fn ws_in_group_count(db_path: &PathBuf, ws: &str, group: &str) -> i64 {
-    db_count(
-        db_path,
-        &format!(
-            "SELECT count(*) FROM workspace_groups wg \
-             JOIN groups g ON g.id = wg.group_id \
-             JOIN workspaces w ON w.id = wg.workspace_id \
-             WHERE w.name = '{}' AND g.name = '{}'",
-            ws, group
-        ),
-    )
-}
-
-fn swayg_stderr(db_path: &PathBuf, args: &[&str]) -> String {
-    let output = Command::cargo_bin("swayg")
-        .expect("swayg binary not found")
-        .arg("--db")
-        .arg(db_path)
-        .args(args)
-        .stderr(Stdio::piped())
-        .stdout(Stdio::null())
-        .output()
-        .expect("swayg command failed");
-    String::from_utf8_lossy(&output.stderr).to_string()
-}
-
-fn workspace_exists_in_sway(ws: &str) -> bool {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_workspaces"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let workspaces: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse workspaces");
-    workspaces
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|w| w.get("name").and_then(|n| n.as_str()) == Some(ws))
-}
-
 #[tokio::test]
 async fn test_30_error_handling() {
     let fixture = TestFixture::new().await.expect("fixture setup");
     let orig_ws = get_focused_workspace().expect("get focused workspace");
-    let orig_group = {
-        let out = Command::new("swayg")
-            .args(["group", "active", &fixture.orig_output])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .expect("swayg group active failed");
-        String::from_utf8_lossy(&out.stdout).trim().to_string()
-    };
+    let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
     // --- Precondition: no test data in real DB ---
@@ -234,8 +170,8 @@ async fn test_30_error_handling() {
         .success();
     let _ = std::process::Command::new("swaymsg")
         .args(["workspace", &orig_ws])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status();
     std::thread::sleep(std::time::Duration::from_millis(300));
 }

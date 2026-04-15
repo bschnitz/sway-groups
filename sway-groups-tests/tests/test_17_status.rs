@@ -1,53 +1,9 @@
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
-
-use sway_groups_tests::common::{swayg_output, DummyWindowHandle, TestFixture};
+use sway_groups_tests::common::{
+    db_count, output_contains, swayg_output, window_count_in_tree, DummyWindowHandle, TestFixture,
+};
 
 const GROUP: &str = "zz_test_status";
 const WS1: &str = "zz_tg_ws1_status";
-
-fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
-
-fn window_count_in_tree(app_id: &str) -> i64 {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_tree"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let tree: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse tree");
-    let mut count = 0i64;
-    fn find(node: &serde_json::Value, app_id: &str, count: &mut i64) {
-        if node.get("app_id").and_then(|v| v.as_str()) == Some(app_id) {
-            *count += 1;
-        }
-        for key in &["nodes", "floating_nodes"] {
-            if let Some(children) = node.get(key).and_then(|v| v.as_array()) {
-                for child in children {
-                    find(child, app_id, count);
-                }
-            }
-        }
-    }
-    find(&tree, app_id, &mut count);
-    count
-}
-
-fn output_contains(haystack: &str, needle: &str) -> bool {
-    haystack.contains(needle)
-}
 
 #[tokio::test]
 async fn test_17_status() {

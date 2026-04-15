@@ -1,26 +1,11 @@
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    create_virtual_output, get_focused_output, get_focused_workspace, swayg_live, swayg_output,
-    unplug_output, TestFixture,
+    create_virtual_output, db_count, get_focused_output, get_focused_workspace, orig_active_group,
+    swayg_live, swayg_output, unplug_output, TestFixture,
 };
 
 const GROUP: &str = "zz_test_oo_fallback";
-
-fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
 
 #[tokio::test]
 async fn test_22_optional_output_fallback() {
@@ -31,15 +16,7 @@ async fn test_22_optional_output_fallback() {
         .join("swayg")
         .join("swayg.db");
 
-    let orig_group = {
-        let output = Command::new("swayg")
-            .args(["group", "active", &fixture.orig_output])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .expect("swayg group active failed");
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    };
+    let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
     // Clean up stale outputs from previous failed runs

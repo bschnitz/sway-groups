@@ -1,64 +1,12 @@
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
-
 use sway_groups_tests::common::{
-    get_focused_workspace, swayg_output, swayg_live, DummyWindowHandle, TestFixture,
+    db_count, db_exec, get_focused_workspace, orig_active_group, swayg_live, swayg_output,
+    workspace_exists_in_sway, DummyWindowHandle, TestFixture,
 };
 
 const GROUP: &str = "zz_test_sync__";
 const GROUP2: &str = "zz_test_sync2__";
 const WS1: &str = "zz_tg_ws1__s";
 const WS_STALE: &str = "zz_tg_stale__s";
-
-fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
-
-fn db_exec(db_path: &PathBuf, sql: &str) {
-    Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .expect("sqlite3 exec failed");
-}
-
-fn workspace_exists_in_sway(ws: &str) -> bool {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_workspaces"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let workspaces: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse workspaces");
-    workspaces
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|w| w.get("name").and_then(|n| n.as_str()) == Some(ws))
-}
-
-fn orig_active_group(output_name: &str) -> String {
-    let out = Command::new("swayg")
-        .args(["group", "active", output_name])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swayg group active failed");
-    String::from_utf8_lossy(&out.stdout).trim().to_string()
-}
 
 
 #[tokio::test]

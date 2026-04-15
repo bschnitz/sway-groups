@@ -1,8 +1,6 @@
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
-
 use sway_groups_tests::common::{
-    swayg_output, get_focused_workspace, DummyWindowHandle, TestFixture,
+    db_count, get_focused_workspace, orig_active_group, swayg_output, workspace_exists_in_sway,
+    ws_in_group_count, DummyWindowHandle, TestFixture,
 };
 
 const GROUP_A: &str = "zz_test_lgf_a";
@@ -10,49 +8,6 @@ const GROUP_B: &str = "zz_test_lgf_b";
 const WS_MULTI: &str = "zz_tg_lgf_multi";
 const WS_SINGLE: &str = "zz_tg_lgf_single";
 const WS_NONE: &str = "zz_tg_lgf_none";
-
-fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
-
-fn workspace_in_group_count(db_path: &PathBuf, ws: &str, group: &str) -> i64 {
-    db_count(
-        db_path,
-        &format!(
-            "SELECT count(*) FROM workspace_groups wg \
-             JOIN groups g ON g.id = wg.group_id \
-             JOIN workspaces w ON w.id = wg.workspace_id \
-             WHERE w.name = '{}' AND g.name = '{}'",
-            ws, group
-        ),
-    )
-}
-
-fn workspace_exists_in_sway(ws: &str) -> bool {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_workspaces"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let workspaces: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse workspaces");
-    workspaces
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|w| w.get("name").and_then(|n| n.as_str()) == Some(ws))
-}
 
 #[tokio::test]
 async fn test_23_workspace_list_groups_flag() {
@@ -88,15 +43,7 @@ async fn test_23_workspace_list_groups_flag() {
     }
 
     // --- Remember original state ---
-    let orig_group = {
-        let output = Command::new("swayg")
-            .args(["group", "active", &fixture.orig_output])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .expect("swayg group active failed");
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    };
+    let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
     let orig_ws = get_focused_workspace().expect("get focused workspace");
 
@@ -149,31 +96,31 @@ async fn test_23_workspace_list_groups_flag() {
 
     // --- Verify setup ---
     assert_eq!(
-        workspace_in_group_count(&fixture.db_path, WS_MULTI, GROUP_A),
+        ws_in_group_count(&fixture.db_path, WS_MULTI, GROUP_A),
         1,
         "'{}' in {}",
         WS_MULTI, GROUP_A
     );
     assert_eq!(
-        workspace_in_group_count(&fixture.db_path, WS_MULTI, GROUP_B),
+        ws_in_group_count(&fixture.db_path, WS_MULTI, GROUP_B),
         1,
         "'{}' in {}",
         WS_MULTI, GROUP_B
     );
     assert_eq!(
-        workspace_in_group_count(&fixture.db_path, WS_SINGLE, GROUP_A),
+        ws_in_group_count(&fixture.db_path, WS_SINGLE, GROUP_A),
         1,
         "'{}' in {}",
         WS_SINGLE, GROUP_A
     );
     assert_eq!(
-        workspace_in_group_count(&fixture.db_path, WS_SINGLE, GROUP_B),
+        ws_in_group_count(&fixture.db_path, WS_SINGLE, GROUP_B),
         0,
         "'{}' NOT in {}",
         WS_SINGLE, GROUP_B
     );
     assert_eq!(
-        workspace_in_group_count(&fixture.db_path, WS_NONE, GROUP_A),
+        ws_in_group_count(&fixture.db_path, WS_NONE, GROUP_A),
         0,
         "'{}' NOT in {}",
         WS_NONE, GROUP_A
@@ -258,7 +205,7 @@ async fn test_23_workspace_list_groups_flag() {
     );
 
     // WS_MULTI: two lines (one per group), GROUP_B first (active), then GROUP_A
-    let mut multi_lines: Vec<&str> = flatten_out.lines()
+    let multi_lines: Vec<&str> = flatten_out.lines()
         .filter(|l| l.starts_with(&format!("{}│", WS_MULTI)))
         .collect();
     assert_eq!(

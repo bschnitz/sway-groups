@@ -1,65 +1,12 @@
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
-
-use sway_groups_tests::common::{get_focused_workspace, swayg_output, swayg_live, DummyWindowHandle, TestFixture};
+use sway_groups_tests::common::{
+    db_count, get_focused_workspace, orig_active_group, swayg_live, swayg_output,
+    workspace_exists_in_sway, ws_in_group_count, DummyWindowHandle, TestFixture,
+};
 
 const GROUP_A: &str = "zz_test_grp_a_06a";
 const GROUP_B: &str = "zz_test_grp_b_06a";
 const WS1: &str = "zz_test_ws1_06a";
 const WS2: &str = "zz_test_ws2_06a";
-
-fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
-
-fn ws_in_group_count(db_path: &PathBuf, ws: &str, group: &str) -> i64 {
-    db_count(
-        db_path,
-        &format!(
-            "SELECT count(*) FROM workspace_groups wg \
-             JOIN groups g ON g.id = wg.group_id \
-             JOIN workspaces w ON w.id = wg.workspace_id \
-             WHERE w.name = '{}' AND g.name = '{}'",
-            ws, group
-        ),
-    )
-}
-
-fn workspace_exists_in_sway(ws: &str) -> bool {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_workspaces"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let workspaces: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse workspaces");
-    workspaces
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|w| w.get("name").and_then(|n| n.as_str()) == Some(ws))
-}
-
-fn orig_active_group(output_name: &str) -> String {
-    let out = Command::new("swayg")
-        .args(["group", "active", output_name])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swayg group active failed");
-    String::from_utf8_lossy(&out.stdout).trim().to_string()
-}
 
 #[tokio::test]
 async fn test_06a_group_delete_multi_group_workspace() {

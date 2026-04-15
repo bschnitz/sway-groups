@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use sway_groups_tests::common::{DummyWindowHandle, TestFixture, get_focused_workspace, swayg_live};
+use sway_groups_tests::common::{
+    db_query, get_focused_workspace, orig_active_group, swayg_live, swayg_output,
+    window_count_in_tree, workspace_count_in_sway, DummyWindowHandle, TestFixture,
+};
 
 const GROUP_A: &str = "zz_test_group_a__05g";
 const GROUP_B: &str = "zz_test_group_b__05g";
@@ -23,64 +26,6 @@ fn db_count(db_path: &PathBuf, table: &str, column: &str, value: &str) -> i64 {
         .trim()
         .parse()
         .unwrap_or(0)
-}
-
-fn db_query(db_path: &PathBuf, sql: &str) -> String {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
-
-fn swayg_output(db_path: &PathBuf, args: &[&str]) -> String {
-    sway_groups_tests::common::swayg_output(db_path, args)
-}
-
-fn workspace_count_in_sway(name: &str) -> i64 {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_workspaces"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let workspaces: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse workspaces");
-    let count = workspaces
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|w| w.get("name").and_then(|n| n.as_str()) == Some(name))
-        .count();
-    count as i64
-}
-
-fn window_count_in_tree(app_id: &str) -> i64 {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_tree"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let tree: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse tree");
-    let mut count = 0i64;
-    fn find(node: &serde_json::Value, app_id: &str, count: &mut i64) {
-        if node.get("app_id").and_then(|v| v.as_str()) == Some(app_id) {
-            *count += 1;
-        }
-        for key in &["nodes", "floating_nodes"] {
-            if let Some(children) = node.get(key).and_then(|v| v.as_array()) {
-                for child in children {
-                    find(child, app_id, count);
-                }
-            }
-        }
-    }
-    find(&tree, app_id, &mut count);
-    count
 }
 
 #[tokio::test]
@@ -132,15 +77,7 @@ async fn test_05g_multi_group_auto_delete() {
     );
 
     // --- Remember original state ---
-    let orig_group = {
-        let output = Command::new("swayg")
-            .args(["group", "active", &fixture.orig_output])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .expect("swayg group active failed");
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    };
+    let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
     let orig_ws = get_focused_workspace().expect("get focused workspace");

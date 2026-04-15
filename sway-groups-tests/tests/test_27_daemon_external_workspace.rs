@@ -1,37 +1,11 @@
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use sway_groups_tests::common::{TestFixture, pause_test_daemon, resume_test_daemon, start_test_daemon};
+use sway_groups_tests::common::{
+    db_query, pause_test_daemon, resume_test_daemon, start_test_daemon, workspace_count_in_sway,
+    TestFixture,
+};
 
 const WS_EXT: &str = "zz_test_ws_ext";
-
-fn db_query(db_path: &PathBuf, sql: &str) -> String {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
-
-fn workspace_count_in_sway(name: &str) -> i64 {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_workspaces"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let workspaces: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse workspaces");
-    workspaces
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|w| w.get("name").and_then(|n| n.as_str()) == Some(name))
-        .count() as i64
-}
 
 fn cleanup_external_workspace(name: &str, orig_output: &str) {
     let _ = Command::new("swaymsg")

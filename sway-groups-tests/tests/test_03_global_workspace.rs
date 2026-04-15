@@ -1,92 +1,16 @@
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
-use sway_groups_tests::common::{TestFixture, DummyWindowHandle, get_focused_workspace, swayg_live};
+use sway_groups_tests::common::{
+    TestFixture, DummyWindowHandle, get_focused_workspace, swayg_live, swayg_output,
+    db_count, db_query, orig_active_group, workspace_count_in_sway, window_count_in_tree,
+    output_contains,
+};
 
 const TEST_GROUP: &str = "zz_test_global";
 const WS1: &str = "zz_test_ws1_glo";
 const WS2: &str = "zz_test_ws2_glo";
 
-fn db_count(db_path: &PathBuf, table: &str, column: &str, value: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(format!(
-            "SELECT count(*) FROM {} WHERE {} = '{}'",
-            table, column, value
-        ))
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
-
-fn db_query(db_path: &PathBuf, sql: &str) -> String {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
-
-fn swayg_output(db_path: &PathBuf, args: &[&str]) -> String {
-    sway_groups_tests::common::swayg_output(db_path, args)
-}
-
-fn workspace_count_in_sway(name: &str) -> i64 {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_workspaces"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let workspaces: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse workspaces");
-    let count = workspaces
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|w| w.get("name").and_then(|n| n.as_str()) == Some(name))
-        .count();
-    count as i64
-}
-
-fn window_count_in_tree(app_id: &str) -> i64 {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_tree"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let tree: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse tree");
-    let mut count = 0i64;
-    fn find(node: &serde_json::Value, app_id: &str, count: &mut i64) {
-        if node.get("app_id").and_then(|v| v.as_str()) == Some(app_id) {
-            *count += 1;
-        }
-        for key in &["nodes", "floating_nodes"] {
-            if let Some(children) = node.get(key).and_then(|v| v.as_array()) {
-                for child in children {
-                    find(child, app_id, count);
-                }
-            }
-        }
-    }
-    find(&tree, app_id, &mut count);
-    count
-}
-
-fn output_contains(haystack: &str, needle: &str) -> bool {
-    haystack.lines().any(|line| line.contains(needle))
-}
-
-fn get_active_group(db_path: &PathBuf, output: &str) -> String {
+fn get_active_group(db_path: &std::path::PathBuf, output: &str) -> String {
     swayg_output(db_path, &["group", "active", output])
 }
 
@@ -102,17 +26,17 @@ async fn test_03_global_workspace() {
 
     if real_db.exists() {
         assert_eq!(
-            db_count(&real_db, "groups", "name", TEST_GROUP),
+            db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
             0,
             "precondition: test group must not exist in real DB"
         );
         assert_eq!(
-            db_count(&real_db, "workspaces", "name", WS1),
+            db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
             0,
             "precondition: WS1 must not exist in real DB"
         );
         assert_eq!(
-            db_count(&real_db, "workspaces", "name", WS2),
+            db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS2)),
             0,
             "precondition: WS2 must not exist in real DB"
         );
@@ -128,15 +52,7 @@ async fn test_03_global_workspace() {
     );
 
     // --- Remember original state ---
-    let orig_group = {
-        let output = Command::new("swayg")
-            .args(["group", "active", &fixture.orig_output])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .expect("swayg group active failed");
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    };
+    let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
     let orig_ws = get_focused_workspace().expect("get focused workspace");
@@ -158,7 +74,7 @@ async fn test_03_global_workspace() {
     assert_eq!(ag_after_select, TEST_GROUP, "after group select: active_group should be TEST_GROUP");
 
     assert_eq!(
-        db_count(&fixture.db_path, "groups", "name", TEST_GROUP),
+        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
         1,
         "group was created"
     );
@@ -311,8 +227,8 @@ async fn test_03_global_workspace() {
     // Switch to WS2 (let sway auto-delete empty WS1)
     let _ = Command::new("swaymsg")
         .args(["workspace", WS2])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status();
     std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -340,7 +256,7 @@ async fn test_03_global_workspace() {
     eprintln!("[DEBUG] after group select 0 (auto-del 1): active_group = {:?}", ag_after_autodel1);
 
     assert_eq!(
-        db_count(&fixture.db_path, "groups", "name", TEST_GROUP),
+        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
         0,
         "test group auto-deleted (switched from global workspace)"
     );
@@ -407,7 +323,7 @@ async fn test_03_global_workspace() {
     eprintln!("[DEBUG] after group select 0 (auto-del 2): active_group = {:?}", ag_after_autodel2);
 
     assert_eq!(
-        db_count(&fixture.db_path, "groups", "name", TEST_GROUP),
+        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
         0,
         "test group auto-deleted (switched from empty workspace, only global remained)"
     );
@@ -423,7 +339,7 @@ async fn test_03_global_workspace() {
     // --- Post-condition: sync DB and verify no test data ---
     fixture.init().success();
 
-    let group_gone = db_count(&fixture.db_path, "groups", "name", TEST_GROUP);
+    let group_gone = db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP));
     let ws_gone = db_query(
         &fixture.db_path,
         &format!(

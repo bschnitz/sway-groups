@@ -1,41 +1,12 @@
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
-
 use sway_groups_tests::common::{
-    swayg_output, get_focused_workspace, workspace_of_window, DummyWindowHandle, TestFixture,
+    db_count, get_focused_workspace, orig_active_group, swayg_output, workspace_of_window,
+    ws_in_group_count, DummyWindowHandle, TestFixture,
 };
 
 const GROUP_A: &str = "zz_test_cm_og_a";
 const GROUP_B: &str = "zz_test_cm_og_b";
 const WS_A: &str = "zz_tg_cm_og_wsa";
 const WS_B: &str = "zz_tg_cm_og_wsb";
-
-fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
-
-fn workspace_in_group_count(db_path: &PathBuf, ws: &str, group: &str) -> i64 {
-    db_count(
-        db_path,
-        &format!(
-            "SELECT count(*) FROM workspace_groups wg \
-             JOIN groups g ON g.id = wg.group_id \
-             JOIN workspaces w ON w.id = wg.workspace_id \
-             WHERE w.name = '{}' AND g.name = '{}'",
-            ws, group
-        ),
-    )
-}
 
 #[tokio::test]
 async fn test_26_container_move_switch_to_other_group() {
@@ -61,15 +32,7 @@ async fn test_26_container_move_switch_to_other_group() {
         }
     }
 
-    let orig_group = {
-        let output = Command::new("swayg")
-            .args(["group", "active", &fixture.orig_output])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .expect("swayg group active failed");
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    };
+    let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group not empty");
     let orig_ws = get_focused_workspace().expect("focused ws");
 
@@ -85,7 +48,7 @@ async fn test_26_container_move_switch_to_other_group() {
     fixture.swayg(&["container", "move", WS_A, "--switch-to-workspace"]).success();
 
     assert_eq!(get_focused_workspace().unwrap(), WS_A, "on WS_A");
-    assert_eq!(workspace_in_group_count(&fixture.db_path, WS_A, GROUP_A), 1, "WS_A in GROUP_A");
+    assert_eq!(ws_in_group_count(&fixture.db_path, WS_A, GROUP_A), 1, "WS_A in GROUP_A");
 
     fixture
         .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output, "--create"])
@@ -96,7 +59,7 @@ async fn test_26_container_move_switch_to_other_group() {
     fixture.swayg(&["container", "move", WS_B, "--switch-to-workspace"]).success();
 
     assert_eq!(get_focused_workspace().unwrap(), WS_B, "on WS_B");
-    assert_eq!(workspace_in_group_count(&fixture.db_path, WS_B, GROUP_B), 1, "WS_B in GROUP_B");
+    assert_eq!(ws_in_group_count(&fixture.db_path, WS_B, GROUP_B), 1, "WS_B in GROUP_B");
 
     // Switch back to GROUP_A, focus WS_A
     fixture
@@ -131,7 +94,7 @@ async fn test_26_container_move_switch_to_other_group() {
 
     // The mover window's workspace association:
     // WS_B should be in GROUP_B (it was already)
-    assert_eq!(workspace_in_group_count(&fixture.db_path, WS_B, GROUP_B), 1, "WS_B still in GROUP_B");
+    assert_eq!(ws_in_group_count(&fixture.db_path, WS_B, GROUP_B), 1, "WS_B still in GROUP_B");
 
     // WS_A (the mover window's app_id) is NOT a workspace in sway - the window just has
     // that app_id. The actual workspace it's on is WS_B.

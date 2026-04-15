@@ -366,6 +366,153 @@ fn dummy_window_binary() -> PathBuf {
 }
 
 // ---------------------------------------------------------------------------
+// SQLite helpers
+// ---------------------------------------------------------------------------
+
+/// Execute a raw SQL query and return the trimmed stdout as a String.
+pub fn db_query(db_path: &PathBuf, sql: &str) -> String {
+    let output = Command::new("sqlite3")
+        .arg(db_path)
+        .arg(sql)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .expect("sqlite3 failed");
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+/// Execute a `SELECT count(*)` query and parse the result as i64.
+pub fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
+    db_query(db_path, sql).parse().unwrap_or(0)
+}
+
+/// Execute a SQL statement that returns no output (INSERT / UPDATE / DELETE).
+pub fn db_exec(db_path: &PathBuf, sql: &str) {
+    let _ = Command::new("sqlite3")
+        .arg(db_path)
+        .arg(sql)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+/// Count rows in `workspace_groups` that match a workspace name and group name.
+pub fn ws_in_group_count(db_path: &PathBuf, ws: &str, group: &str) -> i64 {
+    db_count(
+        db_path,
+        &format!(
+            "SELECT count(*) FROM workspace_groups wg \
+             JOIN groups g ON g.id = wg.group_id \
+             JOIN workspaces w ON w.id = wg.workspace_id \
+             WHERE w.name = '{}' AND g.name = '{}'",
+            ws, group
+        ),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Sway state query helpers
+// ---------------------------------------------------------------------------
+
+/// Check whether a workspace with the given name exists in Sway.
+pub fn workspace_exists_in_sway(name: &str) -> bool {
+    workspace_count_in_sway(name) > 0
+}
+
+/// Count how many workspaces with the given name exist in Sway.
+pub fn workspace_count_in_sway(name: &str) -> i64 {
+    let Some(workspaces) = swaymsg_json(&["-t", "get_workspaces"]) else {
+        return 0;
+    };
+    workspaces
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter(|w| w.get("name").and_then(|n| n.as_str()) == Some(name))
+                .count() as i64
+        })
+        .unwrap_or(0)
+}
+
+/// Count how many windows with the given app_id exist anywhere in the Sway tree.
+pub fn window_count_in_tree(app_id: &str) -> i64 {
+    let output = Command::new("swaymsg")
+        .args(["-t", "get_tree"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output();
+    let Ok(output) = output else { return 0 };
+    let Ok(tree) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
+        return 0;
+    };
+    count_app_id_in_tree(&tree, app_id)
+}
+
+fn count_app_id_in_tree(node: &serde_json::Value, app_id: &str) -> i64 {
+    let mut count = 0i64;
+    if node.get("app_id").and_then(|v| v.as_str()) == Some(app_id) {
+        count += 1;
+    }
+    for key in &["nodes", "floating_nodes"] {
+        if let Some(children) = node.get(key).and_then(|v| v.as_array()) {
+            for child in children {
+                count += count_app_id_in_tree(child, app_id);
+            }
+        }
+    }
+    count
+}
+
+// ---------------------------------------------------------------------------
+// Production swayg helpers
+// ---------------------------------------------------------------------------
+
+/// Read the active group for an output from the **production** database.
+/// Does NOT pass `--db`, so it reads the live user database.
+pub fn orig_active_group(output_name: &str) -> String {
+    Command::cargo_bin("swayg")
+        .expect("swayg binary not found")
+        .args(["group", "active", output_name])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
+// String assertion helpers
+// ---------------------------------------------------------------------------
+
+/// Return true if `haystack` contains any line that includes `needle`.
+pub fn output_contains(haystack: &str, needle: &str) -> bool {
+    haystack.lines().any(|l| l.contains(needle))
+}
+
+/// Return true if `haystack` contains any line that starts with `needle`.
+pub fn line_starts_with(haystack: &str, needle: &str) -> bool {
+    haystack.lines().any(|l| l.trim_start().starts_with(needle))
+}
+
+// ---------------------------------------------------------------------------
+// swayg stderr capture
+// ---------------------------------------------------------------------------
+
+/// Run `swayg --db <path> <args>` and return stderr as a String.
+pub fn swayg_stderr(db_path: &PathBuf, args: &[&str]) -> String {
+    Command::cargo_bin("swayg")
+        .expect("swayg binary not found")
+        .arg("--db")
+        .arg(db_path)
+        .args(args)
+        .stderr(Stdio::piped())
+        .stdout(Stdio::null())
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stderr).to_string())
+        .unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
 // Sway state helpers
 // ---------------------------------------------------------------------------
 

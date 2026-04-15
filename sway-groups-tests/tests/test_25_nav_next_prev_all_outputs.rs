@@ -1,28 +1,11 @@
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
-
 use sway_groups_tests::common::{
-    get_focused_workspace, workspace_of_window, DummyWindowHandle, TestFixture,
-    create_virtual_output, unplug_output,
+    create_virtual_output, db_count, get_focused_workspace, orig_active_group, unplug_output,
+    DummyWindowHandle, TestFixture,
 };
 
 const GROUP: &str = "zz_test_nav_ao";
 const WS1: &str = "zz_tg_ao_ws1";
 const WS2: &str = "zz_tg_ao_ws2";
-
-fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
 
 #[tokio::test]
 async fn test_25_nav_next_prev_all_outputs() {
@@ -46,15 +29,7 @@ async fn test_25_nav_next_prev_all_outputs() {
         }
     }
 
-    let orig_group = {
-        let output = Command::new("swayg")
-            .args(["group", "active", &fixture.orig_output])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .expect("swayg group active failed");
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    };
+    let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group not empty");
     let orig_ws = get_focused_workspace().expect("focused ws");
 

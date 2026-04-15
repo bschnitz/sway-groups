@@ -1,31 +1,11 @@
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    TestFixture, DummyWindowHandle, get_focused_workspace,
-    pause_test_daemon, resume_test_daemon, start_test_daemon,
+    db_query, get_focused_workspace, pause_test_daemon, resume_test_daemon, start_test_daemon,
+    swayg_output, DummyWindowHandle, TestFixture,
 };
 
 const WS_DEL: &str = "zz_test_ws_del";
-
-fn db_query(db_path: &PathBuf, sql: &str) -> String {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
-
-fn swayg_output(db_path: &PathBuf, args: &[&str]) -> String {
-    sway_groups_tests::common::swayg_output(db_path, args)
-}
-
-fn workspace_of_window(app_id: &str) -> Option<String> {
-    sway_groups_tests::common::workspace_of_window(app_id)
-}
 
 #[tokio::test]
 async fn test_29_daemon_removes_destroyed_workspace() {

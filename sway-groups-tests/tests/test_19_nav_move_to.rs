@@ -1,82 +1,20 @@
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    get_focused_workspace, swayg_output, workspace_of_window, DummyWindowHandle, TestFixture,
+    db_count, get_focused_workspace, orig_active_group, swayg_output, window_count_in_tree,
+    workspace_exists_in_sway, workspace_of_window, DummyWindowHandle, TestFixture,
 };
 
 const GROUP: &str = "zz_test_nav_move";
 const WS_TARGET: &str = "zz_tg_move_target";
 const KITTY_APP_ID: &str = "zz_tg_move_kitty";
 
-fn db_count(db_path: &PathBuf, sql: &str) -> i64 {
-    let output = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(sql)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("sqlite3 failed");
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0)
-}
-
-fn workspace_exists_in_sway(ws: &str) -> bool {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_workspaces"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let workspaces: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse workspaces");
-    workspaces
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|w| w.get("name").and_then(|n| n.as_str()) == Some(ws))
-}
-
-fn window_exists_in_tree(app_id: &str) -> bool {
-    let output = Command::new("swaymsg")
-        .args(["-t", "get_tree"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .expect("swaymsg failed");
-    let tree: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse tree");
-    fn find(node: &serde_json::Value, app_id: &str) -> bool {
-        if node.get("app_id").and_then(|v| v.as_str()) == Some(app_id) {
-            return true;
-        }
-        for key in &["nodes", "floating_nodes"] {
-            if let Some(children) = node.get(key).and_then(|v| v.as_array()) {
-                if children.iter().any(|c| find(c, app_id)) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-    find(&tree, app_id)
-}
-
 #[tokio::test]
 async fn test_19_nav_move_to() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
     // Get original group from REAL db (before init)
-    let orig_group = {
-        let output = Command::new("swayg")
-            .args(["group", "active", &fixture.orig_output])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .expect("swayg group active failed");
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    };
+    let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
     let orig_ws = get_focused_workspace().expect("get focused workspace");
@@ -152,7 +90,7 @@ async fn test_19_nav_move_to() {
     );
 
     assert!(
-        window_exists_in_tree(KITTY_APP_ID),
+        window_count_in_tree(KITTY_APP_ID) > 0,
         "dummy window is running"
     );
 
@@ -214,7 +152,7 @@ async fn test_19_nav_move_to() {
     std::thread::sleep(std::time::Duration::from_millis(500));
 
     assert!(
-        !window_exists_in_tree(KITTY_APP_ID),
+        window_count_in_tree(KITTY_APP_ID) == 0,
         "dummy window '{}' is gone",
         KITTY_APP_ID
     );
