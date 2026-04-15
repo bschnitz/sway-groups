@@ -63,21 +63,39 @@ cargo install sway-groups-daemon
 
 ### systemd user unit for the daemon
 
-`cargo install` cannot install non-binary files. Copy the unit once:
+`cargo install` cannot install non-binary files, so copy this unit once
+into `~/.config/systemd/user/swayg-daemon.service`:
+
+```ini
+[Unit]
+Description=swayg daemon - track external sway workspace events
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.cargo/bin/swayg-daemon
+Restart=on-failure
+RestartSec=5
+Environment=RUST_LOG=sway_groups_daemon=info
+
+[Install]
+WantedBy=graphical-session.target
+```
 
 ```sh
 mkdir -p ~/.config/systemd/user
-cp swayg-daemon.service ~/.config/systemd/user/
+# paste the unit above into ~/.config/systemd/user/swayg-daemon.service
 systemctl --user daemon-reload
 systemctl --user enable --now swayg-daemon.service
 ```
 
 The unit is `WantedBy=graphical-session.target`. For sway users, make sure
-the target actually gets activated — the common recipe is to add a small
-session target and start it from the sway config. Create
+the target actually gets activated — the common recipe is a small session
+target that sway starts. Create
 `~/.config/systemd/user/sway-session.target`:
 
-```
+```ini
 [Unit]
 Description=sway compositor session
 BindsTo=graphical-session.target
