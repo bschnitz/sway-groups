@@ -1,8 +1,17 @@
 # sway-groups (`swayg`)
 
 Group-aware workspace management for [sway](https://swaywm.org/), with
-optional [waybar](https://github.com/Alexays/Waybar) integration via
+[waybar](https://github.com/Alexays/Waybar) integration via
 [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic).
+
+> **On "optional" bar integration.** In principle `swayg` is bar-agnostic —
+> it manages state in sway, and the bar integration is a separate output
+> channel. In practice waybar + waybar-dynamic is currently the only
+> supported renderer, and without it there is no visible feedback on
+> which groups exist or which workspaces the active group contains. So
+> unless you plan to write your own bar module against the
+> [waybar-dynamic IPC](https://github.com/AriaSeitia/waybar-dynamic),
+> treat waybar as a required dependency.
 
 Workspaces are organised into named **groups**. Each output has an **active
 group**, and only workspaces that belong to the active group (plus globals
@@ -27,7 +36,7 @@ back to a group restores its last focus.
 
 - Rust toolchain (stable, edition 2024)
 - sway
-- (Optional, for bar integration) waybar + [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic)
+- waybar + [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic) — see note above
 
 ## Installation
 
@@ -107,7 +116,7 @@ BindsTo=graphical-session.target
 exec systemctl --user --no-block start sway-session.target
 ```
 
-### waybar-dynamic integration (optional)
+### waybar-dynamic integration
 
 Install [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic),
 then add two modules to your waybar config:
