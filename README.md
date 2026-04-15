@@ -1,365 +1,291 @@
-# swayg - Sway Workspace Groups
+# sway-groups (`swayg`)
 
-## Overview
+Group-aware workspace management for [sway](https://swaywm.org/), with
+optional [waybar](https://github.com/Alexays/Waybar) integration via
+[waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic).
 
-`swayg` is a CLI tool for managing sway workspace groups. It wraps sway IPC commands to provide group-aware workspace navigation and management. Workspaces are organized into named groups, and switching between groups shows only the relevant workspaces in waybar via [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic) IPC.
+Workspaces are organised into named **groups**. Each output has an **active
+group**, and only workspaces that belong to the active group (plus globals
+and user-unhidden ones) are shown to waybar and included in group-aware
+navigation. Workspace state is persisted in a small SQLite DB so switching
+back to a group restores its last focus.
+
+## Key concepts
+
+- **Workspace** — a sway workspace (`1`, `2`, `3:Firefox`, …).
+- **Group** — a named collection of workspaces. Each output has one *active*
+  group at a time.
+- **Global workspace** — visible in all groups (e.g. a persistent notes
+  workspace).
+- **Hidden workspace** — a workspace marked as hidden in a specific group.
+  By default hidden workspaces are invisible to waybar and skipped by
+  navigation, so you can declutter the bar during presentations or deep
+  work. Toggle `show_hidden_workspaces` to reveal them with a `.hidden`
+  CSS class applied (combinable with `.global`, `.focused`, …).
+
+## Requirements
+
+- Rust toolchain (stable, edition 2024)
+- sway
+- (Optional, for bar integration) waybar + [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic)
 
 ## Installation
 
-### Prerequisites
+### `cargo install --git` (recommended right now)
 
-- Rust toolchain (stable, edition 2024)
-- Sway window manager
-- [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic)
-
-### Build and Install
+No crates.io publishing needed:
 
 ```sh
+cargo install --git https://github.com/bschnitz/sway-groups swayg
+cargo install --git https://github.com/bschnitz/sway-groups swayg-daemon
+```
+
+Both binaries land in `~/.cargo/bin/`. Make sure that's in your `PATH`.
+
+### `cargo install --path` (from a local clone)
+
+```sh
+git clone https://github.com/bschnitz/sway-groups
+cd sway-groups
 cargo install --path sway-groups-cli
+cargo install --path sway-groups-daemon
 ```
 
-Or use the convenience script:
+### Later: `cargo install` from crates.io
+
+Once the crates are published (in order: `sway-groups-config` →
+`sway-groups-core` → `sway-groups-cli` / `sway-groups-daemon`) it becomes:
 
 ```sh
-./install.sh
+cargo install sway-groups-cli
+cargo install sway-groups-daemon
 ```
 
-### Verify Installation
+### systemd user unit for the daemon
+
+`cargo install` cannot install non-binary files. Copy the unit once:
 
 ```sh
-swayg --help
+mkdir -p ~/.config/systemd/user
+cp swayg-daemon.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now swayg-daemon.service
 ```
 
-### waybar-dynamic Setup
+The unit is `WantedBy=graphical-session.target`. For sway users, make sure
+the target actually gets activated — the common recipe is to add a small
+session target and start it from the sway config. Create
+`~/.config/systemd/user/sway-session.target`:
 
-1. Install [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic)
-2. Add a custom widget to your waybar config:
+```
+[Unit]
+Description=sway compositor session
+BindsTo=graphical-session.target
+```
 
-```json
-"custom/swayg_workspaces": {
-    "format": "{}",
-    "exec": "",
-    "instance": "swayg_workspaces",
-    "separator": false,
-    "interval": 0
+…and in your sway `config`:
+
+```
+exec systemctl --user --no-block start sway-session.target
+```
+
+### waybar-dynamic integration (optional)
+
+Install [waybar-dynamic](https://github.com/AriaSeitia/waybar-dynamic),
+then add two modules to your waybar config:
+
+```jsonc
+"cffi/swayg_groups": {
+    "module_path": "/path/to/libwaybar_dynamic.so",
+    "name": "swayg_groups"
+},
+"cffi/swayg_workspaces": {
+    "module_path": "/path/to/libwaybar_dynamic.so",
+    "name": "swayg_workspaces"
 }
 ```
 
-`swayg` communicates with waybar-dynamic via Unix socket IPC. Each `swayg` command automatically updates the waybar widget.
+`swayg` pushes widget updates to these modules automatically after every
+state-changing command. For per-state CSS classes see [Bar styling](#bar-styling)
+below.
 
-## Key Concepts
+## First-time setup
 
-- **Workspace**: A sway workspace (e.g., "1", "2", "3:Firefox")
-- **Group**: A named collection of workspaces (e.g., "0", "dev", "work")
-- **Active Group**: The currently selected group per output -- only workspaces in this group are shown in waybar
-- **Global Workspace**: A workspace visible in ALL groups
-
-## Database
-
-swayg uses SQLite for persistence. The database is located at:
-
-```
-~/.local/share/swayg/swayg.db
+```sh
+swayg init             # creates the DB and imports current sway state
 ```
 
-To reset everything (delete all groups, workspaces, and state):
+This seeds the DB from sway's current workspaces, creates the default
+group (`0`), and pushes initial bar widgets.
+
+## CLI overview
+
+Every command is documented under `--help`:
+
+```sh
+swayg --help
+swayg workspace --help
+swayg workspace hide --help
+```
+
+High-level tour:
+
+```sh
+# Groups
+swayg group create dev
+swayg group select dev               # make dev the active group on current output
+swayg group next -w                  # next group (alphabetical, wrap)
+swayg group prune                    # delete empty groups
+
+# Workspace membership
+swayg workspace add 3 -g dev         # add workspace "3" to dev
+swayg workspace move 3 -g dev,work   # set exactly these groups
+swayg workspace global 1             # workspace 1 visible in all groups
+swayg workspace rename old new       # rename (merges if target exists)
+
+# Hiding
+swayg workspace hide                 # hide currently focused workspace in active group
+swayg workspace hide 4 -g dev -t     # toggle "4" hidden in group dev
+swayg workspace unhide 4 -g dev
+swayg group unhide-all               # unhide everything in active group
+swayg workspace show-hidden -t       # toggle the global show_hidden flag
+
+# Navigation (group-aware — skips hidden unless show_hidden=true)
+swayg nav next -w                    # next visible workspace, wrap
+swayg nav go 3                       # focus workspace 3 (works even if hidden)
+swayg nav back                       # previous focus
+
+# Container moves
+swayg container move 3 --switch-to-workspace
+
+# State
+swayg status
+swayg sync --all --repair
+swayg config dump                    # print the default config TOML
+
+# Global flags
+swayg -v ...                         # verbose
+swayg --db /tmp/test.db ...          # alternate DB file
+swayg --config ~/my.toml ...         # alternate config file
+```
+
+`swayg status` sample:
+
+```
+show_hidden_workspaces = false
+eDP-1: active group = "dev"
+  Visible:  1, 3
+  Inactive: 2, 4
+  Hidden:   5
+  Global:   0
+```
+
+- **Visible** — in the active group (plus globals) and not user-hidden
+- **Inactive** — belongs to other groups; exists in sway on this output
+- **Hidden** — user-hidden in the active group (only shown if
+  `show_hidden_workspaces = true`)
+- **Global** — `is_global = true` workspaces
+
+## Configuration
+
+`swayg config dump` prints the default TOML. Save to
+`~/.config/swayg/config.toml` (or any path passed via `--config` or
+`SWAYG_CONFIG=`) and edit.
+
+Current sections:
+
+- `[defaults]` — `default_group`, `default_workspace` (used when orphan
+  workspaces need a home, e.g. after `group delete --force`)
+- `[bar.workspaces]` / `[bar.groups]` — per-bar tuning: socket instance
+  name, display mode (`all` | `active` | `none`), `show_global`,
+  `show_empty`
+
+Runtime DB flags (separate from the config file):
+
+- `show_hidden_workspaces` — toggled via `swayg workspace show-hidden`
+
+## Bar styling
+
+Widgets emitted by `swayg` carry CSS classes you can style. For a
+waybar-dynamic module named `swayg_workspaces`:
+
+```css
+#waybar-dynamic.swayg_workspaces label { /* base */ }
+#waybar-dynamic.swayg_workspaces label.focused  { /* this output's focused ws */ }
+#waybar-dynamic.swayg_workspaces label.visible  { /* visible on another output */ }
+#waybar-dynamic.swayg_workspaces label.urgent   { /* urgency hint from sway */ }
+#waybar-dynamic.swayg_workspaces label.global   { /* is_global */ }
+#waybar-dynamic.swayg_workspaces label.hidden   { /* only when show_hidden=true */ }
+
+/* Classes combine: .focused.global, .hidden.global.focused, etc. */
+```
+
+For the groups bar (`swayg_groups`):
+
+```css
+#waybar-dynamic.swayg_groups label        { /* inactive */ }
+#waybar-dynamic.swayg_groups label.active { /* active on focused output */ }
+#waybar-dynamic.swayg_groups label.urgent { /* a workspace in the group is urgent */ }
+```
+
+## Storage locations
+
+- SQLite DB: `~/.local/share/swayg/swayg.db`
+- Log files: `~/.local/share/swayg/swayg.YYYY-MM-DD` (daily rotation)
+- Config (optional): `~/.config/swayg/config.toml`
+- Daemon state: `/tmp/swayg-daemon-test.state` (test daemon only)
+
+Reset all state:
 
 ```sh
 rm ~/.local/share/swayg/swayg.db
-swayg sync --all
+swayg init
 ```
 
-## Group Switching Behavior
-
-When switching to a group, swayg automatically focuses a workspace in the new group:
-
-1. **Empty group**: Creates and focuses workspace "0" on the output
-2. **First visit**: Focuses the alphabetically first workspace in the group
-3. **Previously visited**: Restores the last focused workspace in that group
-
-The last focused workspace per group/output is persisted in the database.
-
-Empty groups (containing no non-global workspaces) are automatically deleted when switching away from them.
-
-## CLI Commands
-
-### Global Options
-```
-swayg [OPTIONS] <COMMAND>
-    -h, --help     Show help
-    -V, --version  Show version
-    -v, --verbose  Enable verbose output
-```
-
-### `swayg group` - Group Management
-
-#### `swayg group list [-o|--output <OUTPUT>]`
-List all groups and their workspaces. Optional filter by output.
-
-```sh
-swayg group list
-swayg group list --output DP-1
-```
-
-#### `swayg group create <NAME>`
-Create a new group.
-
-```sh
-swayg group create dev
-```
-
-#### `swayg group delete <NAME> [-f|--force]`
-Delete a group. Requires `--force` if the group has workspaces assigned.
-
-```sh
-swayg group delete old-project
-swayg group delete old-project --force
-```
-
-The default group "0" cannot be deleted.
-
-#### `swayg group rename <OLD_NAME> <NEW_NAME>`
-Rename a group. The default group "0" cannot be renamed.
-
-```sh
-swayg group rename work project
-```
-
-#### `swayg group select <OUTPUT> <GROUP>`
-Set the active group for an output. This automatically:
-- Saves the currently focused workspace for the old group
-- Switches sway focus to an appropriate workspace in the new group
-- Updates the waybar widget
-
-```sh
-swayg group select eDP-1 dev
-```
-
-#### `swayg group active <OUTPUT>`
-Show the currently active group for an output.
-
-```sh
-swayg group active eDP-1
-```
-
-#### `swayg group next [-o|--output <OUTPUT>] [-w|--wrap]`
-Switch to the next group alphabetically (all groups). Without `--wrap`, stops at the last group.
-
-```sh
-swayg group next --output eDP-1 --wrap
-```
-
-#### `swayg group next-on-output [-o|--output <OUTPUT>] [-w|--wrap]`
-Switch to the next **non-empty** group on the output. Skips groups that have no workspaces on the specified output.
-
-```sh
-swayg group next-on-output --output eDP-1 --wrap
-```
-
-#### `swayg group prev [-o|--output <OUTPUT>] [-w|--wrap]`
-Switch to the previous group alphabetically (all groups).
-
-```sh
-swayg group prev --output eDP-1 --wrap
-```
-
-#### `swayg group prev-on-output [-o|--output <OUTPUT>] [-w|--wrap]`
-Switch to the previous **non-empty** group on the output.
-
-```sh
-swayg group prev-on-output --output eDP-1 --wrap
-```
-
-#### `swayg group prune [--keep <NAME>...]`
-Remove empty groups (except default "0"). A group is considered empty if it contains no non-global workspaces. Specify groups to keep with `--keep`.
-
-```sh
-swayg group prune
-swayg group prune --keep 0 --keep default
-```
-
-### `swayg workspace` - Workspace Management
-
-#### `swayg workspace list [-o|--output <OUTPUT>] [-g|--group <GROUP>] [--visible] [--plain]`
-List workspaces, optionally filtered by output and/or group. `--visible` shows only workspaces in the active group. `--plain` outputs names only (useful for piping).
-
-```sh
-swayg workspace list
-swayg workspace list --group dev
-swayg workspace list --visible --plain
-```
-
-#### `swayg workspace add <WORKSPACE> [-g|--group <GROUP>]`
-Add a workspace to a group. The workspace must exist in sway. If `--group` is omitted, the active group for the output is used.
-
-```sh
-swayg workspace add 4 --group dev
-```
-
-A workspace can belong to multiple groups simultaneously.
-
-#### `swayg workspace rename <OLD_NAME> <NEW_NAME>`
-Rename a workspace in sway and update the database. If the target name already exists, the source workspace is merged into the target (containers are moved, group memberships are unioned).
-
-```sh
-swayg workspace rename old_name new_name
-```
-
-#### `swayg workspace move <WORKSPACE> -g|--groups <GROUPS>`
-Move a workspace to specific groups (comma-separated), removing it from all other groups.
-
-```sh
-swayg workspace move 4 --groups dev
-swayg workspace move 4 --groups dev,work
-```
-
-#### `swayg workspace remove <WORKSPACE> [-g|--group <GROUP>]`
-Remove a workspace from a group. If `--group` is omitted, the active group is used.
-
-```sh
-swayg workspace remove 4 --group dev
-```
-
-#### `swayg workspace global <WORKSPACE>`
-Mark a workspace as global (visible in all groups).
-
-```sh
-swayg workspace global 1
-```
-
-#### `swayg workspace unglobal <WORKSPACE>`
-Remove global status from a workspace.
-
-```sh
-swayg workspace unglobal 1
-```
-
-#### `swayg workspace groups <WORKSPACE>`
-List all groups a workspace belongs to.
-
-```sh
-swayg workspace groups 2
-```
-
-### `swayg nav` - Navigation Commands
-
-Group-aware workspace navigation. Only considers workspaces in the active group (plus global workspaces).
-
-#### `swayg nav next [-o|--output <OUTPUT>] [-w|--wrap]`
-Navigate to the next workspace in the active group on the output.
-
-```sh
-swayg nav next --output eDP-1 --wrap
-```
-
-#### `swayg nav next-on-output [-w|--wrap]`
-Navigate to the next workspace globally, considering all visible workspaces across all outputs.
-
-```sh
-swayg nav next-on-output --wrap
-```
-
-#### `swayg nav prev [-o|--output <OUTPUT>] [-w|--wrap]`
-Navigate to the previous workspace in the active group on the output.
-
-```sh
-swayg nav prev --output eDP-1 --wrap
-```
-
-#### `swayg nav prev-on-output [-w|--wrap]`
-Navigate to the previous workspace globally across all outputs.
-
-```sh
-swayg nav prev-on-output --wrap
-```
-
-#### `swayg nav go <WORKSPACE>`
-Navigate to a specific workspace.
-
-```sh
-swayg nav go 3
-```
-
-#### `swayg nav move-to <WORKSPACE>`
-Move the currently focused container to a specific workspace. The target workspace is automatically added to the active group.
-
-```sh
-swayg nav move-to 3
-```
-
-#### `swayg nav back`
-Navigate back to the previously focused workspace. Maintains a focus history (entries older than 10 minutes are pruned automatically).
-
-```sh
-swayg nav back
-```
-
-### `swayg sync`
-Manually synchronize the database with the current sway state. Useful for initial setup or recovery.
-
-```sh
-swayg sync --all          # Sync everything
-swayg sync --workspaces   # Sync only workspaces
-```
-
-### `swayg status`
-Show current status of all outputs and their active groups.
-
-```sh
-swayg status
-```
-
-Example output:
-```
-eDP-1: active group = "dev"
-  Visible: 1, 3
-  Hidden: 2, 4
-HDMI-A-0: active group = "0"
-  Visible: 5
-  Hidden: (none)
-```
-
-## Typical Workflow
-
-```sh
-# Initial setup after install
-swayg sync --all
-
-# Create groups for different projects
-swayg group create dev
-swayg group create work
-
-# Assign workspaces to groups (a workspace can be in multiple groups)
-swayg workspace add 1 --group dev
-swayg workspace add 2 --group dev
-swayg workspace add 3 --group work
-
-# Make a workspace global (visible in all groups)
-swayg workspace global 1
-
-# Switch between groups
-swayg group select eDP-1 dev
-swayg group select eDP-1 work
-
-# Use next/prev to cycle through groups
-swayg group next --output eDP-1 --wrap
-
-# Bind group switching in sway config:
-# bindsym $mod+bracketright exec swayg group next -o eDP-1 -w
-# bindsym $mod+bracketleft exec swayg group prev -o eDP-1 -w
-```
+## Architecture
+
+Workspace crates:
+
+| Crate | Role |
+|---|---|
+| `sway-groups-config` | TOML config schema + loader |
+| `sway-groups-core` | DB entities, services, sway/waybar IPC |
+| `sway-groups-cli` → `swayg` | User-facing CLI |
+| `sway-groups-daemon` → `swayg-daemon` | Catches sway IPC events (new/empty workspace, etc.), keeps DB + bars in sync |
+| `sway-groups-dummy-window` | Wayland dummy window for tests (`publish = false`) |
+| `sway-groups-tests` | Integration tests against a live sway session (`publish = false`) |
+
+### Tables
+
+- `workspaces`, `groups` — main entities
+- `workspace_groups` — many-to-many membership
+- `hidden_workspaces` — presence-based `(workspace_id, group_id)` pairs
+- `outputs` — per-output state (including active group)
+- `settings` — global runtime flags (key/value)
+- `focus_history`, `group_state`, `pending_workspace_events` — internal
+  state for nav-back and daemon coordination
 
 ## Troubleshooting
 
-### Reset everything
+- `RUST_LOG=debug swayg <cmd>` — verbose tracing to stderr
+- Log files under `~/.local/share/swayg/`
+- `swayg repair` — reconcile DB with sway (removes stale workspaces etc.)
+- `swayg sync --all --init-bars --init-bars-retries 20 --init-bars-delay-ms 500`
+  — after `swaymsg reload`, retry pushing to waybar until its socket is
+  back up
+
+## Development
+
 ```sh
-rm ~/.local/share/swayg/swayg.db
-swayg sync --all
+cargo build --workspace
+cargo test -- --test-threads=1    # integration tests need a serialised sway session
+cargo clippy --workspace --all-targets
 ```
 
-### Enable verbose logging
-```sh
-RUST_LOG=debug swayg status
-```
+The integration test suite spawns a test-mode daemon, temporarily stops
+the production daemon, and tears everything down in `Drop`. All tests
+must be able to run against a real sway socket.
 
-Log files are written to `~/.local/share/swayg/swayg.YYYY-MM-DD` (rolling daily).
+## License
+
+MIT
