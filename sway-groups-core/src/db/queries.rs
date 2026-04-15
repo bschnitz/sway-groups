@@ -5,10 +5,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 
 use crate::db::entities::{
-    group, workspace, workspace_group, GroupEntity, WorkspaceEntity, WorkspaceGroupEntity,
+    group, setting, workspace, workspace_group, GroupEntity, HiddenWorkspaceEntity,
+    SettingEntity, WorkspaceEntity, WorkspaceGroupEntity,
 };
 use crate::error::Result;
 
@@ -101,21 +102,89 @@ pub(crate) async fn load_group_names_by_ids(
     Ok(rows.into_iter().map(|g| (g.id, g.name)).collect())
 }
 
+/// Load the full set of (workspace_id, group_id) hidden pairs.
+pub(crate) async fn load_hidden_pairs(
+    conn: &DatabaseConnection,
+) -> Result<HashSet<(i32, i32)>> {
+    let rows = HiddenWorkspaceEntity::find().all(conn).await?;
+    Ok(rows.into_iter().map(|r| (r.workspace_id, r.group_id)).collect())
+}
+
+// ---------------------------------------------------------------------------
+// Settings (kv) helpers
+// ---------------------------------------------------------------------------
+
+/// Read a raw setting value by key. Returns `None` if not present.
+pub(crate) async fn get_setting(
+    conn: &DatabaseConnection,
+    key: &str,
+) -> Result<Option<String>> {
+    let row = SettingEntity::find_by_id(key.to_string()).one(conn).await?;
+    Ok(row.map(|r| r.value))
+}
+
+/// Upsert a setting value.
+pub(crate) async fn set_setting(
+    conn: &DatabaseConnection,
+    key: &str,
+    value: &str,
+) -> Result<()> {
+    let existing = SettingEntity::find_by_id(key.to_string()).one(conn).await?;
+    match existing {
+        Some(row) => {
+            let mut m: setting::ActiveModel = row.into();
+            m.value = Set(value.to_string());
+            m.update(conn).await?;
+        }
+        None => {
+            let m = setting::ActiveModel {
+                key: Set(key.to_string()),
+                value: Set(value.to_string()),
+            };
+            m.insert(conn).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Read a boolean setting. Defaults to `default` if missing or unparseable.
+pub(crate) async fn get_bool_setting(
+    conn: &DatabaseConnection,
+    key: &str,
+    default: bool,
+) -> Result<bool> {
+    Ok(match get_setting(conn, key).await? {
+        Some(v) => v == "true",
+        None => default,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Visibility predicate
 // ---------------------------------------------------------------------------
 
-/// Canonical visibility rule for a non-global workspace.
+/// Canonical visibility rule.
 ///
 /// A workspace is visible when:
+/// - it's NOT hidden in the active group (when `show_hidden` is false), AND
 /// - `is_global` is true, OR
 /// - one of `membership_group_names` matches `active_group`, OR
 /// - it has no memberships and `active_group` is `None`.
+///
+/// `is_hidden_in_active_group` must already reflect whether a hidden row
+/// exists for (this workspace, active group). For non-matching active groups
+/// the value doesn't matter — the membership/global rules decide first.
 pub(crate) fn is_visible(
     is_global: bool,
     membership_group_names: &[String],
     active_group: Option<&str>,
+    is_hidden_in_active_group: bool,
+    show_hidden: bool,
 ) -> bool {
+    // Hidden workspaces are fully invisible unless show_hidden is on.
+    if is_hidden_in_active_group && !show_hidden {
+        return false;
+    }
     if is_global {
         return true;
     }
@@ -133,14 +202,15 @@ pub(crate) fn is_visible(
 
 /// Compute the visible workspace names from a list of sway workspace names.
 ///
-/// Performs exactly 3 batch DB queries regardless of the number of workspaces.
-/// The caller is responsible for pre-filtering `sway_names` to the relevant
-/// output(s) if necessary.
+/// Reads the `show_hidden_workspaces` setting and filters out workspaces
+/// hidden in the active group unless the setting is true.
 pub(crate) async fn compute_visible_workspaces(
     conn: &DatabaseConnection,
     sway_names: &[String],
     active_group: Option<&str>,
 ) -> Result<Vec<String>> {
+    let show_hidden = get_bool_setting(conn, setting::SHOW_HIDDEN_WORKSPACES, false).await?;
+
     let ws_map = load_workspaces_by_names(conn, sway_names).await?;
 
     let ws_ids: Vec<i32> = ws_map.values().map(|w| w.id).collect();
@@ -153,6 +223,18 @@ pub(crate) async fn compute_visible_workspaces(
         .into_iter()
         .collect();
     let group_name_map = load_group_names_by_ids(conn, &group_ids).await?;
+
+    // Resolve active group name -> id for hidden lookup.
+    let active_group_id: Option<i32> = match active_group {
+        Some(name) => GroupEntity::find()
+            .filter(group::Column::Name.eq(name))
+            .one(conn)
+            .await?
+            .map(|g| g.id),
+        None => None,
+    };
+
+    let hidden_pairs = load_hidden_pairs(conn).await?;
 
     let mut visible = Vec::new();
     let mut seen = HashSet::new();
@@ -168,7 +250,18 @@ pub(crate) async fn compute_visible_workspaces(
                 .filter_map(|m| group_name_map.get(&m.group_id).cloned())
                 .collect();
 
-            if is_visible(ws.is_global, &membership_group_names, active_group) {
+            let is_hidden_here = match active_group_id {
+                Some(gid) => hidden_pairs.contains(&(ws.id, gid)),
+                None => false,
+            };
+
+            if is_visible(
+                ws.is_global,
+                &membership_group_names,
+                active_group,
+                is_hidden_here,
+                show_hidden,
+            ) {
                 visible.push(name.clone());
                 seen.insert(name.clone());
             }

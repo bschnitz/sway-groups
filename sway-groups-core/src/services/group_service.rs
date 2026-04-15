@@ -1,13 +1,16 @@
 //! Group management service.
 
 use crate::db::entities::{
-    group, group_state, output, workspace_group, FocusHistoryEntity, GroupEntity, GroupStateEntity,
-    OutputEntity, WorkspaceEntity, WorkspaceGroupEntity,
+    group, group_state, hidden_workspace, output, workspace_group, FocusHistoryEntity, GroupEntity,
+    GroupStateEntity, HiddenWorkspaceEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity,
 };
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
-use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, ModelTrait, Set, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter, Set,
+    TransactionTrait,
+};
 use tracing::{debug, info, warn};
 
 /// Group information for display.
@@ -192,11 +195,15 @@ impl GroupService {
 
         let ws_ids: Vec<i32> = memberships.iter().map(|m| m.workspace_id).collect();
 
-        // Atomically delete memberships and the group
+        // Atomically delete memberships, hidden entries, and the group
         let txn = self.db.conn().begin().await?;
         for membership in memberships {
             membership.delete(&txn).await?;
         }
+        HiddenWorkspaceEntity::delete_many()
+            .filter(hidden_workspace::Column::GroupId.eq(group.id))
+            .exec(&txn)
+            .await?;
         group.delete(&txn).await?;
         txn.commit().await?;
 

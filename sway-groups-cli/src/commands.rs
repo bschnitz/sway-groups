@@ -145,6 +145,9 @@ enum GroupAction {
         #[arg(long)]
         keep: Vec<String>,
     },
+    UnhideAll {
+        group: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -192,6 +195,22 @@ enum WorkspaceAction {
     },
     Unglobal {
         workspace: Option<String>,
+    },
+    Hide {
+        workspace: Option<String>,
+        #[arg(short, long)]
+        group: Option<String>,
+        #[arg(short, long)]
+        toggle: bool,
+    },
+    Unhide {
+        workspace: Option<String>,
+        #[arg(short, long)]
+        group: Option<String>,
+    },
+    ShowHidden {
+        #[arg(short, long)]
+        toggle: bool,
     },
 }
 
@@ -248,7 +267,7 @@ pub async fn run(
     db_path: PathBuf,
 ) -> anyhow::Result<()> {
     match cli.command {
-        Command::Group { action } => run_group(action, group_service, waybar_sync, ipc_client).await?,
+        Command::Group { action } => run_group(action, group_service, workspace_service, waybar_sync, ipc_client).await?,
         Command::Workspace { action } => run_workspace(action, workspace_service, group_service, waybar_sync, ipc_client).await?,
         Command::Nav { action } => run_nav(action, nav_service, workspace_service, waybar_sync, ipc_client).await?,
         Command::Container { action } => run_container(action, nav_service, group_service, workspace_service, waybar_sync, ipc_client).await?,
@@ -299,6 +318,7 @@ async fn resolve_group_output(
 async fn run_group(
     action: GroupAction,
     group_service: &GroupService,
+    workspace_service: &WorkspaceService,
     waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
@@ -396,6 +416,19 @@ async fn run_group(
             } else {
                 waybar_sync.update_waybar_groups().await?;
                 println!("Pruned {} empty group(s)", removed);
+            }
+        }
+        GroupAction::UnhideAll { group } => {
+            let group_name = match resolve_group(group.as_deref(), group_service, ipc_client).await? {
+                Some(g) => g,
+                None => return Ok(()),
+            };
+            let removed = workspace_service.unhide_all_in_group(&group_name).await?;
+            waybar_sync.update_waybar().await?;
+            if removed == 0 {
+                println!("No hidden workspaces in group \"{}\"", group_name);
+            } else {
+                println!("Unhid {} workspace(s) in group \"{}\"", removed, group_name);
             }
         }
     }
@@ -606,8 +639,80 @@ async fn run_workspace(
                     groups.iter().map(|g| format!("\"{}\"", g)).collect::<Vec<_>>().join(", "));
             }
         }
+        WorkspaceAction::Hide { workspace, group, toggle } => {
+            let ws = match workspace {
+                Some(w) => w,
+                None => ipc_client.get_focused_workspace().map(|w| w.name).unwrap_or_default(),
+            };
+            let group_name = match resolve_group(group.as_deref(), group_service, ipc_client).await? {
+                Some(g) => g,
+                None => return Ok(()),
+            };
+            let new_state = if toggle {
+                !workspace_service.is_hidden(&ws, &group_name).await.unwrap_or(false)
+            } else {
+                true
+            };
+            workspace_service.set_hidden(&ws, &group_name, new_state).await?;
+            waybar_sync.update_waybar().await?;
+            if new_state {
+                println!("Hid workspace \"{}\" in group \"{}\"", ws, group_name);
+            } else {
+                println!("Unhid workspace \"{}\" in group \"{}\"", ws, group_name);
+            }
+        }
+        WorkspaceAction::Unhide { workspace, group } => {
+            let ws = match workspace {
+                Some(w) => w,
+                None => ipc_client.get_focused_workspace().map(|w| w.name).unwrap_or_default(),
+            };
+            let group_name = match resolve_group(group.as_deref(), group_service, ipc_client).await? {
+                Some(g) => g,
+                None => return Ok(()),
+            };
+            workspace_service.set_hidden(&ws, &group_name, false).await?;
+            waybar_sync.update_waybar().await?;
+            println!("Unhid workspace \"{}\" in group \"{}\"", ws, group_name);
+        }
+        WorkspaceAction::ShowHidden { toggle } => {
+            let new_value = if toggle {
+                !workspace_service.get_show_hidden().await?
+            } else {
+                true
+            };
+            workspace_service.set_show_hidden(new_value).await?;
+            waybar_sync.update_waybar().await?;
+            println!("show_hidden_workspaces = {}", new_value);
+        }
     }
     Ok(())
+}
+
+/// Resolve a group argument: if `Some`, returns it as-is; otherwise resolves to
+/// the active group of the focused output. Prints an error and returns `None`
+/// if resolution fails.
+async fn resolve_group(
+    explicit: Option<&str>,
+    group_service: &GroupService,
+    ipc_client: &SwayIpcClient,
+) -> anyhow::Result<Option<String>> {
+    if let Some(g) = explicit {
+        return Ok(Some(g.to_string()));
+    }
+    let output = match ipc_client.get_primary_output().ok() {
+        Some(o) => o,
+        None => {
+            eprintln!("Cannot determine output. Specify a group explicitly.");
+            return Ok(None);
+        }
+    };
+    match group_service.get_active_group(&output).await.unwrap_or(None) {
+        Some(g) => Ok(Some(g)),
+        None => {
+            eprintln!("No active group for output '{}'. Specify a group explicitly.", output);
+            Ok(None)
+        }
+    }
 }
 
 async fn run_nav(
@@ -900,6 +1005,9 @@ async fn run_status(
 ) -> anyhow::Result<()> {
     let outputs = ipc_client.get_outputs()?;
 
+    let show_hidden = workspace_service.get_show_hidden().await.unwrap_or(false);
+    println!("show_hidden_workspaces = {}", show_hidden);
+
     for output in &outputs {
         let active_group = group_service.get_active_group(&output.name).await
             .unwrap_or(None);
@@ -909,13 +1017,23 @@ async fn run_status(
 
         let all_ws = workspace_service.list_workspaces(Some(&output.name), None).await?;
 
-        let mut hidden = Vec::new();
+        let mut inactive = Vec::new();
         let mut global_ws = Vec::new();
         let mut visible_names = Vec::new();
+        let mut hidden_names: Vec<String> = Vec::new();
 
         for ws in &all_ws {
             if ws.is_global {
                 global_ws.push(ws.name.clone());
+            }
+        }
+
+        // Determine user-hidden workspaces for the active group (if any).
+        if let Some(ref ag) = active_group {
+            for ws in &all_ws {
+                if workspace_service.is_hidden(&ws.name, ag).await.unwrap_or(false) {
+                    hidden_names.push(ws.name.clone());
+                }
             }
         }
 
@@ -935,6 +1053,8 @@ async fn run_status(
             .map(|w| w.name.clone())
             .collect();
 
+        // "Inactive" = workspaces on this output that belong to other groups
+        // (formerly called "Hidden"). Excludes user-hidden and globals.
         for ws in &all_ws {
             if ws.is_global {
                 continue;
@@ -942,20 +1062,25 @@ async fn run_status(
             if visible_names.iter().any(|v| v == &ws.name) {
                 continue;
             }
+            if hidden_names.iter().any(|h| h == &ws.name) {
+                continue;
+            }
             if sway_names.contains(&ws.name) {
-                hidden.push(ws.name.clone());
+                inactive.push(ws.name.clone());
             }
         }
 
         visible_names.sort();
-        hidden.sort();
+        inactive.sort();
+        hidden_names.sort();
         global_ws.sort();
         global_ws.dedup();
 
-        println!("  Visible: {}", if visible_names.is_empty() { "(none)".to_string() } else { visible_names.join(", ") });
-        println!("  Hidden:  {}", if hidden.is_empty() { "(none)".to_string() } else { hidden.join(", ") });
+        println!("  Visible:  {}", if visible_names.is_empty() { "(none)".to_string() } else { visible_names.join(", ") });
+        println!("  Inactive: {}", if inactive.is_empty() { "(none)".to_string() } else { inactive.join(", ") });
+        println!("  Hidden:   {}", if hidden_names.is_empty() { "(none)".to_string() } else { hidden_names.join(", ") });
         if !global_ws.is_empty() {
-            println!("  Global:  {}", global_ws.join(", "));
+            println!("  Global:   {}", global_ws.join(", "));
         }
     }
 

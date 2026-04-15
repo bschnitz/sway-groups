@@ -91,7 +91,7 @@ impl WaybarSyncService {
         let sway_workspaces = self.ipc_client.get_workspaces()?;
         let focused_output = self.ipc_client.get_primary_output().ok();
 
-        // Batch load all DB data up front (3 queries total)
+        // Batch load all DB data up front.
         let all_names: Vec<String> = sway_workspaces.iter().map(|w| w.name.clone()).collect();
         let ws_map =
             crate::db::queries::load_workspaces_by_names(self.db.conn(), &all_names).await?;
@@ -109,6 +109,20 @@ impl WaybarSyncService {
         let group_name_map =
             crate::db::queries::load_group_names_by_ids(self.db.conn(), &group_ids).await?;
 
+        // Hidden-workspaces state
+        let show_hidden = crate::db::queries::get_bool_setting(
+            self.db.conn(),
+            crate::db::entities::setting::SHOW_HIDDEN_WORKSPACES,
+            false,
+        )
+        .await?;
+        let hidden_pairs = crate::db::queries::load_hidden_pairs(self.db.conn()).await?;
+
+        // Name -> id map for all groups (needed to resolve active group names).
+        let all_groups = GroupEntity::find().all(self.db.conn()).await?;
+        let group_id_by_name: std::collections::HashMap<String, i32> =
+            all_groups.iter().map(|g| (g.name.clone(), g.id)).collect();
+
         let mut widgets = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
 
@@ -119,6 +133,10 @@ impl WaybarSyncService {
                 .map(|o| o.active_group)
                 .unwrap_or(None);
 
+            let active_group_id = active_group
+                .as_deref()
+                .and_then(|n| group_id_by_name.get(n).copied());
+
             let is_output_focused = focused_output.as_deref() == Some(&output.name);
 
             for sway_ws in sway_workspaces.iter().filter(|w| w.output == output.name) {
@@ -127,6 +145,15 @@ impl WaybarSyncService {
                 }
 
                 if let Some(ws) = ws_map.get(&sway_ws.name) {
+                    let is_hidden_here = match active_group_id {
+                        Some(gid) => hidden_pairs.contains(&(ws.id, gid)),
+                        None => false,
+                    };
+
+                    if is_hidden_here && !show_hidden {
+                        continue;
+                    }
+
                     if ws.is_global {
                         if !self.workspaces_show_global {
                             continue;
@@ -134,6 +161,9 @@ impl WaybarSyncService {
                         let mut classes = vec!["global".to_string()];
                         if sway_ws.focused {
                             classes.push("focused".to_string());
+                        }
+                        if is_hidden_here {
+                            classes.push("hidden".to_string());
                         }
                         widgets.push(Self::make_widget(&sway_ws.name, &classes));
                         seen.insert(sway_ws.name.clone());
@@ -151,6 +181,8 @@ impl WaybarSyncService {
                         false,
                         &membership_group_names,
                         active_group.as_deref(),
+                        is_hidden_here,
+                        show_hidden,
                     ) {
                         continue;
                     }
@@ -160,6 +192,9 @@ impl WaybarSyncService {
                         classes.push("focused".to_string());
                     } else if sway_ws.visible && is_output_focused {
                         classes.push("visible".to_string());
+                    }
+                    if is_hidden_here {
+                        classes.push("hidden".to_string());
                     }
 
                     widgets.push(Self::make_widget(&sway_ws.name, &classes));

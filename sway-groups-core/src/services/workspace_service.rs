@@ -1,14 +1,18 @@
 //! Workspace management service.
 
-use crate::db::entities::{group, output, pending_workspace_event, workspace, workspace_group};
 use crate::db::entities::{
-    FocusHistoryEntity, GroupEntity, GroupStateEntity, OutputEntity, PendingWorkspaceEventEntity,
-    WorkspaceEntity, WorkspaceGroupEntity,
+    group, hidden_workspace, output, pending_workspace_event, setting, workspace, workspace_group,
+};
+use crate::db::entities::{
+    FocusHistoryEntity, GroupEntity, GroupStateEntity, HiddenWorkspaceEntity, OutputEntity,
+    PendingWorkspaceEventEntity, WorkspaceEntity, WorkspaceGroupEntity,
 };
 use crate::db::DatabaseManager;
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
-use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, ModelTrait, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter, Set,
+};
 use tracing::info;
 
 /// Workspace information for display.
@@ -277,6 +281,15 @@ impl WorkspaceService {
 
         membership.delete(self.db.conn()).await?;
 
+        // Also clear any hidden flag for this (ws, group) pair — when the ws is
+        // re-added later it should default to visible.
+        if let Some(row) = HiddenWorkspaceEntity::find_entry(workspace.id, group.id)
+            .one(self.db.conn())
+            .await?
+        {
+            row.delete(self.db.conn()).await?;
+        }
+
         info!(
             "Removed workspace '{}' from group '{}'",
             workspace_name, group_name
@@ -332,6 +345,7 @@ impl WorkspaceService {
             m.delete(self.db.conn()).await?;
         }
 
+        let mut new_group_ids: Vec<i32> = Vec::new();
         for group_name in group_names {
             let group = match GroupEntity::find_by_name(*group_name)
                 .one(self.db.conn())
@@ -360,6 +374,17 @@ impl WorkspaceService {
                 ..Default::default()
             };
             membership.insert(self.db.conn()).await?;
+            new_group_ids.push(group.id);
+        }
+
+        // Drop hidden entries for groups the workspace is no longer in.
+        // (Global workspaces keep their hidden entries for non-member groups.)
+        if !workspace.is_global {
+            HiddenWorkspaceEntity::delete_many()
+                .filter(hidden_workspace::Column::WorkspaceId.eq(workspace.id))
+                .filter(hidden_workspace::Column::GroupId.is_not_in(new_group_ids))
+                .exec(self.db.conn())
+                .await?;
         }
 
         info!(
@@ -394,6 +419,131 @@ impl WorkspaceService {
             .await?
             .map(|e| e.is_global)
             .unwrap_or(false))
+    }
+
+    // -----------------------------------------------------------------------
+    // Hidden workspaces (per-group) and show_hidden_workspaces setting
+    // -----------------------------------------------------------------------
+
+    /// Whether a workspace is marked as hidden in the given group.
+    pub async fn is_hidden(&self, workspace_name: &str, group_name: &str) -> Result<bool> {
+        let workspace = WorkspaceEntity::find_by_name(workspace_name)
+            .one(self.db.conn())
+            .await?
+            .ok_or_else(|| Error::WorkspaceNotFound(workspace_name.to_string()))?;
+        let group = GroupEntity::find_by_name(group_name)
+            .one(self.db.conn())
+            .await?
+            .ok_or_else(|| Error::GroupNotFound(group_name.to_string()))?;
+        let row = HiddenWorkspaceEntity::find_entry(workspace.id, group.id)
+            .one(self.db.conn())
+            .await?;
+        Ok(row.is_some())
+    }
+
+    /// Mark/unmark a workspace as hidden in a specific group.
+    ///
+    /// Validation: a non-global workspace must be a member of the group; if
+    /// not, returns `InvalidArgs` and logs the rejection. Global workspaces
+    /// can be hidden in any group (they are implicitly in all groups).
+    pub async fn set_hidden(
+        &self,
+        workspace_name: &str,
+        group_name: &str,
+        hidden: bool,
+    ) -> Result<()> {
+        let workspace = WorkspaceEntity::find_by_name(workspace_name)
+            .one(self.db.conn())
+            .await?
+            .ok_or_else(|| Error::WorkspaceNotFound(workspace_name.to_string()))?;
+        let group = GroupEntity::find_by_name(group_name)
+            .one(self.db.conn())
+            .await?
+            .ok_or_else(|| Error::GroupNotFound(group_name.to_string()))?;
+
+        if !workspace.is_global {
+            let membership =
+                WorkspaceGroupEntity::find_membership(workspace.id, group.id)
+                    .one(self.db.conn())
+                    .await?;
+            if membership.is_none() {
+                let msg = format!(
+                    "Cannot hide: workspace '{}' is not a member of group '{}'",
+                    workspace_name, group_name
+                );
+                tracing::warn!("{}", msg);
+                return Err(Error::InvalidArgs(msg));
+            }
+        }
+
+        if hidden {
+            let existing = HiddenWorkspaceEntity::find_entry(workspace.id, group.id)
+                .one(self.db.conn())
+                .await?;
+            if existing.is_none() {
+                let row = hidden_workspace::ActiveModel {
+                    workspace_id: Set(workspace.id),
+                    group_id: Set(group.id),
+                };
+                row.insert(self.db.conn()).await?;
+                info!(
+                    "Marked workspace '{}' as hidden in group '{}'",
+                    workspace_name, group_name
+                );
+            }
+        } else if let Some(row) = HiddenWorkspaceEntity::find_entry(workspace.id, group.id)
+            .one(self.db.conn())
+            .await?
+        {
+            row.delete(self.db.conn()).await?;
+            info!(
+                "Unmarked workspace '{}' as hidden in group '{}'",
+                workspace_name, group_name
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Remove all hidden entries for the given group.
+    /// Returns the number of rows removed.
+    pub async fn unhide_all_in_group(&self, group_name: &str) -> Result<u64> {
+        let group = GroupEntity::find_by_name(group_name)
+            .one(self.db.conn())
+            .await?
+            .ok_or_else(|| Error::GroupNotFound(group_name.to_string()))?;
+
+        let res = HiddenWorkspaceEntity::delete_many()
+            .filter(hidden_workspace::Column::GroupId.eq(group.id))
+            .exec(self.db.conn())
+            .await?;
+        info!(
+            "Unhid {} workspace(s) in group '{}'",
+            res.rows_affected, group_name
+        );
+        Ok(res.rows_affected)
+    }
+
+    /// Read the global `show_hidden_workspaces` DB flag (default false).
+    pub async fn get_show_hidden(&self) -> Result<bool> {
+        crate::db::queries::get_bool_setting(
+            self.db.conn(),
+            setting::SHOW_HIDDEN_WORKSPACES,
+            false,
+        )
+        .await
+    }
+
+    /// Set the global `show_hidden_workspaces` DB flag.
+    pub async fn set_show_hidden(&self, value: bool) -> Result<()> {
+        crate::db::queries::set_setting(
+            self.db.conn(),
+            setting::SHOW_HIDDEN_WORKSPACES,
+            if value { "true" } else { "false" },
+        )
+        .await?;
+        info!("Set {} = {}", setting::SHOW_HIDDEN_WORKSPACES, value);
+        Ok(())
     }
 
     /// Set workspace global status.
@@ -692,6 +842,12 @@ impl WorkspaceService {
             }
         }
 
+        // Clear hidden entries for the old workspace (row going away).
+        HiddenWorkspaceEntity::delete_many()
+            .filter(hidden_workspace::Column::WorkspaceId.eq(old_ws.id))
+            .exec(self.db.conn())
+            .await?;
+
         old_ws.delete(self.db.conn()).await?;
 
         info!("Merged workspace '{}' into '{}'", old_name, new_name);
@@ -823,6 +979,12 @@ impl WorkspaceService {
                         s.delete(self.db.conn()).await.ok();
                     }
                 }
+                // Remove hidden entries for this workspace
+                HiddenWorkspaceEntity::delete_many()
+                    .filter(hidden_workspace::Column::WorkspaceId.eq(ws.id))
+                    .exec(self.db.conn())
+                    .await
+                    .ok();
                 // Remove the workspace itself
                 ws.clone().delete(self.db.conn()).await?;
                 info!("Removed workspace '{}' (no longer in sway)", ws.name);
@@ -912,6 +1074,12 @@ impl WorkspaceService {
                         h.delete(self.db.conn()).await.ok();
                     }
                 }
+
+                HiddenWorkspaceEntity::delete_many()
+                    .filter(hidden_workspace::Column::WorkspaceId.eq(ws.id))
+                    .exec(self.db.conn())
+                    .await
+                    .ok();
 
                 ws.clone().delete(self.db.conn()).await?;
                 info!("repair: removed workspace '{}' from DB (not in sway)", ws.name);

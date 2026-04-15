@@ -6,8 +6,8 @@ use anyhow::Result as AnyResult;
 use tracing::info;
 
 use crate::db::entities::{
-    FocusHistoryEntity, GroupEntity, GroupStateEntity,
-    OutputEntity, PendingWorkspaceEventEntity,
+    FocusHistoryEntity, GroupEntity, GroupStateEntity, HiddenWorkspaceEntity,
+    OutputEntity, PendingWorkspaceEventEntity, SettingEntity,
     WorkspaceEntity, WorkspaceGroupEntity,
 };
 
@@ -67,6 +67,16 @@ impl DatabaseManager {
         stmt.if_not_exists();
         conn.execute(&stmt).await?;
         info!("Ensured table 'pending_workspace_events' exists");
+
+        let mut stmt = schema.create_table_from_entity(HiddenWorkspaceEntity);
+        stmt.if_not_exists();
+        conn.execute(&stmt).await?;
+        info!("Ensured table 'hidden_workspaces' exists");
+
+        let mut stmt = schema.create_table_from_entity(SettingEntity);
+        stmt.if_not_exists();
+        conn.execute(&stmt).await?;
+        info!("Ensured table 'settings' exists");
 
         Ok(Self { conn })
     }
