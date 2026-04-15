@@ -233,26 +233,147 @@ Runtime DB flags (separate from the config file):
 
 ## Bar styling
 
-Widgets emitted by `swayg` carry CSS classes you can style. For a
-waybar-dynamic module named `swayg_workspaces`:
+![swayg bars in waybar](screenshot.png)
+
+Widgets emitted by `swayg` carry CSS classes you can style. The available
+classes are:
+
+- **`swayg_workspaces`**: `focused` (focused on this output), `visible`
+  (visible on another output), `urgent`, `global` (`is_global` flag),
+  `hidden` (only sent when `show_hidden_workspaces = true`). Classes
+  combine, e.g. `.focused.global`, `.hidden.global.focused`.
+- **`swayg_groups`**: `active` (active group on the focused output),
+  `urgent` (a workspace in the group is urgent).
+
+### Example theme (lavender workspaces, blue groups)
+
+This is the theme used in the screenshot above — drop it into your
+`~/.config/waybar/style.css`:
 
 ```css
-#waybar-dynamic.swayg_workspaces label { /* base */ }
-#waybar-dynamic.swayg_workspaces label.focused  { /* this output's focused ws */ }
-#waybar-dynamic.swayg_workspaces label.visible  { /* visible on another output */ }
-#waybar-dynamic.swayg_workspaces label.urgent   { /* urgency hint from sway */ }
-#waybar-dynamic.swayg_workspaces label.global   { /* is_global */ }
-#waybar-dynamic.swayg_workspaces label.hidden   { /* only when show_hidden=true */ }
+/* ── swayg workspaces — lavender, lime accent for globals ───────── */
+#waybar-dynamic.swayg_workspaces label {
+    padding: 0 5px;
+    background: transparent;
+    color: #C9A0F8;
+    border-bottom: 3px solid rgba(184, 133, 255, 0.7);
+    border-radius: 0;
+    transition: background 0.15s, color 0.15s;
+}
+#waybar-dynamic.swayg_workspaces label.focused {
+    background: rgba(184, 133, 255, 0.35);
+    color: #ffffff;
+    border-bottom: 3px solid #D4AAFF;
+}
+#waybar-dynamic.swayg_workspaces label.visible {
+    color: rgba(184, 133, 255, 0.75);
+}
+#waybar-dynamic.swayg_workspaces label.urgent {
+    background-color: #e8453c;
+    border-bottom: 3px solid #e8453c;
+    color: #ffffff;
+}
+/* Global workspaces: lime text + border */
+#waybar-dynamic.swayg_workspaces label.global {
+    color: #b8f060;
+    border-bottom: 3px solid rgba(184, 240, 96, 0.75);
+}
+#waybar-dynamic.swayg_workspaces label.focused.global {
+    background: rgba(184, 133, 255, 0.3);
+    color: #b8f060;
+    border-bottom: 3px solid #b8f060;
+}
+#waybar-dynamic.swayg_workspaces label.global.visible {
+    color: rgba(184, 240, 96, 0.6);
+}
+#waybar-dynamic.swayg_workspaces label.hover {
+    background: rgba(184, 133, 255, 0.2);
+}
+#waybar-dynamic.swayg_workspaces label.focused.hover {
+    background: rgba(184, 133, 255, 0.5);
+}
+#waybar-dynamic.swayg_workspaces label.global.hover {
+    background: rgba(184, 240, 96, 0.15);
+}
+#waybar-dynamic.swayg_workspaces label.focused.global.hover {
+    background: rgba(184, 133, 255, 0.45);
+}
 
-/* Classes combine: .focused.global, .hidden.global.focused, etc. */
-```
+/* Hidden (only shown when show_hidden_workspaces = true):
+   faded + italic + dashed border signals "would normally be invisible". */
+#waybar-dynamic.swayg_workspaces label.hidden {
+    opacity: 0.45;
+    border-bottom: 3px dashed rgba(184, 133, 255, 0.7);
+    font-style: italic;
+}
+#waybar-dynamic.swayg_workspaces label.hidden.focused {
+    opacity: 0.8;
+    background: rgba(184, 133, 255, 0.25);
+    color: #ffffff;
+    border-bottom: 3px dashed #D4AAFF;
+}
+#waybar-dynamic.swayg_workspaces label.hidden.visible {
+    opacity: 0.55;
+}
+#waybar-dynamic.swayg_workspaces label.hidden.global {
+    opacity: 0.5;
+    color: #b8f060;
+    border-bottom: 3px dashed rgba(184, 240, 96, 0.75);
+    font-style: italic;
+}
+#waybar-dynamic.swayg_workspaces label.hidden.focused.global {
+    opacity: 0.85;
+    background: rgba(184, 133, 255, 0.25);
+    color: #b8f060;
+    border-bottom: 3px dashed #b8f060;
+}
+#waybar-dynamic.swayg_workspaces label.hidden.global.visible {
+    opacity: 0.55;
+}
+/* Urgent wins: full visibility, solid border, no italic */
+#waybar-dynamic.swayg_workspaces label.hidden.urgent {
+    opacity: 1.0;
+    background-color: #e8453c;
+    border-bottom: 3px solid #e8453c;
+    color: #ffffff;
+    font-style: normal;
+}
+#waybar-dynamic.swayg_workspaces label.hidden.hover {
+    opacity: 0.7;
+    background: rgba(184, 133, 255, 0.15);
+}
+#waybar-dynamic.swayg_workspaces label.hidden.focused.hover {
+    opacity: 0.95;
+    background: rgba(184, 133, 255, 0.4);
+}
+#waybar-dynamic.swayg_workspaces label.hidden.global.hover {
+    opacity: 0.7;
+    background: rgba(184, 240, 96, 0.1);
+}
 
-For the groups bar (`swayg_groups`):
-
-```css
-#waybar-dynamic.swayg_groups label        { /* inactive */ }
-#waybar-dynamic.swayg_groups label.active { /* active on focused output */ }
-#waybar-dynamic.swayg_groups label.urgent { /* a workspace in the group is urgent */ }
+/* ── swayg groups — same structure, blue accent ─────────────────── */
+#waybar-dynamic.swayg_groups label {
+    padding: 0 5px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.5);
+    border-bottom: 3px solid rgba(137, 180, 250, 0.3);
+    border-radius: 0;
+}
+#waybar-dynamic.swayg_groups label.active {
+    color: #ffffff;
+    background: rgba(137, 180, 250, 0.15);
+    border-bottom: 3px solid #89b4fa;
+}
+#waybar-dynamic.swayg_groups label.urgent {
+    background-color: #eb4d4b;
+    color: #ffffff;
+}
+#waybar-dynamic.swayg_groups label.hover {
+    background: rgba(100, 114, 125, 0.3);
+}
+#waybar-dynamic.swayg_groups label.active.hover {
+    background: rgba(137, 180, 250, 0.3);
+}
 ```
 
 ## Storage locations
