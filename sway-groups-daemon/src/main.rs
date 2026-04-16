@@ -99,8 +99,8 @@ async fn main() -> Result<()> {
 
     let ipc = SwayIpcClient::new()?;
 
-    info!("Subscribing to sway workspace events");
-    let mut event_stream = ipc.subscribe(&["workspace"])?;
+    info!("Subscribing to sway workspace and window events");
+    let mut event_stream = ipc.subscribe(&["workspace", "window"])?;
 
     loop {
         if paused_loop.load(Ordering::Relaxed) {
@@ -115,6 +115,8 @@ async fn main() -> Result<()> {
                 }
                 if event_type == sway_groups_core::sway::SwayEventType::Workspace as u32 {
                     handle_workspace_event(&db_path, &ipc, &payload, &config).await;
+                } else if event_type == sway_groups_core::sway::SwayEventType::Window as u32 {
+                    handle_window_event(&db_path, &ipc, &payload, &config).await;
                 }
             }
             Err(e) => {
@@ -295,5 +297,35 @@ async fn handle_workspace_destroyed(db: &DatabaseManager, ipc: &SwayIpcClient, w
     let waybar_sync = sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
     if let Err(e) = waybar_sync.update_waybar().await {
         warn!("Failed to update waybar: {}", e);
+    }
+}
+
+async fn handle_window_event(db_path: &Path, ipc: &SwayIpcClient, payload: &[u8], config: &sway_groups_config::SwaygConfig) {
+    let event: serde_json::Value = match serde_json::from_slice(payload) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    let change = event.get("change").and_then(|v| v.as_str()).unwrap_or("");
+    if change != "urgent" {
+        return;
+    }
+
+    info!("Window urgency change detected, updating waybar");
+
+    let db = match DatabaseManager::new(db_path.to_path_buf()).await {
+        Ok(db) => db,
+        Err(e) => {
+            error!("Failed to open DB '{}': {}", db_path.display(), e);
+            return;
+        }
+    };
+
+    let waybar_sync = sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
+    if let Err(e) = waybar_sync.update_waybar().await {
+        warn!("Failed to update waybar workspaces: {}", e);
+    }
+    if let Err(e) = waybar_sync.update_waybar_groups().await {
+        warn!("Failed to update waybar groups: {}", e);
     }
 }

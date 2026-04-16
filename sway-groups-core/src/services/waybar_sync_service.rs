@@ -162,6 +162,9 @@ impl WaybarSyncService {
                         if sway_ws.focused {
                             classes.push("focused".to_string());
                         }
+                        if sway_ws.urgent {
+                            classes.push("urgent".to_string());
+                        }
                         if is_hidden_here {
                             classes.push("hidden".to_string());
                         }
@@ -192,6 +195,9 @@ impl WaybarSyncService {
                         classes.push("focused".to_string());
                     } else if sway_ws.visible && is_output_focused {
                         classes.push("visible".to_string());
+                    }
+                    if sway_ws.urgent {
+                        classes.push("urgent".to_string());
                     }
                     if is_hidden_here {
                         classes.push("hidden".to_string());
@@ -243,22 +249,23 @@ impl WaybarSyncService {
 
         let groups = GroupEntity::find().all(self.db.conn()).await?;
 
-        // Batch load membership + workspace data only if needed for empty-group filtering
+        // Load memberships for all groups (needed for empty-filtering and urgent detection)
+        let group_ids: Vec<i32> = groups.iter().map(|g| g.id).collect();
+        let memberships_map =
+            crate::db::queries::load_memberships_by_group_ids(self.db.conn(), &group_ids)
+                .await?;
+
+        let all_ws_ids: Vec<i32> = memberships_map
+            .values()
+            .flat_map(|ms| ms.iter().map(|m| m.workspace_id))
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let ws_map =
+            crate::db::queries::load_workspaces_by_ids(self.db.conn(), &all_ws_ids).await?;
+
+        // Build non-empty set if needed
         let non_empty_group_ids: Option<HashSet<i32>> = if !self.groups_show_empty {
-            let group_ids: Vec<i32> = groups.iter().map(|g| g.id).collect();
-            let memberships_map =
-                crate::db::queries::load_memberships_by_group_ids(self.db.conn(), &group_ids)
-                    .await?;
-
-            let all_ws_ids: Vec<i32> = memberships_map
-                .values()
-                .flat_map(|ms| ms.iter().map(|m| m.workspace_id))
-                .collect::<HashSet<_>>()
-                .into_iter()
-                .collect();
-            let ws_map =
-                crate::db::queries::load_workspaces_by_ids(self.db.conn(), &all_ws_ids).await?;
-
             let ids = groups
                 .iter()
                 .filter(|g| {
@@ -273,6 +280,14 @@ impl WaybarSyncService {
         } else {
             None
         };
+
+        // Build set of urgent workspace names from sway
+        let sway_workspaces = self.ipc_client.get_workspaces()?;
+        let urgent_ws_names: HashSet<String> = sway_workspaces
+            .iter()
+            .filter(|w| w.urgent)
+            .map(|w| w.name.clone())
+            .collect();
 
         let mut widgets = Vec::new();
 
@@ -289,9 +304,25 @@ impl WaybarSyncService {
                 _ => {}
             }
 
+            // A group is urgent if any of its member workspaces is urgent in sway
+            let is_urgent = memberships_map
+                .get(&group.id)
+                .map(|ms| {
+                    ms.iter().any(|m| {
+                        ws_map
+                            .get(&m.workspace_id)
+                            .map(|ws| urgent_ws_names.contains(&ws.name))
+                            .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false);
+
             let mut classes = Vec::new();
             if is_active {
                 classes.push("active".to_string());
+            }
+            if is_urgent {
+                classes.push("urgent".to_string());
             }
 
             widgets.push(Self::make_group_widget(&group.name, &classes));
