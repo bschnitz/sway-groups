@@ -426,13 +426,53 @@ Workspace crates:
 
 ```sh
 cargo build --workspace
-cargo test -- --test-threads=1    # integration tests need a serialised sway session
+cargo test -p sway-groups-tests -- --test-threads=1   # integration tests need a serialised sway session
 cargo clippy --workspace --all-targets
 ```
 
 The integration test suite spawns a test-mode daemon, temporarily stops
 the production daemon, and tears everything down in `Drop`. All tests
 must be able to run against a real sway socket.
+
+### Waybar test progress
+
+During test runs a waybar `custom` module shows which test is running
+and overall progress (n/m). The test fixture writes JSON to
+`/tmp/swayg-test-progress.json` which waybar polls every second.
+
+Add the module to your waybar config (e.g. in `modules-center`):
+
+```jsonc
+"custom/swayg_tests": {
+    "exec": "cat /tmp/swayg-test-progress.json 2>/dev/null || echo '{}'",
+    "return-type": "json",
+    "interval": 1,
+    "tooltip": true
+}
+```
+
+Suggested CSS (pill badge, yellow while running, green when done):
+
+```css
+#custom-swayg_tests {
+    padding: 2px 12px;
+    margin: 4px 0;
+    background: rgba(80, 80, 100, 0.4);
+    color: rgba(255, 255, 255, 0.5);
+    border-radius: 12px;
+    font-size: 12px;
+}
+#custom-swayg_tests.running {
+    color: #1e1e2e;
+    background: #fac850;
+    font-weight: bold;
+}
+#custom-swayg_tests.done {
+    color: #1e1e2e;
+    background: #a6e3a1;
+    font-weight: bold;
+}
+```
 
 ## License
 

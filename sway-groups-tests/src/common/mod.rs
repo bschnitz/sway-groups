@@ -9,6 +9,8 @@ use assert_cmd::assert::OutputAssertExt;
 pub const TEST_DB_PATH: &str = "/tmp/swayg-integration-test.db";
 pub const TEST_PREFIX: &str = "zz_test_";
 const DAEMON_STATE_FILE: &str = "/tmp/swayg-daemon-test.state";
+const TEST_COUNTER_FILE: &str = "/tmp/swayg-test-counter";
+const TEST_PROGRESS_FILE: &str = "/tmp/swayg-test-progress.json";
 const SIGUSR1: libc::c_int = 10;
 const SIGUSR2: libc::c_int = 12;
 
@@ -217,6 +219,7 @@ pub struct TestFixture {
     pub db_path: PathBuf,
     pub orig_workspace: String,
     pub orig_output: String,
+    test_name: String,
 }
 
 impl TestFixture {
@@ -253,10 +256,21 @@ impl TestFixture {
         let orig_output = get_primary_output()?;
         let orig_workspace = get_focused_workspace()?;
 
+        // Derive test name from the current binary name
+        let test_name = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+            // cargo test binary names have a hash suffix: test_01_group_select-abc123
+            .map(|n| n.split('-').next().unwrap_or(&n).to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        waybar_test_started(&test_name);
+
         Ok(Self {
             db_path,
             orig_workspace,
             orig_output,
+            test_name,
         })
     }
 
@@ -278,6 +292,8 @@ impl Drop for TestFixture {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
+
+        waybar_test_finished(&self.test_name);
 
         release_prod_daemon_lock();
     }
@@ -680,4 +696,82 @@ pub fn unplug_output(name: &str) {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
+}
+
+// ---------------------------------------------------------------------------
+// Waybar test progress display
+// ---------------------------------------------------------------------------
+
+/// Count total integration test files.
+fn count_test_files() -> u32 {
+    let test_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_default()
+        .join("tests");
+    std::fs::read_dir(test_dir)
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    let name = e.file_name();
+                    let name = name.to_string_lossy();
+                    name.starts_with("test_") && name.ends_with(".rs")
+                })
+                .count() as u32
+        })
+        .unwrap_or(0)
+}
+
+/// Read the current counter from the progress file, increment it, and write back.
+/// Auto-resets when the previous run completed (counter >= total).
+/// Returns (new_current, total).
+fn increment_test_counter() -> (u32, u32) {
+    let total = count_test_files();
+    let prev = std::fs::read_to_string(TEST_COUNTER_FILE)
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(0);
+    let current = if prev >= total { 1 } else { prev + 1 };
+    let _ = std::fs::write(TEST_COUNTER_FILE, current.to_string());
+    (current, total)
+}
+
+/// Reset the test counter (call before a test run or at the end).
+pub fn reset_test_counter() {
+    let _ = std::fs::remove_file(TEST_COUNTER_FILE);
+}
+
+/// Write test progress as waybar-compatible JSON to a file.
+/// The waybar custom module reads this file every second.
+fn write_test_progress(text: &str, class: &str, tooltip: &str) {
+    let json = format!(
+        r#"{{"text": "{}", "class": "{}", "tooltip": "{}"}}"#,
+        text.replace('"', "\\\""),
+        class,
+        tooltip.replace('"', "\\\""),
+    );
+    let tmp = format!("{}.tmp", TEST_PROGRESS_FILE);
+    if std::fs::write(&tmp, &json).is_ok() {
+        let _ = std::fs::rename(&tmp, TEST_PROGRESS_FILE);
+    }
+}
+
+/// Notify waybar that a test is starting. Called from TestFixture::new().
+pub fn waybar_test_started(test_name: &str) {
+    let (current, total) = increment_test_counter();
+    let text = format!(" {} ({}/{})", test_name, current, total);
+    write_test_progress(&text, "running", test_name);
+}
+
+/// Notify waybar that the last test finished. Called from TestFixture::drop().
+pub fn waybar_test_finished(_test_name: &str) {
+    let current = std::fs::read_to_string(TEST_COUNTER_FILE)
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(0);
+    let total = count_test_files();
+    if current >= total {
+        let text = format!(" done ({}/{})", total, total);
+        write_test_progress(&text, "done", "All tests completed");
+    }
 }
