@@ -216,6 +216,54 @@ async fn test_32_hidden_workspaces() {
         .swayg(&["workspace", "unhide", WS_B, "--group", GROUP_A])
         .success();
 
+    // --- Test 6a: hiding the focused workspace auto-focuses away ---
+    Command::new("swaymsg")
+        .args(["workspace", WS_B])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("swaymsg workspace");
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(get_focused_workspace().unwrap(), WS_B);
+
+    fixture
+        .swayg(&["workspace", "hide", WS_B, "--group", GROUP_A])
+        .success();
+    assert_ne!(
+        get_focused_workspace().unwrap(),
+        WS_B,
+        "focus moved away from newly hidden WS_B"
+    );
+    // Unhide again
+    fixture
+        .swayg(&["workspace", "unhide", WS_B, "--group", GROUP_A])
+        .success();
+
+    // --- Test 6b: toggling show_hidden to false while on a hidden ws focuses away ---
+    fixture
+        .swayg(&["workspace", "hide", WS_B, "--group", GROUP_A])
+        .success();
+    // Enable show_hidden so we can navigate to the hidden workspace
+    fixture
+        .swayg(&["workspace", "show-hidden"])
+        .success();
+    fixture.swayg(&["nav", "go", WS_B]).success();
+    assert_eq!(get_focused_workspace().unwrap(), WS_B);
+
+    // Now toggle show_hidden off — should auto-focus away
+    fixture
+        .swayg(&["workspace", "show-hidden", "--toggle"])
+        .success();
+    assert_ne!(
+        get_focused_workspace().unwrap(),
+        WS_B,
+        "focus moved away when show_hidden toggled off while on hidden WS_B"
+    );
+    // Unhide WS_B for subsequent tests
+    fixture
+        .swayg(&["workspace", "unhide", WS_B, "--group", GROUP_A])
+        .success();
+
     // --- Test 7: show-hidden toggle persists in settings table ---
     assert_eq!(get_show_hidden(&fixture.db_path), "false", "default is false");
 

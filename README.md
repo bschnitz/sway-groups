@@ -170,7 +170,7 @@ swayg workspace move 3 -g dev,work   # set exactly these groups
 swayg workspace global 1             # workspace 1 visible in all groups
 swayg workspace rename old new       # rename (merges if target exists)
 
-# Hiding
+# Hiding (auto-focuses away when the focused workspace becomes invisible)
 swayg workspace hide                 # hide currently focused workspace in active group
 swayg workspace hide 4 -g dev -t     # toggle "4" hidden in group dev
 swayg workspace unhide 4 -g dev

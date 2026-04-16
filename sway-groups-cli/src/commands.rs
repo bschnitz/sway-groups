@@ -377,7 +377,7 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     match cli.command {
         Command::Group { action } => run_group(action, group_service, workspace_service, waybar_sync, ipc_client).await?,
-        Command::Workspace { action } => run_workspace(action, workspace_service, group_service, waybar_sync, ipc_client).await?,
+        Command::Workspace { action } => run_workspace(action, workspace_service, group_service, nav_service, waybar_sync, ipc_client).await?,
         Command::Nav { action } => run_nav(action, nav_service, workspace_service, waybar_sync, ipc_client).await?,
         Command::Container { action } => run_container(action, nav_service, group_service, workspace_service, waybar_sync, ipc_client).await?,
         Command::Sync { all, workspaces, groups, outputs, repair, init_bars, init_bars_retries, init_bars_delay_ms } => {
@@ -548,6 +548,7 @@ async fn run_workspace(
     action: WorkspaceAction,
     workspace_service: &WorkspaceService,
     group_service: &GroupService,
+    nav_service: &NavigationService,
     waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
@@ -763,6 +764,9 @@ async fn run_workspace(
                 true
             };
             workspace_service.set_hidden(&ws, &group_name, new_state).await?;
+            if new_state && !workspace_service.get_show_hidden().await? {
+                focus_away_from_hidden(&ws, ipc_client, nav_service).await?;
+            }
             waybar_sync.update_waybar().await?;
             if new_state {
                 println!("Hid workspace \"{}\" in group \"{}\"", ws, group_name);
@@ -790,6 +794,18 @@ async fn run_workspace(
                 true
             };
             workspace_service.set_show_hidden(new_value).await?;
+            if !new_value {
+                // show_hidden turned off — if focused workspace is hidden, move away
+                if let Ok(focused) = ipc_client.get_focused_workspace() {
+                    let output = ipc_client.get_primary_output().unwrap_or_default();
+                    let group_name = group_service.get_active_group(&output).await.unwrap_or(None);
+                    if let Some(ref gn) = group_name {
+                        if workspace_service.is_hidden(&focused.name, gn).await.unwrap_or(false) {
+                            focus_away_from_hidden(&focused.name, ipc_client, nav_service).await?;
+                        }
+                    }
+                }
+            }
             waybar_sync.update_waybar().await?;
             println!("show_hidden_workspaces = {}", new_value);
         }
@@ -822,6 +838,26 @@ async fn resolve_group(
             Ok(None)
         }
     }
+}
+
+/// If the focused workspace matches `hidden_ws`, focus the first visible
+/// workspace on the same output. The current workspace is already hidden in
+/// the DB, so the visible list will not contain it.
+async fn focus_away_from_hidden(
+    hidden_ws: &str,
+    ipc_client: &SwayIpcClient,
+    nav_service: &NavigationService,
+) -> anyhow::Result<()> {
+    let focused = ipc_client.get_focused_workspace().map(|w| w.name).unwrap_or_default();
+    if focused != hidden_ws {
+        return Ok(());
+    }
+    let output = ipc_client.get_primary_output().unwrap_or_default();
+    let visible = nav_service.get_visible_workspaces(&output).await?;
+    if let Some(target) = visible.first() {
+        nav_service.focus_workspace(target).await?;
+    }
+    Ok(())
 }
 
 async fn run_nav(
