@@ -4,14 +4,8 @@ Group-aware workspace management for [sway](https://swaywm.org/), with
 [waybar](https://github.com/Alexays/Waybar) integration via
 [waybar-dynamic](https://github.com/bschnitz/waybar-dynamic).
 
-> **On "optional" bar integration.** In principle `swayg` is bar-agnostic —
-> it manages state in sway, and the bar integration is a separate output
-> channel. In practice waybar + waybar-dynamic is currently the only
-> supported renderer, and without it there is no visible feedback on
-> which groups exist or which workspaces the active group contains. So
-> unless you plan to write your own bar module against the
-> [waybar-dynamic IPC](https://github.com/bschnitz/waybar-dynamic),
-> treat waybar as a required dependency.
+(Theoretically waybar is an optional dependency, but there are not yet any other
+adapters for other bars.)
 
 Workspaces are organised into named **groups**. Each output has an **active
 group**, and only workspaces that belong to the active group (plus globals
@@ -32,11 +26,22 @@ back to a group restores its last focus.
   work. Toggle `show_hidden_workspaces` to reveal them with a `.hidden`
   CSS class applied (combinable with `.global`, `.focused`, …).
 
+![swayg bars in waybar](screenshot.png)
+
 ## Requirements
 
 - Rust toolchain (stable, edition 2024)
 - sway
 - waybar + [waybar-dynamic](https://github.com/bschnitz/waybar-dynamic) — see note above
+
+> **On "optional" bar integration.** In principle `swayg` is bar-agnostic —
+> it manages state in sway, and the bar integration is a separate output
+> channel. In practice waybar + waybar-dynamic is currently the only
+> supported renderer, and without it there is no visible feedback on
+> which groups exist or which workspaces the active group contains. So
+> unless you plan to write your own bar module against the
+> [waybar-dynamic IPC](https://github.com/bschnitz/waybar-dynamic),
+> treat waybar as a required dependency.
 
 ## Installation
 
@@ -263,8 +268,6 @@ Runtime DB flags (separate from the config file):
 - `show_hidden_workspaces` — toggled via `swayg workspace show-hidden`
 
 ## Bar styling
-
-![swayg bars in waybar](screenshot.png)
 
 Widgets emitted by `swayg` carry CSS classes you can style. The available
 classes are:
