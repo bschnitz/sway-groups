@@ -293,6 +293,10 @@ impl Drop for TestFixture {
             .stderr(Stdio::null())
             .status();
 
+        // Re-sync the live DB to waybar so the bar reflects the real state
+        // after tests that may have changed outputs or workspace focus.
+        let _ = swayg_live(&["sync"]);
+
         waybar_test_finished(&self.test_name);
 
         release_prod_daemon_lock();
