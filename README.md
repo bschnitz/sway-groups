@@ -226,6 +226,37 @@ Current sections:
 - `[bar.workspaces]` / `[bar.groups]` — per-bar tuning: socket instance
   name, display mode (`all` | `active` | `none`), `show_global`,
   `show_empty`
+- `[[assign]]` — workspace assignment rules (see below)
+
+### Assignment rules
+
+When the daemon sees a new workspace, it normally adds it to the active
+group. Assignment rules let you override this per workspace name — useful
+together with sway's `assign` / `for_window` rules:
+
+```toml
+# Exact match: put "music" in media + bg, mark global
+[[assign]]
+match = "music"
+groups = ["media", "bg"]
+global = true
+
+# Regex match: any workspace starting with "dev_" goes to dev group
+[[assign]]
+match = "^dev_"
+match_type = "regex"
+groups = ["dev"]
+```
+
+- `match` — pattern to match against the workspace name.
+- `match_type` — `"exact"` (default) or `"regex"`.
+- `groups` — groups to add the workspace to. When set, replaces the
+  default "add to active group" behaviour.
+- `global` — mark the workspace as global (`true`/`false`).
+
+If a rule sets `global = true` but specifies no `groups`, the workspace
+is still added to the active group (in addition to being global).
+Multiple rules can match the same workspace — their groups are merged.
 
 Runtime DB flags (separate from the config file):
 

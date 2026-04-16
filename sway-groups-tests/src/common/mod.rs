@@ -103,6 +103,15 @@ fn send_signal(pid: u32, sig: libc::c_int) {
 }
 
 pub fn start_test_daemon() {
+    start_test_daemon_inner(None);
+}
+
+/// Start the test daemon with a custom config file.
+pub fn start_test_daemon_with_config(config_path: &std::path::Path) {
+    start_test_daemon_inner(Some(config_path));
+}
+
+fn start_test_daemon_inner(config_path: Option<&std::path::Path>) {
     let mut guard = TEST_DAEMON.lock().unwrap();
     if guard.is_some() {
         return;
@@ -110,13 +119,17 @@ pub fn start_test_daemon() {
 
     let _ = std::fs::remove_file(DAEMON_STATE_FILE);
 
-    let child = Command::new(daemon_binary())
-        .arg(TEST_DB_PATH)
+    let mut cmd = Command::new(daemon_binary());
+    cmd.arg(TEST_DB_PATH)
         .arg(DAEMON_STATE_FILE)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("Failed to spawn swayg-daemon for tests");
+        .stderr(Stdio::null());
+
+    if let Some(path) = config_path {
+        cmd.env("SWAYG_CONFIG", path);
+    }
+
+    let child = cmd.spawn().expect("Failed to spawn swayg-daemon for tests");
 
     std::thread::sleep(std::time::Duration::from_millis(300));
 

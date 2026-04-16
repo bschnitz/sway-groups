@@ -207,13 +207,22 @@ async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_
         return;
     }
 
-    info!("External workspace detected: '{}' on output '{}', adding to active group", ws_name, ws_output);
+    info!("External workspace detected: '{}' on output '{}'", ws_name, ws_output);
+
+    // Check config assignment rules before inserting.
+    let rules = config.matching_rules(ws_name);
+    let make_global = rules.iter().any(|r| r.global);
+    let rule_groups: Vec<String> = rules
+        .iter()
+        .flat_map(|r| r.groups.iter().cloned())
+        .collect();
+    let has_rule_groups = !rule_groups.is_empty();
 
     let ws_active = workspace::ActiveModel {
         name: Set(ws_name.to_string()),
         number: Set(ws_num.map(|n| n as i32)),
         output: Set(Some(ws_output.clone())),
-        is_global: Set(false),
+        is_global: Set(make_global),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -227,37 +236,67 @@ async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_
         }
     };
 
-    let output_model = OutputEntity::find_by_name(&ws_output)
-        .one(db.conn())
-        .await
-        .unwrap_or(None);
+    if make_global {
+        info!("Marked workspace '{}' as global (config rule)", ws_name);
+    }
 
-    let active_group = output_model
-        .as_ref()
-        .and_then(|o| o.active_group.clone());
-
-    if let Some(ref ag) = active_group {
-        if let Some(group) = GroupEntity::find_by_name(ag)
-            .one(db.conn())
-            .await
-            .unwrap_or(None)
-        {
-            let membership = workspace_group::ActiveModel {
-                workspace_id: Set(ws.id),
-                group_id: Set(group.id),
-                created_at: Set(Some(now)),
-                ..Default::default()
-            };
-            if let Err(e) = membership.insert(db.conn()).await {
-                error!("Failed to add workspace '{}' to group '{}': {}", ws_name, ag, e);
-                return;
+    if has_rule_groups {
+        // Assignment rules specify groups — use those instead of active group.
+        for group_name in &rule_groups {
+            if let Some(group) = GroupEntity::find_by_name(group_name)
+                .one(db.conn())
+                .await
+                .unwrap_or(None)
+            {
+                let membership = workspace_group::ActiveModel {
+                    workspace_id: Set(ws.id),
+                    group_id: Set(group.id),
+                    created_at: Set(Some(now)),
+                    ..Default::default()
+                };
+                if let Err(e) = membership.insert(db.conn()).await {
+                    error!("Failed to add workspace '{}' to group '{}': {}", ws_name, group_name, e);
+                } else {
+                    info!("Added workspace '{}' to group '{}' (config rule)", ws_name, group_name);
+                }
+            } else {
+                warn!("Config rule references group '{}' which does not exist, skipping", group_name);
             }
-            info!("Added external workspace '{}' to group '{}'", ws_name, ag);
-        } else {
-            warn!("Active group '{}' not found for output '{}', workspace '{}' not assigned to any group", ag, ws_output, ws_name);
         }
     } else {
-        info!("No active group for output '{}', workspace '{}' not assigned", ws_output, ws_name);
+        // No rule groups — fall back to adding to the active group.
+        let output_model = OutputEntity::find_by_name(&ws_output)
+            .one(db.conn())
+            .await
+            .unwrap_or(None);
+
+        let active_group = output_model
+            .as_ref()
+            .and_then(|o| o.active_group.clone());
+
+        if let Some(ref ag) = active_group {
+            if let Some(group) = GroupEntity::find_by_name(ag)
+                .one(db.conn())
+                .await
+                .unwrap_or(None)
+            {
+                let membership = workspace_group::ActiveModel {
+                    workspace_id: Set(ws.id),
+                    group_id: Set(group.id),
+                    created_at: Set(Some(now)),
+                    ..Default::default()
+                };
+                if let Err(e) = membership.insert(db.conn()).await {
+                    error!("Failed to add workspace '{}' to group '{}': {}", ws_name, ag, e);
+                    return;
+                }
+                info!("Added external workspace '{}' to group '{}'", ws_name, ag);
+            } else {
+                warn!("Active group '{}' not found for output '{}', workspace '{}' not assigned to any group", ag, ws_output, ws_name);
+            }
+        } else {
+            info!("No active group for output '{}', workspace '{}' not assigned", ws_output, ws_name);
+        }
     }
 
     let waybar_sync = sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
