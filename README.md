@@ -28,57 +28,57 @@ back to a group restores its last focus.
 
 ![swayg bars in waybar](screenshot.png)
 
-## Requirements
+## Setup overview
 
-- Rust toolchain (stable, edition 2024)
-- sway
-- waybar + [waybar-dynamic](https://github.com/bschnitz/waybar-dynamic) — see note above
+1. [Install the CLI](#1-install-the-cli) (`swayg`)
+2. [Install and start the daemon](#2-install-and-start-the-daemon) (`swayg-daemon`)
+3. [Install waybar-dynamic](#3-install-waybar-dynamic)
+4. [Configure waybar](#4-configure-waybar)
+5. [Style the bar](#5-style-the-bar)
+6. [Use the CLI and bind keys](#6-use-the-cli-and-bind-keys)
 
-> **On "optional" bar integration.** In principle `swayg` is bar-agnostic —
-> it manages state in sway, and the bar integration is a separate output
-> channel. In practice waybar + waybar-dynamic is currently the only
-> supported renderer, and without it there is no visible feedback on
-> which groups exist or which workspaces the active group contains. So
-> unless you plan to write your own bar module against the
-> [waybar-dynamic IPC](https://github.com/bschnitz/waybar-dynamic),
-> treat waybar as a required dependency.
+### 1. Install the CLI
 
-## Installation
+Requires a Rust toolchain (stable, edition 2024).
 
-### `cargo install --git` (recommended right now)
-
-No crates.io publishing needed:
+**From crates.io:**
 
 ```sh
-cargo install --git https://github.com/bschnitz/sway-groups swayg
-cargo install --git https://github.com/bschnitz/sway-groups swayg-daemon
+cargo install sway-groups-cli
 ```
 
-Both binaries land in `~/.cargo/bin/`. Make sure that's in your `PATH`.
+**From git (latest development version):**
 
-### `cargo install --path` (from a local clone)
+```sh
+cargo install --git https://github.com/bschnitz/sway-groups sway-groups-cli
+```
+
+**From a local clone:**
 
 ```sh
 git clone https://github.com/bschnitz/sway-groups
 cd sway-groups
 cargo install --path sway-groups-cli
-cargo install --path sway-groups-daemon
 ```
 
-### Later: `cargo install` from crates.io
+The binary `swayg` lands in `~/.cargo/bin/`. Make sure that's in your `PATH`.
 
-Once the crates are published (in order: `sway-groups-config` →
-`sway-groups-core` → `sway-groups-cli` / `sway-groups-daemon`) it becomes:
+### 2. Install and start the daemon
+
+The daemon watches sway IPC events (workspace creation/deletion, urgency
+changes) and keeps the DB and bar in sync.
+
+**Install:**
 
 ```sh
-cargo install sway-groups-cli
-cargo install sway-groups-daemon
+cargo install sway-groups-daemon        # from crates.io
+# or
+cargo install --git https://github.com/bschnitz/sway-groups sway-groups-daemon
 ```
 
-### systemd user unit for the daemon
+**Option A: systemd user service (recommended)**
 
-`cargo install` cannot install non-binary files, so copy this unit once
-into `~/.config/systemd/user/swayg-daemon.service`:
+Create `~/.config/systemd/user/swayg-daemon.service`:
 
 ```ini
 [Unit]
@@ -98,15 +98,12 @@ WantedBy=graphical-session.target
 ```
 
 ```sh
-mkdir -p ~/.config/systemd/user
-# paste the unit above into ~/.config/systemd/user/swayg-daemon.service
 systemctl --user daemon-reload
 systemctl --user enable --now swayg-daemon.service
 ```
 
 The unit is `WantedBy=graphical-session.target`. For sway users, make sure
-the target actually gets activated — the common recipe is a small session
-target that sway starts. Create
+the target actually gets activated. Create
 `~/.config/systemd/user/sway-session.target`:
 
 ```ini
@@ -121,27 +118,157 @@ BindsTo=graphical-session.target
 exec systemctl --user --no-block start sway-session.target
 ```
 
-### waybar-dynamic integration
+**Option B: start directly from sway config (no systemd)**
 
-Install [waybar-dynamic](https://github.com/bschnitz/waybar-dynamic),
-then add two modules to your waybar config:
+Add to your sway `config`:
+
+```
+exec swayg-daemon
+```
+
+The daemon runs in the foreground and exits when sway exits. Logs go to
+stderr (visible in sway's journal or log file). Set `RUST_LOG=info` for
+verbose output:
+
+```
+exec RUST_LOG=sway_groups_daemon=info swayg-daemon
+```
+
+### 3. Install waybar-dynamic
+
+[waybar-dynamic](https://github.com/bschnitz/waybar-dynamic) is the CFFI
+module that renders swayg's widgets in waybar. Follow its
+[installation instructions](https://github.com/bschnitz/waybar-dynamic#installation)
+— in short:
+
+```sh
+git clone https://github.com/bschnitz/waybar-dynamic
+cd waybar-dynamic
+cargo build --release
+mkdir -p ~/.config/waybar/modules
+cp target/release/libwaybar_dynamic.so ~/.config/waybar/modules/
+```
+
+### 4. Configure waybar
+
+Add two waybar-dynamic modules to your `~/.config/waybar/config.jsonc` — one
+for groups, one for workspaces:
 
 ```jsonc
-"cffi/swayg_groups": {
-    "module_path": "/path/to/libwaybar_dynamic.so",
-    "name": "swayg_groups"
-},
-"cffi/swayg_workspaces": {
-    "module_path": "/path/to/libwaybar_dynamic.so",
-    "name": "swayg_workspaces"
+{
+    "modules-left": [
+        "cffi/swayg_groups",
+        "cffi/swayg_workspaces"
+    ],
+
+    "cffi/swayg_groups": {
+        "module_path": "~/.config/waybar/modules/libwaybar_dynamic.so",
+        "name": "swayg_groups"
+    },
+    "cffi/swayg_workspaces": {
+        "module_path": "~/.config/waybar/modules/libwaybar_dynamic.so",
+        "name": "swayg_workspaces"
+    }
 }
 ```
 
 `swayg` pushes widget updates to these modules automatically after every
-state-changing command. For per-state CSS classes see [Bar styling](#bar-styling)
-below.
+state-changing command.
 
-## First-time setup
+### 5. Style the bar
+
+Widgets carry CSS classes you can style in `~/.config/waybar/style.css`:
+
+- **`swayg_workspaces`**: `focused`, `visible`, `urgent`, `global`,
+  `hidden` (only when `show_hidden_workspaces = true`). Classes combine,
+  e.g. `.focused.global`, `.hidden.global.focused`.
+- **`swayg_groups`**: `active`, `urgent` (a workspace in the group is
+  urgent).
+
+**Example theme** (lavender workspaces, blue groups — as in the screenshot):
+
+```css
+/* ── swayg workspaces — lavender, lime accent for globals ───────── */
+#waybar-dynamic.swayg_workspaces label {
+    padding: 0 5px;
+    background: transparent;
+    color: #C9A0F8;
+    border-bottom: 3px solid rgba(184, 133, 255, 0.7);
+    border-radius: 0;
+    transition: background 0.15s, color 0.15s;
+}
+#waybar-dynamic.swayg_workspaces label.focused {
+    background: rgba(184, 133, 255, 0.35);
+    color: #ffffff;
+    border-bottom: 3px solid #D4AAFF;
+}
+#waybar-dynamic.swayg_workspaces label.visible {
+    color: rgba(184, 133, 255, 0.75);
+}
+#waybar-dynamic.swayg_workspaces label.urgent {
+    background-image: linear-gradient(to top, transparent, rgba(232, 69, 60, 0.7));
+    color: #ffffff;
+}
+#waybar-dynamic.swayg_workspaces label.global {
+    color: #b8f060;
+    border-bottom: 3px solid rgba(184, 240, 96, 0.75);
+}
+#waybar-dynamic.swayg_workspaces label.focused.global {
+    background: rgba(184, 133, 255, 0.3);
+    color: #b8f060;
+    border-bottom: 3px solid #b8f060;
+}
+#waybar-dynamic.swayg_workspaces label.hover {
+    background: rgba(184, 133, 255, 0.2);
+}
+
+/* Hidden workspaces: faded + italic + dashed border */
+#waybar-dynamic.swayg_workspaces label.hidden {
+    opacity: 0.45;
+    border-bottom: 3px dashed rgba(184, 133, 255, 0.7);
+    font-style: italic;
+}
+#waybar-dynamic.swayg_workspaces label.hidden.focused {
+    opacity: 0.8;
+    background: rgba(184, 133, 255, 0.25);
+    color: #ffffff;
+    border-bottom: 3px dashed #D4AAFF;
+}
+#waybar-dynamic.swayg_workspaces label.hidden.urgent {
+    opacity: 1.0;
+    background-image: linear-gradient(to top, transparent, rgba(232, 69, 60, 0.7));
+    color: #ffffff;
+    font-style: normal;
+}
+
+/* ── swayg groups — blue accent ─────────────────────────────────── */
+#waybar-dynamic.swayg_groups label {
+    padding: 0 5px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.5);
+    border-bottom: 3px solid rgba(137, 180, 250, 0.3);
+    border-radius: 0;
+}
+#waybar-dynamic.swayg_groups label.active {
+    color: #ffffff;
+    background: rgba(137, 180, 250, 0.15);
+    border-bottom: 3px solid #89b4fa;
+}
+#waybar-dynamic.swayg_groups label.urgent {
+    background-image: linear-gradient(to top, transparent, rgba(235, 77, 75, 0.7));
+    color: #ffffff;
+}
+#waybar-dynamic.swayg_groups label.hover {
+    background: rgba(100, 114, 125, 0.3);
+}
+#waybar-dynamic.swayg_groups label.active.hover {
+    background: rgba(137, 180, 250, 0.3);
+}
+```
+
+### 6. Use the CLI and bind keys
+
+**First-time setup:**
 
 ```sh
 swayg init             # creates the DB and imports current sway state
@@ -150,7 +277,25 @@ swayg init             # creates the DB and imports current sway state
 This seeds the DB from sway's current workspaces, creates the default
 group (`0`), and pushes initial bar widgets.
 
-## CLI overview
+**Example sway keybindings** (add to your sway `config`):
+
+```
+# Switch groups
+bindsym $mod+a exec swayg group next -w
+bindsym $mod+d exec swayg group prev -w
+
+# Navigate workspaces within active group
+bindsym $mod+n exec swayg nav next -w
+bindsym $mod+p exec swayg nav prev -w
+
+# Move container to workspace
+bindsym $mod+Shift+n exec swayg container move next --switch-to-workspace
+
+# Re-sync after swaymsg reload
+bindsym $mod+r exec sh -c 'swaymsg reload && sleep 0.3 && swayg sync --init-bars --init-bars-retries 20 --init-bars-delay-ms 500'
+```
+
+**CLI overview:**
 
 Every command is documented under `--help`:
 
@@ -267,153 +412,11 @@ Runtime DB flags (separate from the config file):
 
 - `show_hidden_workspaces` — toggled via `swayg workspace show-hidden`
 
-## Bar styling
-
-Widgets emitted by `swayg` carry CSS classes you can style. The available
-classes are:
-
-- **`swayg_workspaces`**: `focused` (focused on this output), `visible`
-  (visible on another output), `urgent`, `global` (`is_global` flag),
-  `hidden` (only sent when `show_hidden_workspaces = true`). Classes
-  combine, e.g. `.focused.global`, `.hidden.global.focused`.
-- **`swayg_groups`**: `active` (active group on the focused output),
-  `urgent` (a workspace in the group is urgent).
-
-### Example theme (lavender workspaces, blue groups)
-
-This is the theme used in the screenshot above — drop it into your
-`~/.config/waybar/style.css`:
-
-```css
-/* ── swayg workspaces — lavender, lime accent for globals ───────── */
-#waybar-dynamic.swayg_workspaces label {
-    padding: 0 5px;
-    background: transparent;
-    color: #C9A0F8;
-    border-bottom: 3px solid rgba(184, 133, 255, 0.7);
-    border-radius: 0;
-    transition: background 0.15s, color 0.15s;
-}
-#waybar-dynamic.swayg_workspaces label.focused {
-    background: rgba(184, 133, 255, 0.35);
-    color: #ffffff;
-    border-bottom: 3px solid #D4AAFF;
-}
-#waybar-dynamic.swayg_workspaces label.visible {
-    color: rgba(184, 133, 255, 0.75);
-}
-#waybar-dynamic.swayg_workspaces label.urgent {
-    background-image: linear-gradient(to top, transparent, rgba(232, 69, 60, 0.7));
-    color: #ffffff;
-}
-/* Global workspaces: lime text + border */
-#waybar-dynamic.swayg_workspaces label.global {
-    color: #b8f060;
-    border-bottom: 3px solid rgba(184, 240, 96, 0.75);
-}
-#waybar-dynamic.swayg_workspaces label.focused.global {
-    background: rgba(184, 133, 255, 0.3);
-    color: #b8f060;
-    border-bottom: 3px solid #b8f060;
-}
-#waybar-dynamic.swayg_workspaces label.global.visible {
-    color: rgba(184, 240, 96, 0.6);
-}
-#waybar-dynamic.swayg_workspaces label.hover {
-    background: rgba(184, 133, 255, 0.2);
-}
-#waybar-dynamic.swayg_workspaces label.focused.hover {
-    background: rgba(184, 133, 255, 0.5);
-}
-#waybar-dynamic.swayg_workspaces label.global.hover {
-    background: rgba(184, 240, 96, 0.15);
-}
-#waybar-dynamic.swayg_workspaces label.focused.global.hover {
-    background: rgba(184, 133, 255, 0.45);
-}
-
-/* Hidden (only shown when show_hidden_workspaces = true):
-   faded + italic + dashed border signals "would normally be invisible". */
-#waybar-dynamic.swayg_workspaces label.hidden {
-    opacity: 0.45;
-    border-bottom: 3px dashed rgba(184, 133, 255, 0.7);
-    font-style: italic;
-}
-#waybar-dynamic.swayg_workspaces label.hidden.focused {
-    opacity: 0.8;
-    background: rgba(184, 133, 255, 0.25);
-    color: #ffffff;
-    border-bottom: 3px dashed #D4AAFF;
-}
-#waybar-dynamic.swayg_workspaces label.hidden.visible {
-    opacity: 0.55;
-}
-#waybar-dynamic.swayg_workspaces label.hidden.global {
-    opacity: 0.5;
-    color: #b8f060;
-    border-bottom: 3px dashed rgba(184, 240, 96, 0.75);
-    font-style: italic;
-}
-#waybar-dynamic.swayg_workspaces label.hidden.focused.global {
-    opacity: 0.85;
-    background: rgba(184, 133, 255, 0.25);
-    color: #b8f060;
-    border-bottom: 3px dashed #b8f060;
-}
-#waybar-dynamic.swayg_workspaces label.hidden.global.visible {
-    opacity: 0.55;
-}
-/* Urgent wins: full visibility, solid border, no italic */
-#waybar-dynamic.swayg_workspaces label.hidden.urgent {
-    opacity: 1.0;
-    background-image: linear-gradient(to top, transparent, rgba(232, 69, 60, 0.7));
-    color: #ffffff;
-    font-style: normal;
-}
-#waybar-dynamic.swayg_workspaces label.hidden.hover {
-    opacity: 0.7;
-    background: rgba(184, 133, 255, 0.15);
-}
-#waybar-dynamic.swayg_workspaces label.hidden.focused.hover {
-    opacity: 0.95;
-    background: rgba(184, 133, 255, 0.4);
-}
-#waybar-dynamic.swayg_workspaces label.hidden.global.hover {
-    opacity: 0.7;
-    background: rgba(184, 240, 96, 0.1);
-}
-
-/* ── swayg groups — same structure, blue accent ─────────────────── */
-#waybar-dynamic.swayg_groups label {
-    padding: 0 5px;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.5);
-    border-bottom: 3px solid rgba(137, 180, 250, 0.3);
-    border-radius: 0;
-}
-#waybar-dynamic.swayg_groups label.active {
-    color: #ffffff;
-    background: rgba(137, 180, 250, 0.15);
-    border-bottom: 3px solid #89b4fa;
-}
-#waybar-dynamic.swayg_groups label.urgent {
-    background-image: linear-gradient(to top, transparent, rgba(235, 77, 75, 0.7));
-    color: #ffffff;
-}
-#waybar-dynamic.swayg_groups label.hover {
-    background: rgba(100, 114, 125, 0.3);
-}
-#waybar-dynamic.swayg_groups label.active.hover {
-    background: rgba(137, 180, 250, 0.3);
-}
-```
-
 ## Storage locations
 
 - SQLite DB: `~/.local/share/swayg/swayg.db`
 - Log files: `~/.local/share/swayg/swayg.YYYY-MM-DD` (daily rotation)
 - Config (optional): `~/.config/swayg/config.toml`
-- Daemon state: `/tmp/swayg-daemon-test.state` (test daemon only)
 
 Reset all state:
 
@@ -424,26 +427,14 @@ swayg init
 
 ## Architecture
 
-Workspace crates:
-
 | Crate | Role |
 |---|---|
 | `sway-groups-config` | TOML config schema + loader |
 | `sway-groups-core` | DB entities, services, sway/waybar IPC |
 | `sway-groups-cli` → `swayg` | User-facing CLI |
-| `sway-groups-daemon` → `swayg-daemon` | Catches sway IPC events (new/empty workspace, etc.), keeps DB + bars in sync |
+| `sway-groups-daemon` → `swayg-daemon` | Catches sway IPC events, keeps DB + bars in sync |
 | `sway-groups-dummy-window` | Wayland dummy window for tests (`publish = false`) |
 | `sway-groups-tests` | Integration tests against a live sway session (`publish = false`) |
-
-### Tables
-
-- `workspaces`, `groups` — main entities
-- `workspace_groups` — many-to-many membership
-- `hidden_workspaces` — presence-based `(workspace_id, group_id)` pairs
-- `outputs` — per-output state (including active group)
-- `settings` — global runtime flags (key/value)
-- `focus_history`, `group_state`, `pending_workspace_events` — internal
-  state for nav-back and daemon coordination
 
 ## Troubleshooting
 
