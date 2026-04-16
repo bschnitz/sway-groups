@@ -300,8 +300,7 @@ This is the theme used in the screenshot above — drop it into your
     color: rgba(184, 133, 255, 0.75);
 }
 #waybar-dynamic.swayg_workspaces label.urgent {
-    background-color: #e8453c;
-    border-bottom: 3px solid #e8453c;
+    background-image: linear-gradient(to top, transparent, rgba(232, 69, 60, 0.7));
     color: #ffffff;
 }
 /* Global workspaces: lime text + border */
@@ -364,8 +363,7 @@ This is the theme used in the screenshot above — drop it into your
 /* Urgent wins: full visibility, solid border, no italic */
 #waybar-dynamic.swayg_workspaces label.hidden.urgent {
     opacity: 1.0;
-    background-color: #e8453c;
-    border-bottom: 3px solid #e8453c;
+    background-image: linear-gradient(to top, transparent, rgba(232, 69, 60, 0.7));
     color: #ffffff;
     font-style: normal;
 }
@@ -396,7 +394,7 @@ This is the theme used in the screenshot above — drop it into your
     border-bottom: 3px solid #89b4fa;
 }
 #waybar-dynamic.swayg_groups label.urgent {
-    background-color: #eb4d4b;
+    background-image: linear-gradient(to top, transparent, rgba(235, 77, 75, 0.7));
     color: #ffffff;
 }
 #waybar-dynamic.swayg_groups label.hover {
