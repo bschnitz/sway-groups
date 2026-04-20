@@ -28,5 +28,5 @@ chrono.workspace = true
 sea-orm.workspace = true
 directories.workspace = true
 signal-hook = "0.3"
-sway-groups-core = { version = "0.2.0", path = "../sway-groups-core" }
-sway-groups-config = { version = "0.2.0", path = "../sway-groups-config" }
+sway-groups-core = { version = "0.2.1", path = "../sway-groups-core" }
+sway-groups-config = { version = "0.2.1", path = "../sway-groups-config" }
