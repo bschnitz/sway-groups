@@ -1081,40 +1081,65 @@ impl WorkspaceService {
             }
         }
 
-        // --- Add sway workspaces to DB that are not yet tracked ---
+        // --- Add sway workspaces to DB / adopt orphans ---
         for sway_ws in &sway_workspaces {
             let existing = WorkspaceEntity::find_by_name(&sway_ws.name)
                 .one(self.db.conn())
                 .await?;
 
-            if existing.is_none() {
-                let active = workspace::ActiveModel {
-                    name: Set(sway_ws.name.clone()),
-                    number: Set(sway_ws.num.map(|n| n as i32)),
-                    output: Set(Some(sway_ws.output.clone())),
-                    is_global: Set(false),
+            if let Some(ref ws) = existing {
+                // Workspace exists — check if it's orphaned (no group, not global).
+                if !ws.is_global {
+                    let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
+                        .all(self.db.conn())
+                        .await?;
+                    if memberships.is_empty() {
+                        if let Some(group) = GroupEntity::find_by_name(&self.default_group)
+                            .one(self.db.conn())
+                            .await?
+                        {
+                            let membership = workspace_group::ActiveModel {
+                                workspace_id: Set(ws.id),
+                                group_id: Set(group.id),
+                                created_at: Set(Some(now)),
+                                ..Default::default()
+                            };
+                            membership.insert(self.db.conn()).await?;
+                        }
+                        info!("repair: adopted orphaned workspace '{}' into group '{}'", ws.name, self.default_group);
+                        added_ws += 1;
+                    }
+                }
+                continue;
+            }
+
+            // Workspace not in DB — create and assign to default group.
+            let active = workspace::ActiveModel {
+                name: Set(sway_ws.name.clone()),
+                number: Set(sway_ws.num.map(|n| n as i32)),
+                output: Set(Some(sway_ws.output.clone())),
+                is_global: Set(false),
+                created_at: Set(Some(now)),
+                updated_at: Set(Some(now)),
+                ..Default::default()
+            };
+            let ws = active.insert(self.db.conn()).await?;
+
+            if let Some(group) = GroupEntity::find_by_name(&self.default_group)
+                .one(self.db.conn())
+                .await?
+            {
+                let membership = workspace_group::ActiveModel {
+                    workspace_id: Set(ws.id),
+                    group_id: Set(group.id),
                     created_at: Set(Some(now)),
-                    updated_at: Set(Some(now)),
                     ..Default::default()
                 };
-                let ws = active.insert(self.db.conn()).await?;
-
-                if let Some(group) = GroupEntity::find_by_name(&self.default_group)
-                    .one(self.db.conn())
-                    .await?
-                {
-                    let membership = workspace_group::ActiveModel {
-                        workspace_id: Set(ws.id),
-                        group_id: Set(group.id),
-                        created_at: Set(Some(now)),
-                        ..Default::default()
-                    };
-                    membership.insert(self.db.conn()).await?;
-                }
-
-                info!("repair: added workspace '{}' to group '{}'", sway_ws.name, self.default_group);
-                added_ws += 1;
+                membership.insert(self.db.conn()).await?;
             }
+
+            info!("repair: added workspace '{}' to group '{}'", sway_ws.name, self.default_group);
+            added_ws += 1;
         }
 
         // --- Prune empty groups ---

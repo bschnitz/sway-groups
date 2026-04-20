@@ -203,7 +203,24 @@ async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_
         .await
         .unwrap_or(None);
 
-    if existing.is_some() {
+    if let Some(ref ws) = existing {
+        // Workspace already in DB. Check if it has any group membership or is global.
+        // If orphaned (e.g. after a sway restart with a stale DB), adopt it into
+        // the active group so it becomes visible again.
+        if !ws.is_global {
+            let memberships = WorkspaceGroupEntity::find_by_workspace(ws.id)
+                .all(db.conn())
+                .await
+                .unwrap_or_default();
+            if memberships.is_empty() {
+                info!("Workspace '{}' exists but is orphaned (no group, not global), adopting", ws_name);
+                adopt_into_active_group(db, ws.id, &ws_output, now).await;
+                let waybar_sync = sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
+                if let Err(e) = waybar_sync.update_waybar().await {
+                    warn!("Failed to update waybar: {}", e);
+                }
+            }
+        }
         return;
     }
 
@@ -366,5 +383,42 @@ async fn handle_window_event(db_path: &Path, ipc: &SwayIpcClient, payload: &[u8]
     }
     if let Err(e) = waybar_sync.update_waybar_groups().await {
         warn!("Failed to update waybar groups: {}", e);
+    }
+}
+
+/// Add an existing workspace to the active group of the given output.
+async fn adopt_into_active_group(
+    db: &DatabaseManager,
+    ws_id: i32,
+    ws_output: &str,
+    now: chrono::NaiveDateTime,
+) {
+    let output_model = OutputEntity::find_by_name(ws_output)
+        .one(db.conn())
+        .await
+        .unwrap_or(None);
+
+    let active_group = output_model
+        .as_ref()
+        .and_then(|o| o.active_group.clone());
+
+    if let Some(ref ag) = active_group {
+        if let Some(group) = GroupEntity::find_by_name(ag)
+            .one(db.conn())
+            .await
+            .unwrap_or(None)
+        {
+            let membership = workspace_group::ActiveModel {
+                workspace_id: Set(ws_id),
+                group_id: Set(group.id),
+                created_at: Set(Some(now)),
+                ..Default::default()
+            };
+            if let Err(e) = membership.insert(db.conn()).await {
+                error!("Failed to adopt workspace into group '{}': {}", ag, e);
+            } else {
+                info!("Adopted orphaned workspace into group '{}'", ag);
+            }
+        }
     }
 }
