@@ -10,6 +10,26 @@ use tracing::info;
 
 use sway_groups_config::BarDisplay;
 
+/// Resolve the absolute path to the `swayg` binary so click handlers work
+/// regardless of waybar's PATH.
+fn swayg_bin() -> String {
+    // Try same directory as the currently running binary (swayg or swayg-daemon).
+    if let Ok(exe) = std::env::current_exe() {
+        let candidate = exe.with_file_name("swayg");
+        if candidate.exists() {
+            return candidate.to_string_lossy().into_owned();
+        }
+    }
+    // Fallback: $HOME/.cargo/bin/swayg
+    if let Ok(home) = std::env::var("HOME") {
+        let candidate = std::path::PathBuf::from(home).join(".cargo/bin/swayg");
+        if candidate.exists() {
+            return candidate.to_string_lossy().into_owned();
+        }
+    }
+    "swayg".to_string()
+}
+
 #[derive(Clone)]
 pub struct WaybarSyncService {
     db: DatabaseManager,
@@ -349,7 +369,8 @@ impl WaybarSyncService {
     fn make_widget(name: &str, classes: &[String]) -> WidgetSpec {
         let label = name.to_string();
         let id = format!("ws-{}", name);
-        let on_click = format!("swaymsg workspace \"{}\"", name);
+        let swayg = swayg_bin();
+        let on_click = format!("{} nav go \"{}\"", swayg, name);
 
         WidgetSpec {
             id,
@@ -365,9 +386,10 @@ impl WaybarSyncService {
     fn make_group_widget(name: &str, classes: &[String]) -> WidgetSpec {
         let label = name.to_string();
         let id = format!("group-{}", name);
-        let on_click = format!("swayg group select \"{}\"", name);
-        let on_right_click = "swayg group prev-on-output -w".to_string();
-        let on_middle_click = "swayg group next-on-output -w".to_string();
+        let swayg = swayg_bin();
+        let on_click = format!("{} group select \"{}\"", swayg, name);
+        let on_right_click = format!("{} group prev-on-output -w", swayg);
+        let on_middle_click = format!("{} group next-on-output -w", swayg);
 
         WidgetSpec {
             id,
