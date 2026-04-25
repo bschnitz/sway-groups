@@ -1,6 +1,7 @@
 //! Sway IPC module.
 
 pub mod client;
+pub mod pid_resolver;
 pub mod types;
 pub mod waybar_client;
 

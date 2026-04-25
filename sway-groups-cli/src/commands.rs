@@ -97,6 +97,11 @@ enum Command {
         #[command(subcommand)]
         action: ConfigAction,
     },
+    /// Jump to or list notification source workspaces.
+    Notification {
+        #[command(subcommand)]
+        action: NotificationAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -107,6 +112,19 @@ enum ConfigAction {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+}
+
+#[derive(Subcommand)]
+enum NotificationAction {
+    /// Jump to the workspace where the latest notification originated.
+    /// Switches groups automatically if the workspace is not in the active group.
+    Go {
+        /// Keep the notification in the queue instead of removing it after jumping.
+        #[arg(long)]
+        no_delete_msg: bool,
+    },
+    /// List recent notifications with their source workspaces.
+    List,
 }
 
 #[derive(Subcommand)]
@@ -394,6 +412,9 @@ pub async fn run(
         }
         Command::Config { action } => {
             run_config(action)?;
+        }
+        Command::Notification { action } => {
+            run_notification(action, group_service, nav_service, workspace_service, waybar_sync, ipc_client).await?;
         }
     }
     Ok(())
@@ -1244,6 +1265,83 @@ fn run_config(action: ConfigAction) -> anyhow::Result<()> {
                 }
                 None => {
                     print!("{}", config.dump()?);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn run_notification(
+    action: NotificationAction,
+    group_service: &GroupService,
+    nav_service: &NavigationService,
+    workspace_service: &WorkspaceService,
+    waybar_sync: &WaybarSyncService,
+    ipc_client: &SwayIpcClient,
+) -> anyhow::Result<()> {
+    match action {
+        NotificationAction::Go { no_delete_msg } => {
+            let record = if no_delete_msg {
+                let records = sway_groups_core::notification::read_notifications();
+                match records.last().cloned() {
+                    Some(r) => r,
+                    None => {
+                        println!("No notifications recorded.");
+                        return Ok(());
+                    }
+                }
+            } else {
+                match sway_groups_core::notification::pop_last() {
+                    Some(r) => r,
+                    None => {
+                        println!("No notifications recorded.");
+                        return Ok(());
+                    }
+                }
+            };
+
+            let ws_name = &record.workspace_name;
+            let output = resolve_output(None, ipc_client)?;
+            let active_group = group_service.get_active_group(&output).await?;
+            let ws_groups = workspace_service
+                .get_groups_for_workspace(ws_name)
+                .await
+                .unwrap_or_default();
+
+            let in_active = active_group
+                .as_ref()
+                .is_some_and(|ag| ws_groups.iter().any(|g| g == ag));
+
+            if !in_active && !ws_groups.is_empty() {
+                // Switch to the first group (alphabetically) that contains this workspace.
+                let target_group = ws_groups.iter().min().unwrap();
+                group_service.set_active_group(&output, target_group).await?;
+                waybar_sync.update_waybar().await?;
+                waybar_sync.update_waybar_groups().await?;
+            }
+
+            nav_service.go_workspace(ws_name).await?;
+            waybar_sync.update_waybar().await?;
+        }
+        NotificationAction::List => {
+            let records = sway_groups_core::notification::read_notifications();
+            if records.is_empty() {
+                println!("No notifications recorded.");
+            } else {
+                for (i, r) in records.iter().rev().enumerate() {
+                    let app = if r.app_name.is_empty() {
+                        "unknown"
+                    } else {
+                        &r.app_name
+                    };
+                    println!(
+                        "{}. [{}] {} -> workspace \"{}\"",
+                        i + 1,
+                        r.timestamp.format("%H:%M:%S"),
+                        app,
+                        r.workspace_name,
+                    );
                 }
             }
         }

@@ -1,3 +1,5 @@
+mod dbus_monitor;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -98,6 +100,12 @@ async fn main() -> Result<()> {
     info!("swayg-daemon starting (db={}, state_file={})", db_path.display(), state_file.display());
 
     let ipc = SwayIpcClient::new()?;
+
+    // Spawn D-Bus notification monitor in a separate task.
+    let ipc_for_dbus = ipc.clone();
+    tokio::spawn(async move {
+        dbus_monitor::run(ipc_for_dbus).await;
+    });
 
     info!("Subscribing to sway workspace and window events");
     let mut event_stream = ipc.subscribe(&["workspace", "window"])?;

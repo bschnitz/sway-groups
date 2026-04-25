@@ -2791,7 +2791,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "sway-groups-cli"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2808,7 +2808,7 @@ dependencies = [
 
 [[package]]
 name = "sway-groups-config"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "directories",
@@ -2819,7 +2819,7 @@ dependencies = [
 
 [[package]]
 name = "sway-groups-core"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2834,7 +2834,7 @@ dependencies = [
 
 [[package]]
 name = "sway-groups-daemon"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2854,7 +2854,7 @@ dependencies = [
 
 [[package]]
 name = "sway-groups-dummy-window"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "calloop",
  "calloop-wayland-source",
@@ -2865,7 +2865,7 @@ dependencies = [
 
 [[package]]
 name = "sway-groups-tests"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "assert_cmd",

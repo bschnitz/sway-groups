@@ -2,6 +2,7 @@
 
 pub mod error;
 pub mod db;
+pub mod notification;
 pub mod sway;
 pub mod services;
 
