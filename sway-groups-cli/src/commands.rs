@@ -396,7 +396,7 @@ pub async fn run(
     match cli.command {
         Command::Group { action } => run_group(action, group_service, workspace_service, waybar_sync, ipc_client).await?,
         Command::Workspace { action } => run_workspace(action, workspace_service, group_service, nav_service, waybar_sync, ipc_client).await?,
-        Command::Nav { action } => run_nav(action, nav_service, workspace_service, waybar_sync, ipc_client).await?,
+        Command::Nav { action } => run_nav(action, nav_service, group_service, workspace_service, waybar_sync, ipc_client).await?,
         Command::Container { action } => run_container(action, nav_service, group_service, workspace_service, waybar_sync, ipc_client).await?,
         Command::Sync { all, workspaces, groups, outputs, repair, init_bars, init_bars_retries, init_bars_delay_ms } => {
             run_sync(all, workspaces, groups, outputs, repair, init_bars, init_bars_retries, init_bars_delay_ms, workspace_service, group_service, waybar_sync).await?;
@@ -881,9 +881,46 @@ async fn focus_away_from_hidden(
     Ok(())
 }
 
+/// Make the active group contain `workspace` before navigating to it.
+///
+/// If `workspace` belongs to a group other than the active one, switch the
+/// active group to the (alphabetically first) group that contains it. Without
+/// this, navigating to a workspace of an inactive group triggers
+/// `ensure_workspace_in_active_group`, which *adds* the workspace to the current
+/// group (pulling it in) instead of switching to where it already lives. A
+/// not-yet-existing workspace has no groups → no-op, so creation still works.
+async fn switch_to_workspace_group(
+    workspace: &str,
+    group_service: &GroupService,
+    workspace_service: &WorkspaceService,
+    waybar_sync: &WaybarSyncService,
+    ipc_client: &SwayIpcClient,
+) -> anyhow::Result<()> {
+    let output = resolve_output(None, ipc_client)?;
+    let active_group = group_service.get_active_group(&output).await?;
+    let ws_groups = workspace_service
+        .get_groups_for_workspace(workspace)
+        .await
+        .unwrap_or_default();
+
+    let in_active = active_group
+        .as_ref()
+        .is_some_and(|ag| ws_groups.iter().any(|g| g == ag));
+
+    if !in_active && !ws_groups.is_empty() {
+        // First group alphabetically that contains this workspace.
+        let target_group = ws_groups.iter().min().unwrap();
+        group_service.set_active_group(&output, target_group).await?;
+        waybar_sync.update_waybar().await?;
+        waybar_sync.update_waybar_groups().await?;
+    }
+    Ok(())
+}
+
 async fn run_nav(
     action: NavAction,
     nav_service: &NavigationService,
+    group_service: &GroupService,
     workspace_service: &WorkspaceService,
     waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
@@ -937,6 +974,9 @@ async fn run_nav(
             };
 
             let result: anyhow::Result<()> = async {
+                // Group-aware: switch to the workspace's own group first, so we
+                // jump *to* it instead of pulling it into the current group.
+                switch_to_workspace_group(&workspace, group_service, workspace_service, waybar_sync, ipc_client).await?;
                 nav_service.go_workspace(&workspace).await?;
                 waybar_sync.update_waybar().await?;
                 println!("Navigated to \"{}\"", workspace);
@@ -1302,25 +1342,7 @@ async fn run_notification(
             };
 
             let ws_name = &record.workspace_name;
-            let output = resolve_output(None, ipc_client)?;
-            let active_group = group_service.get_active_group(&output).await?;
-            let ws_groups = workspace_service
-                .get_groups_for_workspace(ws_name)
-                .await
-                .unwrap_or_default();
-
-            let in_active = active_group
-                .as_ref()
-                .is_some_and(|ag| ws_groups.iter().any(|g| g == ag));
-
-            if !in_active && !ws_groups.is_empty() {
-                // Switch to the first group (alphabetically) that contains this workspace.
-                let target_group = ws_groups.iter().min().unwrap();
-                group_service.set_active_group(&output, target_group).await?;
-                waybar_sync.update_waybar().await?;
-                waybar_sync.update_waybar_groups().await?;
-            }
-
+            switch_to_workspace_group(ws_name, group_service, workspace_service, waybar_sync, ipc_client).await?;
             nav_service.go_workspace(ws_name).await?;
             waybar_sync.update_waybar().await?;
         }
