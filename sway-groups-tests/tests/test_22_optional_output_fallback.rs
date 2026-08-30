@@ -2,7 +2,7 @@ use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
     create_virtual_output, db_count, get_focused_output, get_focused_workspace, orig_active_group,
-    swayg_fixture_db, swayg_output, unplug_output, TestFixture,
+    swayg_output, unplug_output, TestFixture,
 };
 
 const GROUP: &str = "zz_test_oo_fallback";
@@ -10,11 +10,6 @@ const GROUP: &str = "zz_test_oo_fallback";
 #[tokio::test]
 async fn test_22_optional_output_fallback() {
     let fixture = TestFixture::new().await.expect("fixture setup");
-
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
 
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
@@ -42,18 +37,6 @@ async fn test_22_optional_output_fallback() {
             .status();
     }
     std::thread::sleep(std::time::Duration::from_millis(200));
-
-    if real_db.exists() {
-        assert_eq!(
-            db_count(
-                &real_db,
-                &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)
-            ),
-            0,
-            "precondition: {} must not exist in production DB",
-            GROUP
-        );
-    }
 
     // --- Create virtual output ---
     let virtual_output = create_virtual_output().expect("create virtual output");
@@ -136,27 +119,6 @@ async fn test_22_optional_output_fallback() {
         virtual_output
     );
 
-    // --- Cleanup: switch back to original group (live DB) ---
-    swayg_fixture_db(&[
-        "group",
-        "select",
-        &orig_group,
-        "--output",
-        &fixture.orig_output,
-    ])
-    .success();
-    let _ = Command::new("swaymsg")
-        .args(["workspace", &fixture.orig_workspace])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        fixture.orig_workspace,
-        "focused on original workspace"
-    );
-
     // --- Cleanup: auto-delete test group ---
     fixture.swayg(&["group", "delete", GROUP, "--force"]).success();
     assert_eq!(
@@ -192,10 +154,5 @@ async fn test_22_optional_output_fallback() {
         ),
         0,
         "no test group_state remains"
-    );
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        fixture.orig_workspace,
-        "focused on original workspace after test"
     );
 }

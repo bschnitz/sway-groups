@@ -1,8 +1,8 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    create_virtual_output, db_count, db_query, get_focused_output, get_focused_workspace,
-    orig_active_group, swayg_fixture_db, swayg_output, unplug_output, workspace_exists_in_sway,
+    create_virtual_output, db_count, db_query, get_focused_output,
+    orig_active_group, swayg_output, unplug_output, workspace_exists_in_sway,
     workspace_of_window, ws_in_group_count, DummyWindowHandle, TestFixture,
 };
 
@@ -14,11 +14,6 @@ const WS_B: &str = "zz_tg_onext_b";
 #[tokio::test]
 async fn test_21_optional_output_next_prev_auto_resolve() {
     let fixture = TestFixture::new().await.expect("fixture setup");
-
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
 
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
@@ -63,19 +58,6 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
     }
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    if real_db.exists() {
-        assert_eq!(
-            db_count(
-                &real_db,
-                &format!(
-                    "SELECT count(*) FROM groups WHERE name IN ('{}', '{}')",
-                    GROUP_A, GROUP_B
-                )
-            ),
-            0,
-            "precondition: test groups must not exist in production DB"
-        );
-    }
     assert!(
         !workspace_exists_in_sway(WS_A),
         "precondition: {} must not exist in sway",
@@ -357,16 +339,10 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
         "GROUP_B auto-deleted"
     );
 
-    // --- Cleanup: restore original group on live DB ---
-    swayg_fixture_db(&[
-        "group",
-        "select",
-        &orig_group,
-        "--output",
-        &fixture.orig_output,
-    ])
-    .success();
-    let _ = std::process::Command::new("swaymsg")
+    // Selecting the test groups above focused their workspaces again, which
+    // re-created them in sway. Leave them so sway destroys the empty ones
+    // before the post-condition re-syncs the DB from the tree.
+    let _ = Command::new("swaymsg")
         .args(["workspace", &fixture.orig_workspace])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -414,10 +390,5 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
         ),
         0,
         "no test workspace_groups remain"
-    );
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        fixture.orig_workspace,
-        "focused on original workspace after test"
     );
 }

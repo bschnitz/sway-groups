@@ -11,24 +11,6 @@ const WS2: &str = "zz_tg_ao_ws2";
 async fn test_25_nav_next_prev_all_outputs() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    if real_db.exists() {
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
-            0
-        );
-        for ws in [WS1, WS2] {
-            assert_eq!(
-                db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", ws)),
-                0
-            );
-        }
-    }
-
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group not empty");
     let orig_ws = get_focused_workspace().expect("focused ws");

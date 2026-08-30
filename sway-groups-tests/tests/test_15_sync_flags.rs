@@ -1,5 +1,5 @@
 use sway_groups_tests::common::{
-    db_count, db_exec, get_focused_workspace, orig_active_group, swayg_fixture_db, swayg_output,
+    db_count, db_exec, orig_active_group, swayg_output,
     workspace_exists_in_sway, DummyWindowHandle, TestFixture,
 };
 
@@ -8,35 +8,9 @@ const GROUP2: &str = "zz_test_sync2__";
 const WS1: &str = "zz_tg_ws1__s";
 const WS_STALE: &str = "zz_tg_stale__s";
 
-
 #[tokio::test]
 async fn test_15_sync_flags() {
     let fixture = TestFixture::new().await.expect("fixture setup");
-
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    // --- Precondition: no test data in production DB ---
-    if real_db.exists() {
-        for g in [GROUP, GROUP2] {
-            assert_eq!(
-                db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", g)),
-                0,
-                "{} must not exist in production DB",
-                g
-            );
-        }
-        for ws in [WS1, WS_STALE] {
-            assert_eq!(
-                db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", ws)),
-                0,
-                "{} must not exist in production DB",
-                ws
-            );
-        }
-    }
 
     assert!(!workspace_exists_in_sway(WS1), "{} must not exist in sway", WS1);
     assert!(!workspace_exists_in_sway(WS_STALE), "{} must not exist in sway", WS_STALE);
@@ -44,7 +18,6 @@ async fn test_15_sync_flags() {
     // --- Remember original state ---
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
-    let orig_ws = get_focused_workspace().expect("get focused workspace");
 
     // --- Setup: init + group + dummy window + move + switch back + DB manipulation ---
     fixture.init().success();
@@ -213,14 +186,4 @@ async fn test_15_sync_flags() {
     );
     assert_eq!(group_gone, 0, "no test groups remain");
     assert_eq!(ws_gone, 0, "no test workspaces remain");
-
-    // --- Cleanup: restore original group on live DB ---
-    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
-        .success();
-    let _ = std::process::Command::new("swaymsg")
-        .args(["workspace", &orig_ws])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(300));
 }

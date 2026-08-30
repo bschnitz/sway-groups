@@ -14,39 +14,6 @@ const WS1: &str = "zz_test_ws1_07";
 async fn test_07_group_rename() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    // --- Precondition: no test data in production DB ---
-    if real_db.exists() {
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
-            0,
-            "precondition: {} must not exist in production DB",
-            GROUP_A
-        );
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)),
-            0,
-            "precondition: {} must not exist in production DB",
-            GROUP_B
-        );
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_RENAMED)),
-            0,
-            "precondition: {} must not exist in production DB",
-            GROUP_RENAMED
-        );
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
-            0,
-            "precondition: {} must not exist in production DB",
-            WS1
-        );
-    }
-
     // --- Remember original state ---
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");

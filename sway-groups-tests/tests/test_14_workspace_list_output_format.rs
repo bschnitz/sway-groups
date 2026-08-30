@@ -1,6 +1,6 @@
 use sway_groups_tests::common::{
     db_count, db_query, get_focused_workspace, line_starts_with, orig_active_group,
-    output_contains, swayg_fixture_db, swayg_output, workspace_exists_in_sway, ws_in_group_count,
+    output_contains, swayg_output, workspace_exists_in_sway, ws_in_group_count,
     DummyWindowHandle, TestFixture,
 };
 
@@ -11,29 +11,6 @@ const WS_B: &str = "zz_tg_hid__";
 #[tokio::test]
 async fn test_14_workspace_list_output_format() {
     let fixture = TestFixture::new().await.expect("fixture setup");
-
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    // --- Precondition: no test data in production DB ---
-    if real_db.exists() {
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
-            0,
-            "{} must not exist in production DB",
-            GROUP
-        );
-        for ws in [WS_A, WS_B] {
-            assert_eq!(
-                db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", ws)),
-                0,
-                "{} must not exist in production DB",
-                ws
-            );
-        }
-    }
 
     for ws in [WS_A, WS_B] {
         assert!(!workspace_exists_in_sway(ws), "{} must not exist in sway", ws);
@@ -229,14 +206,4 @@ async fn test_14_workspace_list_output_format() {
     );
     assert_eq!(group_gone, 0, "no test groups remain");
     assert_eq!(ws_gone, 0, "no test workspaces remain");
-
-    // --- Cleanup: restore original group on live DB ---
-    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
-        .success();
-    let _ = std::process::Command::new("swaymsg")
-        .args(["workspace", &orig_ws])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(300));
 }

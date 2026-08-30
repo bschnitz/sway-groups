@@ -11,30 +11,6 @@ const WS2: &str = "zz_test_ws2_cnt";
 async fn test_02_workspace_with_containers() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    // --- Precondition: no test data in production DB ---
-    if real_db.exists() {
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
-            0,
-            "test group must not exist in production DB"
-        );
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
-            0,
-            "WS1 must not exist in production DB"
-        );
-    assert_eq!(
-        db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS2)),
-        0,
-        "WS2 must not exist in production DB"
-        );
-    }
-
     assert!(!workspace_exists_in_sway(WS1), "precondition: {} must not exist in sway", WS1);
     assert!(!workspace_exists_in_sway(WS2), "precondition: {} must not exist in sway", WS2);
 
@@ -232,17 +208,6 @@ async fn test_02_workspace_with_containers() {
         0,
         "test group was auto-deleted"
     );
-
-    // --- Cleanup: restore original group on live DB ---
-    use sway_groups_tests::common::swayg_fixture_db;
-    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
-        .success();
-    let _ = std::process::Command::new("swaymsg")
-        .args(["workspace", &orig_ws])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(300));
 
     // --- Post-condition: no test data remains ---
     let group_gone = db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP));

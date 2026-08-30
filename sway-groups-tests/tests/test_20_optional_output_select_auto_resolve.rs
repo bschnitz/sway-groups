@@ -1,8 +1,8 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    create_virtual_output, db_count, get_focused_output, get_focused_workspace, orig_active_group,
-    swayg_fixture_db, swayg_output, unplug_output, workspace_exists_in_sway, workspace_of_window,
+    create_virtual_output, db_count, get_focused_output, orig_active_group,
+    swayg_output, unplug_output, workspace_exists_in_sway, workspace_of_window,
     ws_in_group_count, DummyWindowHandle, TestFixture,
 };
 
@@ -12,11 +12,6 @@ const WS: &str = "zz_tg_oo_sel_ws";
 #[tokio::test]
 async fn test_20_optional_output_select_auto_resolve() {
     let fixture = TestFixture::new().await.expect("fixture setup");
-
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
 
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
@@ -59,17 +54,6 @@ async fn test_20_optional_output_select_auto_resolve() {
     }
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    if real_db.exists() {
-        assert_eq!(
-            db_count(
-                &real_db,
-                &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)
-            ),
-            0,
-            "precondition: {} must not exist in production DB",
-            GROUP
-        );
-    }
     assert!(
         !workspace_exists_in_sway(WS),
         "precondition: {} must not exist in sway",
@@ -247,20 +231,5 @@ async fn test_20_optional_output_select_auto_resolve() {
         ),
         0,
         "no test workspace_groups remain"
-    );
-    // --- Cleanup: restore original group on live DB ---
-    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
-        .success();
-    let _ = std::process::Command::new("swaymsg")
-        .args(["workspace", &fixture.orig_workspace])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(300));
-
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        fixture.orig_workspace,
-        "focused on original workspace after test"
     );
 }

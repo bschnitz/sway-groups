@@ -13,41 +13,11 @@ const KITTY_APP_ID: &str = "zz_tg_move_kitty";
 async fn test_19_nav_move_to() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    // Get original group from REAL db (before init)
+    // The group the fixture seeded on this output.
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
     let orig_ws = get_focused_workspace().expect("get focused workspace");
-
-    // --- 1. Precondition checks (BEFORE init) ---
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    if real_db.exists() {
-        assert_eq!(
-            db_count(
-                &real_db,
-                &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)
-            ),
-            0,
-            "precondition: {} must not exist in real DB",
-            GROUP
-        );
-        assert_eq!(
-            db_count(
-                &real_db,
-                &format!(
-                    "SELECT count(*) FROM workspaces WHERE name = '{}'",
-                    WS_TARGET
-                )
-            ),
-            0,
-            "precondition: {} must not exist in real DB",
-            WS_TARGET
-        );
-    }
 
     assert!(
         !workspace_exists_in_sway(WS_TARGET),

@@ -1,7 +1,7 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, swayg_fixture_db, window_count_in_tree,
+    db_count, orig_active_group, window_count_in_tree,
     workspace_exists_in_sway, ws_in_group_count, DummyWindowHandle, TestFixture,
 };
 
@@ -17,43 +17,9 @@ const WS1: &str = "zz_tg_ws1_prune";
 async fn test_16_group_prune() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    // Get original group from REAL db (before init)
+    // The group the fixture seeded on this output.
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
-
-    let orig_ws = get_focused_workspace().expect("get focused workspace");
-
-    // --- 1. Precondition checks (BEFORE init) ---
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    for g in [GROUP_A, GROUP_B, GROUP_C, GROUP_D, GROUP_E, GROUP_F] {
-        if real_db.exists() {
-            assert_eq!(
-                db_count(
-                    &real_db,
-                    &format!("SELECT count(*) FROM groups WHERE name = '{}'", g)
-                ),
-                0,
-                "precondition: {} must not exist in real DB",
-                g
-            );
-        }
-    }
-
-    if real_db.exists() {
-        assert_eq!(
-            db_count(
-                &real_db,
-                &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)
-            ),
-            0,
-            "precondition: {} must not exist in real DB",
-            WS1
-        );
-    }
 
     assert!(!workspace_exists_in_sway(WS1), "precondition: {} must not exist in sway", WS1);
 
@@ -303,14 +269,4 @@ async fn test_16_group_prune() {
         (0, 0),
         "no test data remains in DB"
     );
-
-    // --- Cleanup: restore original group on live DB ---
-    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
-        .success();
-    let _ = std::process::Command::new("swaymsg")
-        .args(["workspace", &orig_ws])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(300));
 }

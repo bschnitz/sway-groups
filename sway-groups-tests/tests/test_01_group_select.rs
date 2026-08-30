@@ -1,5 +1,5 @@
 use sway_groups_tests::common::{
-    TestFixture, get_focused_workspace, swayg_output, swayg_fixture_db,
+    TestFixture, swayg_output,
     db_count, db_query, orig_active_group,
 };
 
@@ -9,24 +9,9 @@ const TEST_GROUP: &str = "zz_test_group_select";
 async fn test_01_group_select() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    // Get original group from REAL db (before init)
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
+    // The group the fixture seeded on this output.
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
-
-    // --- Precondition: test group does not exist in real DB ---
-    if real_db.exists() {
-        let real_count = db_count(
-            &real_db,
-            &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP),
-        );
-        assert_eq!(real_count, 0, "test group must not exist in production DB");
-    }
-
-    let orig_ws = get_focused_workspace().expect("get focused workspace");
 
     // --- Setup: init ---
     fixture.init().success();
@@ -62,24 +47,7 @@ async fn test_01_group_select() {
         "test group auto-deleted"
     );
 
-    // --- Cleanup: restore original group on live DB ---
-    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
-        .success();
-    let _ = std::process::Command::new("swaymsg")
-        .args(["workspace", &orig_ws])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(300));
-
-    assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
-        0,
-        "test group was auto-deleted"
-    );
-
     // --- Post-condition: no test data ---
-    assert_eq!(db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)), 0);
     let wsgrp_gone = db_query(
         &fixture.db_path,
         &format!(

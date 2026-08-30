@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use sway_groups_tests::common::{
-    TestFixture, DummyWindowHandle, get_focused_workspace, swayg_fixture_db, swayg_output,
+    TestFixture, DummyWindowHandle, get_focused_workspace, swayg_output,
     db_count, db_query, orig_active_group, workspace_count_in_sway, window_count_in_tree,
     output_contains,
 };
@@ -18,30 +18,6 @@ fn get_active_group(db_path: &std::path::PathBuf, output: &str) -> String {
 async fn test_03_global_workspace() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    // --- Precondition checks on REAL db ---
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    if real_db.exists() {
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
-            0,
-            "precondition: test group must not exist in real DB"
-        );
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
-            0,
-            "precondition: WS1 must not exist in real DB"
-        );
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS2)),
-            0,
-            "precondition: WS2 must not exist in real DB"
-        );
-    }
-
     assert_eq!(
         workspace_count_in_sway(WS1), 0,
         "precondition: WS1 must not exist in sway"
@@ -54,8 +30,6 @@ async fn test_03_global_workspace() {
     // --- Remember original state ---
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
-
-    let orig_ws = get_focused_workspace().expect("get focused workspace");
 
     // --- 1. Init fresh DB ---
     fixture.init().success();
@@ -366,14 +340,4 @@ async fn test_03_global_workspace() {
         (0, 0, 0),
         "no test data remains in DB"
     );
-
-    // --- Cleanup: restore original group on live DB ---
-    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
-        .success();
-    let _ = std::process::Command::new("swaymsg")
-        .args(["workspace", &orig_ws])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(300));
 }

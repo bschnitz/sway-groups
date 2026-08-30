@@ -19,28 +19,6 @@ async fn test_08_nav_next_prev() {
 
     let orig_ws = get_focused_workspace().expect("get focused workspace");
 
-    // --- Precondition: no test data in real DB ---
-    let real_db = dirs::data_dir().unwrap_or_default().join("swayg").join("swayg.db");
-    if real_db.exists() {
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
-            0,
-            "{} must not exist in production DB",
-            GROUP
-        );
-        for ws in [WS_A, WS_B, WS_C] {
-            assert_eq!(
-                db_count(
-                    &real_db,
-                    &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", ws)
-                ),
-                0,
-                "{} must not exist in production DB",
-                ws
-            );
-        }
-    }
-
     for ws in [WS_A, WS_B, WS_C] {
         assert!(!workspace_exists_in_sway(ws), "{} must not exist in sway", ws);
     }

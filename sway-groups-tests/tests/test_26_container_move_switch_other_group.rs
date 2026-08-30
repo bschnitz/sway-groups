@@ -12,26 +12,6 @@ const WS_B: &str = "zz_tg_cm_og_wsb";
 async fn test_26_container_move_switch_to_other_group() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    if real_db.exists() {
-        for g in [GROUP_A, GROUP_B] {
-            assert_eq!(
-                db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", g)),
-                0
-            );
-        }
-        for ws in [WS_A, WS_B] {
-            assert_eq!(
-                db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", ws)),
-                0
-            );
-        }
-    }
-
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group not empty");
     let orig_ws = get_focused_workspace().expect("focused ws");

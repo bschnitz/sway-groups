@@ -13,31 +13,6 @@ const WS_NONE: &str = "zz_tg_lgf_none";
 async fn test_23_workspace_list_groups_flag() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    // --- Precondition: no test data in production DB ---
-    if real_db.exists() {
-        for g in [GROUP_A, GROUP_B] {
-            assert_eq!(
-                db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", g)),
-                0,
-                "{} must not exist in production DB",
-                g
-            );
-        }
-        for ws in [WS_MULTI, WS_SINGLE, WS_NONE] {
-            assert_eq!(
-                db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", ws)),
-                0,
-                "{} must not exist in production DB",
-                ws
-            );
-        }
-    }
-
     for ws in [WS_MULTI, WS_SINGLE, WS_NONE] {
         assert!(!workspace_exists_in_sway(ws), "{} must not exist in sway", ws);
     }

@@ -1,6 +1,6 @@
 
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, swayg_fixture_db, swayg_stderr,
+    db_count, orig_active_group, swayg_stderr,
     workspace_exists_in_sway, ws_in_group_count, DummyWindowHandle, TestFixture,
 };
 
@@ -11,22 +11,9 @@ const WS1: &str = "zz_test_ws_err_30";
 #[tokio::test]
 async fn test_30_error_handling() {
     let fixture = TestFixture::new().await.expect("fixture setup");
-    let orig_ws = get_focused_workspace().expect("get focused workspace");
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
-    // --- Precondition: no test data in real DB ---
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-    if real_db.exists() {
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name IN ('{}', '{}')", GROUP_A, GROUP_B)),
-            0,
-            "precondition: test groups must not exist in production DB"
-        );
-    }
     assert!(!workspace_exists_in_sway(WS1), "precondition: {} must not exist in sway", WS1);
 
     // --- Init ---
@@ -166,12 +153,4 @@ async fn test_30_error_handling() {
     );
 
     // --- Restore original state ---
-    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
-        .success();
-    let _ = std::process::Command::new("swaymsg")
-        .args(["workspace", &orig_ws])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(300));
 }

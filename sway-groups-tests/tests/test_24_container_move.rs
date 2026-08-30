@@ -10,23 +10,6 @@ const WS2: &str = "zz_tg_cm_ws2";
 async fn test_24_container_move() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    // --- Precondition: no test data in production DB ---
-    if real_db.exists() {
-        for ws in [WS1, WS2] {
-            assert_eq!(
-                db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", ws)),
-                0,
-                "{} must not exist in production DB",
-                ws
-            );
-        }
-    }
-
     assert!(!workspace_exists_in_sway(WS1), "precondition: {} not in sway", WS1);
     assert!(!workspace_exists_in_sway(WS2), "precondition: {} not in sway", WS2);
 

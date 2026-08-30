@@ -1,5 +1,5 @@
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, swayg_fixture_db, swayg_output,
+    db_count, get_focused_workspace, orig_active_group, swayg_output,
     workspace_exists_in_sway, ws_in_group_count, DummyWindowHandle, TestFixture,
 };
 
@@ -11,39 +11,6 @@ const WS2: &str = "zz_test_ws2_06a";
 #[tokio::test]
 async fn test_06a_group_delete_multi_group_workspace() {
     let fixture = TestFixture::new().await.expect("fixture setup");
-
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    // --- Precondition: no test data in production DB ---
-    if real_db.exists() {
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
-            0,
-            "precondition: {} must not exist in production DB",
-            GROUP_A
-        );
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)),
-            0,
-            "precondition: {} must not exist in production DB",
-            GROUP_B
-        );
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
-            0,
-            "precondition: {} must not exist in production DB",
-            WS1
-        );
-        assert_eq!(
-            db_count(&real_db, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS2)),
-            0,
-            "precondition: {} must not exist in production DB",
-            WS2
-        );
-    }
 
     assert!(!workspace_exists_in_sway(WS1), "precondition: {} must not exist in sway", WS1);
     assert!(!workspace_exists_in_sway(WS2), "precondition: {} must not exist in sway", WS2);
@@ -264,14 +231,4 @@ async fn test_06a_group_delete_multi_group_workspace() {
         (0, 0, 0),
         "no test data remains in DB"
     );
-
-    // --- Cleanup: restore original group on live DB ---
-    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
-        .success();
-    let _ = std::process::Command::new("swaymsg")
-        .args(["workspace", &orig_ws])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(300));
 }

@@ -42,14 +42,6 @@ pub fn swayg(db_path: &PathBuf, args: &[&str]) -> assert_cmd::assert::Assert {
         .assert()
 }
 
-/// Run swayg against the fixture database without naming it at the call site.
-///
-/// Was `swayg_live`, which ran against the user's real database back when the
-/// tests drove the user's real session.
-pub fn swayg_fixture_db(args: &[&str]) -> assert_cmd::assert::Assert {
-    swayg(&test_db_path(), args)
-}
-
 pub fn swayg_output(db_path: &PathBuf, args: &[&str]) -> String {
     let output = Command::new(&binaries().swayg)
         .arg("--db").arg(db_path)

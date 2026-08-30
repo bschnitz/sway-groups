@@ -7,10 +7,9 @@
 //! live on *other* outputs stay skipped.
 
 use std::path::PathBuf;
-use std::process::Stdio;
 
 use sway_groups_tests::common::{
-    db_count, db_exec, get_focused_workspace, orig_active_group, swayg_fixture_db, swayg_output,
+    db_count, db_exec, get_focused_workspace, orig_active_group, swayg_output,
     workspace_exists_in_sway, DummyWindowHandle, TestFixture,
 };
 
@@ -31,32 +30,6 @@ fn get_active_group(db_path: &PathBuf, output: &str) -> String {
 async fn test_36_group_nav_empty_group() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    let real_db = dirs::data_dir()
-        .unwrap_or_default()
-        .join("swayg")
-        .join("swayg.db");
-
-    // --- Precondition: no test data in production DB ---
-    if real_db.exists() {
-        for g in [GROUP_FILLED, GROUP_EMPTY, GROUP_ELSEWHERE] {
-            assert_eq!(
-                db_count(&real_db, &format!("SELECT count(*) FROM groups WHERE name = '{}'", g)),
-                0,
-                "{} must not exist in production DB",
-                g
-            );
-        }
-        assert_eq!(
-            db_count(
-                &real_db,
-                &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS_FILLED)
-            ),
-            0,
-            "{} must not exist in production DB",
-            WS_FILLED
-        );
-    }
-
     assert!(
         !workspace_exists_in_sway(WS_FILLED),
         "{} must not exist in sway",
@@ -66,7 +39,6 @@ async fn test_36_group_nav_empty_group() {
     // --- Remember original state ---
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
-    let orig_ws = get_focused_workspace().expect("get focused workspace");
 
     // --- Setup: init + one filled group + two empty groups ---
     fixture.init().success();
@@ -203,13 +175,4 @@ async fn test_36_group_nav_empty_group() {
         0,
         "no test workspaces remain"
     );
-
-    // --- Cleanup: restore original group on live DB ---
-    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output]).success();
-    let _ = std::process::Command::new("swaymsg")
-        .args(["workspace", &orig_ws])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(300));
 }

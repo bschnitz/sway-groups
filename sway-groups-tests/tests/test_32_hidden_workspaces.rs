@@ -46,21 +46,6 @@ async fn test_32_hidden_workspaces() {
     assert!(!orig_group.is_empty(), "original group must not be empty");
     let orig_ws = get_focused_workspace().expect("get focused workspace");
 
-    // --- Precondition: no test data in real DB ---
-    let real_db = dirs::data_dir().unwrap_or_default().join("swayg").join("swayg.db");
-    if real_db.exists() {
-        assert_eq!(
-            db_count(
-                &real_db,
-                &format!(
-                    "SELECT count(*) FROM groups WHERE name IN ('{}', '{}')",
-                    GROUP_A, GROUP_B
-                ),
-            ),
-            0,
-            "precondition: test groups must not exist in production DB"
-        );
-    }
     for ws in [WS_A, WS_B, WS_C, WS_GLOBAL] {
         assert!(!workspace_exists_in_sway(ws), "{} must not exist in sway", ws);
     }
