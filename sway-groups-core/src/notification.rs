@@ -95,13 +95,34 @@ mod tests {
         }
     }
 
-    fn temp_path() -> PathBuf {
-        use std::sync::atomic::{AtomicU32, Ordering};
-        static COUNTER: AtomicU32 = AtomicU32::new(0);
-        let dir = std::env::temp_dir().join("swayg-test-notif");
-        fs::create_dir_all(&dir).unwrap();
-        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-        dir.join(format!("test-{}-{}.json", std::process::id(), id))
+    /// A notification file that deletes itself again.
+    ///
+    /// The tests used to collect their files in a shared temp subdirectory and
+    /// remove them one by one at the end, which left the directory behind and
+    /// left the file behind whenever an assertion failed first. Tying the file
+    /// to a value means the cleanup also runs on the panic path.
+    struct TempFile(PathBuf);
+
+    impl TempFile {
+        fn new() -> Self {
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static COUNTER: AtomicU32 = AtomicU32::new(0);
+            let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir()
+                .join(format!("swayg-test-notif-{}-{}.json", std::process::id(), id));
+            let _ = fs::remove_file(&path);
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempFile {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.0);
+        }
     }
 
     #[test]
@@ -112,75 +133,67 @@ mod tests {
 
     #[test]
     fn append_and_read() {
-        let path = temp_path();
-        let _ = fs::remove_file(&path);
+        let file = TempFile::new();
+        let path = file.path();
 
-        append_notification_to(&path, test_record("ws1", "app1", "hello"));
-        append_notification_to(&path, test_record("ws2", "app2", "world"));
+        append_notification_to(path, test_record("ws1", "app1", "hello"));
+        append_notification_to(path, test_record("ws2", "app2", "world"));
 
-        let records = read_notifications_from(&path);
+        let records = read_notifications_from(path);
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].workspace_name, "ws1");
         assert_eq!(records[1].workspace_name, "ws2");
-
-        let _ = fs::remove_file(&path);
     }
 
     #[test]
     fn max_records_enforced() {
-        let path = temp_path();
-        let _ = fs::remove_file(&path);
+        let file = TempFile::new();
+        let path = file.path();
 
         for i in 0..25 {
-            append_notification_to(&path, test_record(&format!("ws{i}"), "app", "s"));
+            append_notification_to(path, test_record(&format!("ws{i}"), "app", "s"));
         }
 
-        let records = read_notifications_from(&path);
+        let records = read_notifications_from(path);
         assert_eq!(records.len(), MAX_RECORDS);
         // oldest 5 should be dropped
         assert_eq!(records[0].workspace_name, "ws5");
         assert_eq!(records[MAX_RECORDS - 1].workspace_name, "ws24");
-
-        let _ = fs::remove_file(&path);
     }
 
     #[test]
     fn pop_last_returns_and_removes() {
-        let path = temp_path();
-        let _ = fs::remove_file(&path);
+        let file = TempFile::new();
+        let path = file.path();
 
-        append_notification_to(&path, test_record("ws1", "app1", "a"));
-        append_notification_to(&path, test_record("ws2", "app2", "b"));
+        append_notification_to(path, test_record("ws1", "app1", "a"));
+        append_notification_to(path, test_record("ws2", "app2", "b"));
 
-        let popped = pop_last_from(&path).unwrap();
+        let popped = pop_last_from(path).unwrap();
         assert_eq!(popped.workspace_name, "ws2");
 
-        let remaining = read_notifications_from(&path);
+        let remaining = read_notifications_from(path);
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].workspace_name, "ws1");
-
-        let _ = fs::remove_file(&path);
     }
 
     #[test]
     fn pop_last_empty_returns_none() {
-        let path = temp_path();
-        let _ = fs::remove_file(&path);
+        let file = TempFile::new();
+        let path = file.path();
 
-        assert!(pop_last_from(&path).is_none());
+        assert!(pop_last_from(path).is_none());
     }
 
     #[test]
     fn serialization_roundtrip() {
-        let path = temp_path();
-        let _ = fs::remove_file(&path);
+        let file = TempFile::new();
+        let path = file.path();
 
         let record = test_record("35_conf", "kitty", "Claude Code");
-        append_notification_to(&path, record.clone());
+        append_notification_to(path, record.clone());
 
-        let records = read_notifications_from(&path);
+        let records = read_notifications_from(path);
         assert_eq!(records[0], record);
-
-        let _ = fs::remove_file(&path);
     }
 }

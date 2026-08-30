@@ -61,6 +61,17 @@ impl SwayInstance {
             std::env::set_var("XDG_RUNTIME_DIR", &dir);
         }
 
+        // Same story for the configuration: without SWAYG_CONFIG the binaries
+        // fall back to the developer's ~/.config/swayg/config.toml, so what a
+        // test asserts would depend on the machine it runs on. The path points
+        // into the instance directory and is deliberately not created - a
+        // missing file is what makes the binaries use their built-in defaults.
+        // A test that needs settings of its own passes them explicitly, which
+        // overrides this for that child process.
+        unsafe {
+            std::env::set_var("SWAYG_CONFIG", dir.join("config.toml"));
+        }
+
         let child = Command::new("sway")
             .arg("-c")
             .arg(&config)

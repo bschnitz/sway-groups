@@ -479,7 +479,9 @@ Each integration test starts its own headless sway (`WLR_BACKENDS=headless`)
 on a private socket and points `SWAYSOCK`/`WAYLAND_DISPLAY` at it, so the
 binary under test, its daemon and the dummy windows all land there. It also
 gets an `XDG_RUNTIME_DIR` of its own, which is where the bar sockets are looked
-up -- otherwise a test run would push its throwaway workspaces to your waybar.
+up -- otherwise a test run would push its throwaway workspaces to your waybar --
+and a `SWAYG_CONFIG` of its own pointing at a file that does not exist, so the
+binaries use their built-in defaults instead of your `config.toml`.
 Whatever a test does to workspaces, groups or focus dies with its compositor;
 your own session is never touched, and the production daemon keeps running.
 The harness also builds the three binaries itself and takes their paths from
