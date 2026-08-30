@@ -315,7 +315,8 @@ swayg group next -w                  # next group (alphabetical, wrap)
 swayg group prune                    # delete empty groups
 
 # Workspace membership
-swayg workspace add 3 -g dev         # add workspace "3" to dev
+swayg workspace add 3 -g dev         # record workspace "3" in dev (DB only)
+swayg workspace add 3 -g dev -c 94   # ... and materialise it with container 94
 swayg workspace move 3 -g dev,work   # set exactly these groups
 swayg workspace global 1             # workspace 1 visible in all groups
 swayg workspace rename old new       # rename (merges if target exists)
@@ -333,6 +334,8 @@ swayg nav go 3                       # focus workspace 3 (works even if hidden)
 swayg nav back                       # previous focus
 
 # Container moves
+swayg container move 3                    # move the focused container to "3"
+swayg container move 3 --con-id 94        # move that container instead
 swayg container move 3 --switch-to-workspace
 
 # State
@@ -345,6 +348,25 @@ swayg -v ...                         # verbose
 swayg --db /tmp/test.db ...          # alternate DB file
 swayg --config ~/my.toml ...         # alternate config file
 ```
+
+### Adding a workspace sway does not know yet
+
+`swayg workspace add` records membership in the database; it never switches your
+view to bring the workspace into existence. Sway only creates a workspace when
+something is put on it, so a switch would strand you on an empty workspace that
+sway destroys again the moment you leave — and the resulting event looks to the
+daemon like a workspace created behind its back.
+
+So there are two honest ways to end up with a real workspace:
+
+- `swayg workspace add 3 -g dev --container <con_id>` moves an existing window
+  into the new workspace, which materialises it. Your focus stays where it is.
+  `swaymsg -t get_tree` gives you the `con_id`.
+- Add it DB-only and let it materialise later, the first time a window lands
+  there. `swayg workspace add` prints a note to stderr in this case.
+
+`swayg container move <ws>` moves the focused container by default; pass
+`--con-id <id>` to move a specific one instead.
 
 `swayg status` sample:
 
