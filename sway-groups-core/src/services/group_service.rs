@@ -114,14 +114,62 @@ impl GroupService {
         Ok(groups.into_iter().map(|g| g.name).collect())
     }
 
-    /// List non-empty group names for a specific output, alphabetically.
+    /// List the group names reachable by navigation on a specific output,
+    /// alphabetically.
+    ///
+    /// A group qualifies when it holds at least one workspace on this output.
+    /// Groups without any workspaces at all qualify too, unless they are bound
+    /// to a different output: switching to them is well defined (the switch
+    /// lands on the default workspace) and they are pruned automatically once
+    /// they are left again. Only groups whose workspaces all live on other
+    /// outputs are skipped.
     pub async fn list_group_names_on_output(&self, output: &str) -> Result<Vec<String>> {
-        let groups = self.list_groups(Some(output)).await?;
-        Ok(groups
+        let groups = GroupEntity::find_all_ordered().all(self.db.conn()).await?;
+
+        let group_ids: Vec<i32> = groups.iter().map(|g| g.id).collect();
+        let memberships_by_group =
+            crate::db::queries::load_memberships_by_group_ids(self.db.conn(), &group_ids).await?;
+
+        let all_ws_ids: Vec<i32> = memberships_by_group
+            .values()
+            .flat_map(|ms| ms.iter().map(|m| m.workspace_id))
+            .collect::<std::collections::HashSet<_>>()
             .into_iter()
-            .filter(|g| !g.workspaces.is_empty())
-            .map(|g| g.name)
-            .collect())
+            .collect();
+        let workspaces =
+            crate::db::queries::load_workspaces_by_ids(self.db.conn(), &all_ws_ids).await?;
+
+        let mut names = Vec::new();
+        for group in groups {
+            let memberships = memberships_by_group
+                .get(&group.id)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+
+            let mut has_workspaces = false;
+            let mut has_workspace_on_output = false;
+            for ws in memberships
+                .iter()
+                .filter_map(|m| workspaces.get(&m.workspace_id))
+            {
+                has_workspaces = true;
+                if ws.output.as_deref() == Some(output) {
+                    has_workspace_on_output = true;
+                    break;
+                }
+            }
+
+            let bound_elsewhere = group
+                .last_active_output
+                .as_deref()
+                .is_some_and(|o| o != output);
+
+            if has_workspace_on_output || (!has_workspaces && !bound_elsewhere) {
+                names.push(group.name);
+            }
+        }
+
+        Ok(names)
     }
 
     // -----------------------------------------------------------------------
@@ -521,7 +569,7 @@ impl GroupService {
         Ok(next_name)
     }
 
-    /// Switch to the next non-empty group on a specific output.
+    /// Switch to the next group on a specific output.
     pub async fn next_group_on_output(&self, output: &str, wrap: bool) -> Result<Option<String>> {
         let output = self.resolve_output(output).await?;
         if let Some(name) = self.navigate_group_name(&output, wrap, true, true).await? {
@@ -541,7 +589,7 @@ impl GroupService {
         Ok(prev_name)
     }
 
-    /// Switch to the previous non-empty group on a specific output.
+    /// Switch to the previous group on a specific output.
     pub async fn prev_group_on_output(&self, output: &str, wrap: bool) -> Result<Option<String>> {
         let output = self.resolve_output(output).await?;
         if let Some(name) = self.navigate_group_name(&output, wrap, true, false).await? {
@@ -556,7 +604,7 @@ impl GroupService {
         self.navigate_group_name(output, wrap, false, true).await
     }
 
-    /// Return the name of the next non-empty group on an output (no switch).
+    /// Return the name of the next group on an output (no switch).
     pub async fn next_group_on_output_name(
         &self,
         output: &str,
@@ -570,7 +618,7 @@ impl GroupService {
         self.navigate_group_name(output, wrap, false, false).await
     }
 
-    /// Return the name of the previous non-empty group on an output (no switch).
+    /// Return the name of the previous group on an output (no switch).
     pub async fn prev_group_on_output_name(
         &self,
         output: &str,
@@ -581,7 +629,7 @@ impl GroupService {
 
     /// Internal helper for all next/prev group navigation.
     ///
-    /// `output_only`: restrict to non-empty groups on this output.
+    /// `output_only`: restrict to the groups reachable on this output.
     /// `forward`: true = next, false = prev.
     async fn navigate_group_name(
         &self,
