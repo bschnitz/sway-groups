@@ -244,12 +244,20 @@ enum WorkspaceAction {
         flatten: bool,
     },
     /// Add a workspace to a group.
+    ///
+    /// A workspace sway does not know yet is recorded in the DB alone — the
+    /// user's view is never switched to materialise it. Pass --container to
+    /// materialise it properly with a window you already have.
     Add {
         /// Workspace name.
         workspace: String,
         /// Group (default: active group on focused output).
         #[arg(short, long)]
         group: Option<String>,
+        /// Materialise the workspace by moving this sway container (con_id)
+        /// into it, instead of only recording it.
+        #[arg(short, long)]
+        container: Option<i64>,
     },
     /// Move a workspace to a set of groups (removing from all others).
     Move {
@@ -374,10 +382,15 @@ enum NavAction {
 
 #[derive(Subcommand)]
 enum ContainerAction {
-    /// Move the focused container to a workspace.
+    /// Move a container to a workspace (default: the focused one).
+    ///
+    /// The view stays where it is unless --switch-to-workspace says otherwise.
     Move {
         /// Target workspace name.
         workspace: String,
+        /// Move this sway container (con_id) instead of the focused one.
+        #[arg(short, long)]
+        con_id: Option<i64>,
         /// After moving, follow the container by switching to that workspace.
         #[arg(long)]
         switch_to_workspace: bool,
@@ -656,7 +669,7 @@ async fn run_workspace(
                 }
             }
         }
-        WorkspaceAction::Add { workspace, group } => {
+        WorkspaceAction::Add { workspace, group, container } => {
             let target_group = match &group {
                 Some(g) => g.clone(),
                 None => {
@@ -678,7 +691,47 @@ async fn run_workspace(
                     }
                 }
             };
-            workspace_service.add_to_group(&workspace, &target_group).await?;
+            // Creating the workspace here means sway emits a workspace event
+            // the daemon would read as "external" and adopt into whatever group
+            // is active right now — overriding the group asked for. Claim the
+            // name first; the daemon skips names it finds pending.
+            let is_new_workspace = ipc_client
+                .get_workspace_names()
+                .map(|names| !names.iter().any(|n| n == &workspace))
+                .unwrap_or(true);
+            let pending_id = if is_new_workspace {
+                workspace_service
+                    .register_pending_event(&workspace, "add")
+                    .await
+                    .ok()
+            } else {
+                None
+            };
+
+            let added = workspace_service
+                .add_to_group(&workspace, &target_group, container)
+                .await;
+
+            if let Some(id) = pending_id {
+                workspace_service.remove_pending_event(id).await.ok();
+            }
+            added?;
+
+            // A workspace nobody put a window on does not exist in sway, and
+            // `sync_from_sway` drops DB workspaces sway does not know. Say so
+            // instead of pretending the membership is durable.
+            if container.is_none()
+                && let Ok(names) = ipc_client.get_workspace_names()
+                && !names.iter().any(|n| n == &workspace)
+            {
+                eprintln!(
+                    "note: \"{}\" does not exist in sway yet — recorded in the DB only. \
+                     sway creates it as soon as a window lands there; a `swayg sync` \
+                     before that drops it again. Pass --container <con_id> to create \
+                     it right away with a window you already have.",
+                    workspace
+                );
+            }
             waybar_sync.update_waybar().await?;
             println!("Added workspace \"{}\" to group \"{}\"", workspace, target_group);
         }
@@ -1010,7 +1063,7 @@ async fn run_container(
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
-        ContainerAction::Move { workspace, switch_to_workspace } => {
+        ContainerAction::Move { workspace, con_id, switch_to_workspace } => {
             let is_new_workspace = ipc_client.get_workspaces()
                 .map(|ws| !ws.iter().any(|w| w.name == workspace))
                 .unwrap_or(true);
@@ -1022,7 +1075,9 @@ async fn run_container(
             };
 
             let result: anyhow::Result<()> = async {
-                nav_service.move_to_workspace(&workspace).await?;
+                nav_service
+                    .move_container_to_workspace(&workspace, con_id)
+                    .await?;
 
                 if switch_to_workspace {
                     nav_service.focus_workspace(&workspace).await?;

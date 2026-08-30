@@ -544,6 +544,34 @@ fn find_app_id(node: &serde_json::Value, app_id: &str) -> bool {
     false
 }
 
+/// The sway container id of a window, for commands that address one directly.
+pub fn con_id_of_window(app_id: &str) -> Option<i64> {
+    let output = Command::new("swaymsg")
+        .args(["-t", "get_tree"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let tree: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    find_con_id(&tree, app_id)
+}
+
+fn find_con_id(node: &serde_json::Value, app_id: &str) -> Option<i64> {
+    if node.get("app_id").and_then(|v| v.as_str()) == Some(app_id) {
+        return node.get("id").and_then(|v| v.as_i64());
+    }
+    for key in &["nodes", "floating_nodes"] {
+        if let Some(children) = node.get(key).and_then(|v| v.as_array()) {
+            for child in children {
+                if let Some(id) = find_con_id(child, app_id) {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn workspace_of_window(app_id: &str) -> Option<String> {
     let output = Command::new("swaymsg")
         .args(["-t", "get_tree"])

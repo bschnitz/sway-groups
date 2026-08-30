@@ -237,8 +237,31 @@ impl NavigationService {
         }
     }
 
+    /// Move the focused container to a workspace.
     pub async fn move_to_workspace(&self, workspace_name: &str) -> Result<()> {
-        let command = format!("move container to workspace \"{}\"", workspace_name);
+        self.move_container_to_workspace(workspace_name, None).await
+    }
+
+    /// Move a container to a workspace; `con_id` picks a specific one, `None`
+    /// the focused one.
+    ///
+    /// The user's view does not follow in either case: sway saves the focus
+    /// before the move and puts it back, and only when the moved container was
+    /// itself focused does the focus get reassigned — to the old parent, i.e.
+    /// still where the user is (sway 1.12, `cmd_move_container`). Callers that
+    /// *want* to follow have to say so, e.g. via `focus_workspace`.
+    pub async fn move_container_to_workspace(
+        &self,
+        workspace_name: &str,
+        con_id: Option<i64>,
+    ) -> Result<()> {
+        let command = match con_id {
+            Some(id) => format!(
+                "[con_id={}] move container to workspace \"{}\"",
+                id, workspace_name
+            ),
+            None => format!("move container to workspace \"{}\"", workspace_name),
+        };
         let results = self.ipc_client.run_command(&command)?;
 
         if let Some(result) = results.first() {

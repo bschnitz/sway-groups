@@ -26,6 +26,15 @@ pub struct WorkspaceInfo {
     pub groups: Vec<String>,
 }
 
+/// The number sway would derive from a workspace name: its leading digits.
+///
+/// Only needed for workspaces recorded before sway has ever seen them — once
+/// sway knows one, its own `num` wins.
+fn number_from_name(name: &str) -> Option<i32> {
+    let digits: String = name.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
 /// Service for workspace operations.
 pub struct WorkspaceService {
     db: DatabaseManager,
@@ -148,74 +157,108 @@ impl WorkspaceService {
             .await?)
     }
 
-    /// Ensure a workspace exists in DB, creating it in sway if necessary.
-    async fn ensure_workspace(&self, workspace_name: &str) -> Result<workspace::Model> {
+    /// Ensure a workspace exists in the DB.
+    ///
+    /// NEVER switches the user's view. A workspace that sway does not know yet
+    /// can only be materialised by putting something on it — sway destroys
+    /// empty workspaces — so there are exactly two honest options here, and
+    /// `workspace <name>` (which yanks the user to an empty workspace and
+    /// leaves them there) is neither of them:
+    ///
+    /// * `con_id` given: move that container in. sway creates the workspace as
+    ///   a side effect and the view stays put, because the move restores the
+    ///   previous focus (sway 1.12, `cmd_move_container`).
+    /// * otherwise: record the workspace in the DB alone. Group membership is
+    ///   our own state and does not need a live sway workspace; sway
+    ///   materialises it as soon as the first window lands there.
+    async fn ensure_workspace(
+        &self,
+        workspace_name: &str,
+        con_id: Option<i64>,
+    ) -> Result<workspace::Model> {
         if let Some(ws) = WorkspaceEntity::find_by_name(workspace_name)
             .one(self.db.conn())
             .await?
         {
+            if let Some(id) = con_id {
+                self.move_container_into(workspace_name, id)?;
+            }
             return Ok(ws);
         }
 
         // Not in DB — check sway
-        let sway_workspaces = self.ipc_client.get_workspaces()?;
-        let sway_ws = sway_workspaces
-            .iter()
-            .find(|w| w.name == workspace_name || w.num.map(|n| n.to_string()) == Some(workspace_name.to_string()));
-
-        match sway_ws {
-            Some(ws) => {
-                let number = ws.num.map(|n| n as i32);
-                let now = chrono::Utc::now().naive_utc();
-
-                let active = workspace::ActiveModel {
-                    name: Set(ws.name.clone()),
-                    number: Set(number),
-                    output: Set(Some(ws.output.clone())),
-                    is_global: Set(false),
-                    created_at: Set(Some(now)),
-                    updated_at: Set(Some(now)),
-                    ..Default::default()
-                };
-                Ok(active.insert(self.db.conn()).await?)
+        if let Some(ws) = self.find_in_sway(workspace_name)? {
+            if let Some(id) = con_id {
+                self.move_container_into(workspace_name, id)?;
             }
-            None => {
-                // Not in sway either — create it via swaymsg
-                info!("Workspace '{}' not found in sway, creating it", workspace_name);
-                self.ipc_client.run_command(&format!("workspace {}", workspace_name))?;
+            return self.insert_workspace(&ws.name, ws.num.map(|n| n as i32), Some(ws.output)).await;
+        }
 
-                let sway_workspaces = self.ipc_client.get_workspaces()?;
-                let sway_ws = sway_workspaces
-                    .iter()
-                    .find(|w| w.name == workspace_name);
-
-                match sway_ws {
-                    Some(ws) => {
-                        let number = ws.num.map(|n| n as i32);
-                        let now = chrono::Utc::now().naive_utc();
-
-                        let active = workspace::ActiveModel {
-                            name: Set(ws.name.clone()),
-                            number: Set(number),
-                            output: Set(Some(ws.output.clone())),
-                            is_global: Set(false),
-                            created_at: Set(Some(now)),
-                            updated_at: Set(Some(now)),
-                            ..Default::default()
-                        };
-                        Ok(active.insert(self.db.conn()).await?)
-                    }
-                    None => {
-                        Err(Error::WorkspaceNotFound(workspace_name.to_string()))
-                    }
-                }
+        // Not in sway either.
+        if let Some(id) = con_id {
+            self.move_container_into(workspace_name, id)?;
+            if let Some(ws) = self.find_in_sway(workspace_name)? {
+                return self
+                    .insert_workspace(&ws.name, ws.num.map(|n| n as i32), Some(ws.output))
+                    .await;
             }
         }
+
+        info!(
+            "Workspace '{}' not in sway yet, recording it in the DB only",
+            workspace_name
+        );
+        let output = self.ipc_client.get_primary_output().ok();
+        self.insert_workspace(workspace_name, number_from_name(workspace_name), output)
+            .await
+    }
+
+    /// Look a workspace up in sway, by name or by bare number.
+    fn find_in_sway(&self, workspace_name: &str) -> Result<Option<crate::sway::SwayWorkspace>> {
+        Ok(self.ipc_client.get_workspaces()?.into_iter().find(|w| {
+            w.name == workspace_name || w.num.map(|n| n.to_string()).as_deref() == Some(workspace_name)
+        }))
+    }
+
+    /// Move one specific container onto a workspace, creating it on the fly.
+    fn move_container_into(&self, workspace_name: &str, con_id: i64) -> Result<()> {
+        self.ipc_client.run_command(&format!(
+            "[con_id={}] move container to workspace \"{}\"",
+            con_id, workspace_name
+        ))?;
+        Ok(())
+    }
+
+    async fn insert_workspace(
+        &self,
+        name: &str,
+        number: Option<i32>,
+        output: Option<String>,
+    ) -> Result<workspace::Model> {
+        let now = chrono::Utc::now().naive_utc();
+        let active = workspace::ActiveModel {
+            name: Set(name.to_string()),
+            number: Set(number),
+            output: Set(output),
+            is_global: Set(false),
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            ..Default::default()
+        };
+        Ok(active.insert(self.db.conn()).await?)
     }
 
     /// Add a workspace to a group.
-    pub async fn add_to_group(&self, workspace_name: &str, group_name: &str) -> Result<()> {
-        let workspace = self.ensure_workspace(workspace_name).await?;
+    ///
+    /// `con_id` materialises a workspace sway does not know yet by moving that
+    /// container into it; see [`Self::ensure_workspace`].
+    pub async fn add_to_group(
+        &self,
+        workspace_name: &str,
+        group_name: &str,
+        con_id: Option<i64>,
+    ) -> Result<()> {
+        let workspace = self.ensure_workspace(workspace_name, con_id).await?;
 
         // Get group
         let group = GroupEntity::find_by_name(group_name)
