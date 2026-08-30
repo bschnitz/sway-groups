@@ -13,6 +13,7 @@
 //! multi-output behaviour testable.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -49,6 +50,16 @@ impl SwayInstance {
 
         std::fs::write(&config, config_contents(&display_file, extra_config))
             .context("write sway config")?;
+
+        // Give the whole process a runtime directory of its own before anything
+        // is started in it. Sockets are found by convention under
+        // XDG_RUNTIME_DIR, so this is what keeps the binary under test from
+        // reaching the developer's waybar and redrawing their bar with test
+        // workspaces. Sway puts its wayland socket here too, and the dummy
+        // windows inherit the variable, so the whole session stays inside.
+        unsafe {
+            std::env::set_var("XDG_RUNTIME_DIR", &dir);
+        }
 
         let child = Command::new("sway")
             .arg("-c")
@@ -145,11 +156,19 @@ impl Drop for SwayInstance {
 
 /// A directory of its own per test process, so parallel test binaries do not
 /// share a socket, a config or a database.
+///
+/// Resolved once and remembered, because `start` makes this directory the
+/// process' `XDG_RUNTIME_DIR` - recomputing it afterwards would nest it inside
+/// itself.
 pub fn instance_dir() -> PathBuf {
-    let base = std::env::var("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/tmp"));
-    base.join(format!("swayg-test-{}", std::process::id()))
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let base = std::env::var("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/tmp"));
+        base.join(format!("swayg-test-{}", std::process::id()))
+    })
+    .clone()
 }
 
 /// `exec` runs under `sh`, which is the only way to learn the wayland socket

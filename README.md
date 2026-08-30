@@ -477,11 +477,14 @@ cargo clippy --workspace --all-targets
 
 Each integration test starts its own headless sway (`WLR_BACKENDS=headless`)
 on a private socket and points `SWAYSOCK`/`WAYLAND_DISPLAY` at it, so the
-binary under test, its daemon and the dummy windows all land there. Whatever a
-test does to workspaces, groups or focus dies with its compositor; your own
-session is never touched, and the production daemon keeps running. The harness
-also builds the three binaries itself and takes their paths from cargo's JSON
-output, so a test can never run against a stale `target/debug/swayg`.
+binary under test, its daemon and the dummy windows all land there. It also
+gets an `XDG_RUNTIME_DIR` of its own, which is where the bar sockets are looked
+up -- otherwise a test run would push its throwaway workspaces to your waybar.
+Whatever a test does to workspaces, groups or focus dies with its compositor;
+your own session is never touched, and the production daemon keeps running.
+The harness also builds the three binaries itself and takes their paths from
+cargo's JSON output, so a test can never run against a stale
+`target/debug/swayg`.
 
 ### Waybar test progress
 
