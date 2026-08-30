@@ -2,8 +2,8 @@
 //! senders to sway workspaces.
 
 use sway_groups_core::notification;
-use sway_groups_core::sway::pid_resolver;
 use sway_groups_core::sway::SwayIpcClient;
+use sway_groups_core::sway::pid_resolver;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tracing::{debug, error, info, warn};
@@ -87,12 +87,7 @@ fn extract_string_arg(line: &str) -> Option<String> {
     Some(rest.strip_suffix('"').unwrap_or(rest).to_string())
 }
 
-async fn handle_notification(
-    ipc: &SwayIpcClient,
-    sender: &str,
-    app_name: &str,
-    summary: &str,
-) {
+async fn handle_notification(ipc: &SwayIpcClient, sender: &str, app_name: &str, summary: &str) {
     let pid = match pid_resolver::resolve_dbus_sender_to_pid(sender) {
         Some(p) => p,
         None => {
@@ -163,10 +158,7 @@ mod tests {
 
     #[test]
     fn extract_string_arg_empty() {
-        assert_eq!(
-            extract_string_arg("   string \"\""),
-            Some("".to_string()),
-        );
+        assert_eq!(extract_string_arg("   string \"\""), Some("".to_string()),);
     }
 
     #[test]

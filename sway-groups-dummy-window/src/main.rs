@@ -6,8 +6,8 @@
 //!
 //! Usage: sway-dummy-window <app_id>
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use calloop::EventLoop;
 use calloop_wayland_source::WaylandSource;
@@ -24,13 +24,13 @@ use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_shm, wl_
 use smithay_client_toolkit::reexports::client::{Connection, QueueHandle};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
 use smithay_client_toolkit::registry_handlers;
+use smithay_client_toolkit::shell::WaylandSurface;
+use smithay_client_toolkit::shell::xdg::XdgShell;
 use smithay_client_toolkit::shell::xdg::window::{
     Window, WindowConfigure, WindowDecorations, WindowHandler,
 };
-use smithay_client_toolkit::shell::xdg::XdgShell;
-use smithay_client_toolkit::shell::WaylandSurface;
-use smithay_client_toolkit::shm::{Shm, ShmHandler};
 use smithay_client_toolkit::shm::slot::{Buffer, SlotPool};
+use smithay_client_toolkit::shm::{Shm, ShmHandler};
 
 const WIDTH: u32 = 200;
 const HEIGHT: u32 = 100;
@@ -62,7 +62,9 @@ impl ShmHandler for DummyWindow {
 }
 
 impl OutputHandler for DummyWindow {
-    fn output_state(&mut self) -> &mut OutputState { &mut self.output_state }
+    fn output_state(&mut self) -> &mut OutputState {
+        &mut self.output_state
+    }
     fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
     fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
     fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
@@ -71,11 +73,39 @@ impl OutputHandler for DummyWindow {
 delegate_output!(DummyWindow);
 
 impl CompositorHandler for DummyWindow {
-    fn scale_factor_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: i32) {}
-    fn transform_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: wl_output::Transform) {}
+    fn scale_factor_changed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: i32,
+    ) {
+    }
+    fn transform_changed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: wl_output::Transform,
+    ) {
+    }
     fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {}
-    fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
-    fn surface_leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
+    fn surface_enter(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: &wl_output::WlOutput,
+    ) {
+    }
+    fn surface_leave(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: &wl_output::WlOutput,
+    ) {
+    }
 }
 
 delegate_compositor!(DummyWindow);
@@ -106,7 +136,9 @@ delegate_xdg_window!(DummyWindow);
 delegate_shm!(DummyWindow);
 
 impl ProvidesRegistryState for DummyWindow {
-    fn registry(&mut self) -> &mut RegistryState { &mut self.registry_state }
+    fn registry(&mut self) -> &mut RegistryState {
+        &mut self.registry_state
+    }
     registry_handlers![OutputState];
 }
 
@@ -120,7 +152,12 @@ impl DummyWindow {
 
         let buffer = self.buffer.get_or_insert_with(|| {
             self.pool
-                .create_buffer(width as i32, height as i32, stride, wl_shm::Format::Argb8888)
+                .create_buffer(
+                    width as i32,
+                    height as i32,
+                    stride,
+                    wl_shm::Format::Argb8888,
+                )
                 .expect("create buffer")
                 .0
         });
@@ -130,7 +167,12 @@ impl DummyWindow {
             None => {
                 let (second_buffer, canvas) = self
                     .pool
-                    .create_buffer(width as i32, height as i32, stride, wl_shm::Format::Argb8888)
+                    .create_buffer(
+                        width as i32,
+                        height as i32,
+                        stride,
+                        wl_shm::Format::Argb8888,
+                    )
                     .expect("create buffer");
                 *buffer = second_buffer;
                 canvas
@@ -178,15 +220,22 @@ fn main() {
     RUNNING_PTR.store(running_ptr, Ordering::SeqCst);
 
     unsafe {
-        libc::signal(libc::SIGTERM, handle_signal as *const () as libc::sighandler_t);
-        libc::signal(libc::SIGINT, handle_signal as *const () as libc::sighandler_t);
+        libc::signal(
+            libc::SIGTERM,
+            handle_signal as *const () as libc::sighandler_t,
+        );
+        libc::signal(
+            libc::SIGINT,
+            handle_signal as *const () as libc::sighandler_t,
+        );
     }
 
     let conn = Connection::connect_to_env().expect("Failed to connect to Wayland display");
     let (globals, event_queue) = registry_queue_init(&conn).expect("Failed to init registry");
     let qh = event_queue.handle();
 
-    let compositor_state = CompositorState::bind(&globals, &qh).expect("wl_compositor not available");
+    let compositor_state =
+        CompositorState::bind(&globals, &qh).expect("wl_compositor not available");
     let output_state = OutputState::new(&globals, &qh);
     let xdg_shell = XdgShell::bind(&globals, &qh).expect("xdg_wm_base not available");
     let shm = Shm::bind(&globals, &qh).expect("wl_shm not available");
@@ -214,13 +263,16 @@ fn main() {
         buffer: None,
     };
 
-    let mut event_loop: EventLoop<DummyWindow> = EventLoop::try_new().expect("Failed to create event loop");
+    let mut event_loop: EventLoop<DummyWindow> =
+        EventLoop::try_new().expect("Failed to create event loop");
     WaylandSource::new(conn, event_queue)
         .insert(event_loop.handle())
         .expect("Failed to insert Wayland source");
 
     while running.load(Ordering::SeqCst) {
-        event_loop.dispatch(Some(std::time::Duration::from_millis(50)), &mut state).expect("Event loop error");
+        event_loop
+            .dispatch(Some(std::time::Duration::from_millis(50)), &mut state)
+            .expect("Event loop error");
     }
 
     unsafe { drop(Arc::from_raw(running_ptr as *const AtomicBool)) };

@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use sway_groups_tests::common::{
-    db_count, orig_active_group, swayg_output,
-    workspace_exists_in_sway, ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, orig_active_group, swayg_output,
+    workspace_exists_in_sway, ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_ga__";
@@ -21,7 +21,11 @@ async fn test_13_group_next_prev() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
     for ws in [WS_A, WS_B, WS_C] {
-        assert!(!workspace_exists_in_sway(ws), "{} must not exist in sway", ws);
+        assert!(
+            !workspace_exists_in_sway(ws),
+            "{} must not exist in sway",
+            ws
+        );
     }
 
     // --- Remember original state ---
@@ -33,7 +37,14 @@ async fn test_13_group_next_prev() {
 
     // Group A + WS_A
     fixture
-        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_A,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     let _win_a = DummyWindowHandle::spawn(WS_A).expect("spawn WS_A");
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -43,7 +54,14 @@ async fn test_13_group_next_prev() {
 
     // Group B + WS_B
     fixture
-        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_B,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     let _win_b = DummyWindowHandle::spawn(WS_B).expect("spawn WS_B");
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -53,7 +71,14 @@ async fn test_13_group_next_prev() {
 
     // Group C + WS_C
     fixture
-        .swayg(&["group", "select", GROUP_C, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_C,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     let _win_c = DummyWindowHandle::spawn(WS_C).expect("spawn WS_C");
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -70,34 +95,52 @@ async fn test_13_group_next_prev() {
     // --- Verify setup ---
     for g in [GROUP_A, GROUP_B, GROUP_C] {
         assert_eq!(
-            db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", g)),
+            db_count(
+                &fixture.db_path,
+                &format!("SELECT count(*) FROM groups WHERE name = '{}'", g)
+            ),
             1,
             "group '{}' exists",
             g
         );
     }
 
-    assert!(_win_a.exists_in_tree(), "dummy window '{}' is running", WS_A);
-    assert!(_win_b.exists_in_tree(), "dummy window '{}' is running", WS_B);
-    assert!(_win_c.exists_in_tree(), "dummy window '{}' is running", WS_C);
+    assert!(
+        _win_a.exists_in_tree(),
+        "dummy window '{}' is running",
+        WS_A
+    );
+    assert!(
+        _win_b.exists_in_tree(),
+        "dummy window '{}' is running",
+        WS_B
+    );
+    assert!(
+        _win_c.exists_in_tree(),
+        "dummy window '{}' is running",
+        WS_C
+    );
 
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS_A, GROUP_A),
         1,
         "'{}' in group '{}'",
-        WS_A, GROUP_A
+        WS_A,
+        GROUP_A
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS_B, GROUP_B),
         1,
         "'{}' in group '{}'",
-        WS_B, GROUP_B
+        WS_B,
+        GROUP_B
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS_C, GROUP_C),
         1,
         "'{}' in group '{}'",
-        WS_C, GROUP_C
+        WS_C,
+        GROUP_C
     );
 
     assert_eq!(
@@ -217,7 +260,14 @@ async fn test_13_group_next_prev() {
 
     // --- Cleanup: switch to original workspace FIRST (so sway can remove empty workspaces) ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     drop(_win_a);
@@ -227,15 +277,30 @@ async fn test_13_group_next_prev() {
     // Wait for sway to remove empty workspaces
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
     while std::time::Instant::now() < deadline {
-        if !workspace_exists_in_sway(WS_A) && !workspace_exists_in_sway(WS_B) && !workspace_exists_in_sway(WS_C) {
+        if !workspace_exists_in_sway(WS_A)
+            && !workspace_exists_in_sway(WS_B)
+            && !workspace_exists_in_sway(WS_C)
+        {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
-    assert!(!workspace_exists_in_sway(WS_A), "'{}' is gone from sway", WS_A);
-    assert!(!workspace_exists_in_sway(WS_B), "'{}' is gone from sway", WS_B);
-    assert!(!workspace_exists_in_sway(WS_C), "'{}' is gone from sway", WS_C);
+    assert!(
+        !workspace_exists_in_sway(WS_A),
+        "'{}' is gone from sway",
+        WS_A
+    );
+    assert!(
+        !workspace_exists_in_sway(WS_B),
+        "'{}' is gone from sway",
+        WS_B
+    );
+    assert!(
+        !workspace_exists_in_sway(WS_C),
+        "'{}' is gone from sway",
+        WS_C
+    );
 
     // --- Auto-delete empty groups ---
     for g in [GROUP_A, GROUP_B, GROUP_C] {
@@ -243,7 +308,14 @@ async fn test_13_group_next_prev() {
             .swayg(&["group", "select", g, "--output", &fixture.orig_output])
             .success();
         fixture
-            .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+            .swayg(&[
+                "group",
+                "select",
+                "0",
+                "--output",
+                &fixture.orig_output,
+                "--create",
+            ])
             .success();
     }
 

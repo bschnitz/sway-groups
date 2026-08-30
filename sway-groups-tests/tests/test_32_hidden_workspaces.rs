@@ -1,9 +1,9 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, output_contains, swayg_output,
-    swayg_stderr, workspace_exists_in_sway, workspace_of_window, ws_in_group_count,
-    DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, orig_active_group,
+    output_contains, swayg_output, swayg_stderr, workspace_exists_in_sway, workspace_of_window,
+    ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_hid_a_32";
@@ -47,7 +47,11 @@ async fn test_32_hidden_workspaces() {
     let orig_ws = get_focused_workspace().expect("get focused workspace");
 
     for ws in [WS_A, WS_B, WS_C, WS_GLOBAL] {
-        assert!(!workspace_exists_in_sway(ws), "{} must not exist in sway", ws);
+        assert!(
+            !workspace_exists_in_sway(ws),
+            "{} must not exist in sway",
+            ws
+        );
     }
 
     // --- Setup: init + create GROUP_A with 3 workspaces ---
@@ -55,7 +59,12 @@ async fn test_32_hidden_workspaces() {
 
     fixture
         .swayg(&[
-            "group", "select", GROUP_A, "--output", &fixture.orig_output, "--create",
+            "group",
+            "select",
+            GROUP_A,
+            "--output",
+            &fixture.orig_output,
+            "--create",
         ])
         .success();
 
@@ -113,12 +122,20 @@ async fn test_32_hidden_workspaces() {
     fixture
         .swayg(&["workspace", "hide", WS_B, "--group", GROUP_A, "--toggle"])
         .success();
-    assert_eq!(count_hidden(&fixture.db_path, WS_B, GROUP_A), 1, "toggle hid");
+    assert_eq!(
+        count_hidden(&fixture.db_path, WS_B, GROUP_A),
+        1,
+        "toggle hid"
+    );
 
     fixture
         .swayg(&["workspace", "hide", WS_B, "--group", GROUP_A, "--toggle"])
         .success();
-    assert_eq!(count_hidden(&fixture.db_path, WS_B, GROUP_A), 0, "toggle unhid");
+    assert_eq!(
+        count_hidden(&fixture.db_path, WS_B, GROUP_A),
+        0,
+        "toggle unhid"
+    );
 
     // --- Test 3: hide without --workspace (defaults to focused) ---
     // Currently focused on WS_A.
@@ -137,9 +154,7 @@ async fn test_32_hidden_workspaces() {
 
     // --- Test 4: hide on workspace not in group → error + nothing written ---
     // Create a second group GROUP_B without putting WS_B in it.
-    fixture
-        .swayg(&["group", "create", GROUP_B])
-        .success();
+    fixture.swayg(&["group", "create", GROUP_B]).success();
     let stderr = swayg_stderr(
         &fixture.db_path,
         &["workspace", "hide", WS_B, "--group", GROUP_B],
@@ -229,9 +244,7 @@ async fn test_32_hidden_workspaces() {
         .swayg(&["workspace", "hide", WS_B, "--group", GROUP_A])
         .success();
     // Enable show_hidden so we can navigate to the hidden workspace
-    fixture
-        .swayg(&["workspace", "show-hidden"])
-        .success();
+    fixture.swayg(&["workspace", "show-hidden"]).success();
     fixture.swayg(&["nav", "go", WS_B]).success();
     assert_eq!(get_focused_workspace().unwrap(), WS_B);
 
@@ -250,11 +263,13 @@ async fn test_32_hidden_workspaces() {
         .success();
 
     // --- Test 7: show-hidden toggle persists in settings table ---
-    assert_eq!(get_show_hidden(&fixture.db_path), "false", "default is false");
+    assert_eq!(
+        get_show_hidden(&fixture.db_path),
+        "false",
+        "default is false"
+    );
 
-    fixture
-        .swayg(&["workspace", "show-hidden"])
-        .success();
+    fixture.swayg(&["workspace", "show-hidden"]).success();
     assert_eq!(
         get_show_hidden(&fixture.db_path),
         "true",
@@ -284,9 +299,7 @@ async fn test_32_hidden_workspaces() {
     assert_eq!(count_hidden(&fixture.db_path, WS_B, GROUP_A), 1);
     assert_eq!(count_hidden(&fixture.db_path, WS_C, GROUP_A), 1);
 
-    fixture
-        .swayg(&["group", "unhide-all", GROUP_A])
-        .success();
+    fixture.swayg(&["group", "unhide-all", GROUP_A]).success();
 
     assert_eq!(count_hidden(&fixture.db_path, WS_A, GROUP_A), 0);
     assert_eq!(count_hidden(&fixture.db_path, WS_B, GROUP_A), 0);
@@ -318,9 +331,7 @@ async fn test_32_hidden_workspaces() {
     fixture
         .swayg(&["container", "move", WS_GLOBAL, "--switch-to-workspace"])
         .success();
-    fixture
-        .swayg(&["workspace", "global", WS_GLOBAL])
-        .success();
+    fixture.swayg(&["workspace", "global", WS_GLOBAL]).success();
 
     // Hide global workspace in GROUP_B (it has no membership there — allowed
     // because the workspace is global, ie. implicitly in all groups).
@@ -340,7 +351,12 @@ async fn test_32_hidden_workspaces() {
     let vis_b = swayg_output(
         &fixture.db_path,
         &[
-            "workspace", "list", "--visible", "--plain", "--output", &fixture.orig_output,
+            "workspace",
+            "list",
+            "--visible",
+            "--plain",
+            "--output",
+            &fixture.orig_output,
         ],
     );
     assert!(
@@ -356,7 +372,12 @@ async fn test_32_hidden_workspaces() {
     let vis_a = swayg_output(
         &fixture.db_path,
         &[
-            "workspace", "list", "--visible", "--plain", "--output", &fixture.orig_output,
+            "workspace",
+            "list",
+            "--visible",
+            "--plain",
+            "--output",
+            &fixture.orig_output,
         ],
     );
     assert!(
@@ -400,7 +421,12 @@ async fn test_32_hidden_workspaces() {
 
     fixture
         .swayg(&[
-            "group", "select", &orig_group, "--output", &fixture.orig_output, "--create",
+            "group",
+            "select",
+            &orig_group,
+            "--output",
+            &fixture.orig_output,
+            "--create",
         ])
         .success();
     let _ = Command::new("swaymsg")
@@ -417,7 +443,10 @@ async fn test_32_hidden_workspaces() {
     assert!(workspace_of_window(WS_A).is_none(), "WS_A window is gone");
     assert!(workspace_of_window(WS_B).is_none(), "WS_B window is gone");
     assert!(workspace_of_window(WS_C).is_none(), "WS_C window is gone");
-    assert!(workspace_of_window(WS_GLOBAL).is_none(), "WS_GLOBAL window is gone");
+    assert!(
+        workspace_of_window(WS_GLOBAL).is_none(),
+        "WS_GLOBAL window is gone"
+    );
 
     // --- Post-condition: no test data remains ---
     fixture.init().success();

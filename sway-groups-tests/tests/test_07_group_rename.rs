@@ -1,8 +1,8 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_count, db_exec, get_focused_workspace, orig_active_group, swayg_output,
-    ws_in_group_count, TestFixture,
+    TestFixture, db_count, db_exec, get_focused_workspace, orig_active_group, swayg_output,
+    ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_grp_a_07";
@@ -74,19 +74,28 @@ async fn test_07_group_rename() {
 
     // --- Verify setup ---
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)
+        ),
         1,
         "group '{}' exists",
         GROUP_A
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)
+        ),
         1,
         "group '{}' exists",
         GROUP_B
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)
+        ),
         1,
         "'{}' in DB",
         WS1
@@ -95,7 +104,8 @@ async fn test_07_group_rename() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "'{}' in group '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
 
     let active = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
@@ -120,13 +130,22 @@ async fn test_07_group_rename() {
         .success();
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)
+        ),
         0,
         "'{}' gone from DB",
         GROUP_A
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_RENAMED)),
+        db_count(
+            &fixture.db_path,
+            &format!(
+                "SELECT count(*) FROM groups WHERE name = '{}'",
+                GROUP_RENAMED
+            )
+        ),
         1,
         "'{}' exists in DB",
         GROUP_RENAMED
@@ -135,17 +154,23 @@ async fn test_07_group_rename() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_RENAMED),
         1,
         "'{}' membership updated to '{}'",
-        WS1, GROUP_RENAMED
+        WS1,
+        GROUP_RENAMED
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         0,
         "'{}' NOT in old group name '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
 
     let active_after = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
-    assert_eq!(active_after, GROUP_RENAMED, "output active_group updated to '{}'", GROUP_RENAMED);
+    assert_eq!(
+        active_after, GROUP_RENAMED,
+        "output active_group updated to '{}'",
+        GROUP_RENAMED
+    );
 
     assert_eq!(
         db_count(
@@ -188,13 +213,22 @@ async fn test_07_group_rename() {
         .failure();
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_RENAMED)),
+        db_count(
+            &fixture.db_path,
+            &format!(
+                "SELECT count(*) FROM groups WHERE name = '{}'",
+                GROUP_RENAMED
+            )
+        ),
         1,
         "'{}' NOT renamed (target exists)",
         GROUP_RENAMED
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)
+        ),
         1,
         "'{}' unchanged",
         GROUP_B
@@ -206,13 +240,22 @@ async fn test_07_group_rename() {
         .failure();
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_RENAMED)),
+        db_count(
+            &fixture.db_path,
+            &format!(
+                "SELECT count(*) FROM groups WHERE name = '{}'",
+                GROUP_RENAMED
+            )
+        ),
         1,
         "'{}' unchanged (nonexistent source)",
         GROUP_RENAMED
     );
     assert_eq!(
-        db_count(&fixture.db_path, "SELECT count(*) FROM groups WHERE name = 'nonexistent_zz_test__'"),
+        db_count(
+            &fixture.db_path,
+            "SELECT count(*) FROM groups WHERE name = 'nonexistent_zz_test__'"
+        ),
         0,
         "no group created for nonexistent source"
     );
@@ -223,12 +266,18 @@ async fn test_07_group_rename() {
         .success();
 
     assert_eq!(
-        db_count(&fixture.db_path, "SELECT count(*) FROM groups WHERE name = '0'"),
+        db_count(
+            &fixture.db_path,
+            "SELECT count(*) FROM groups WHERE name = '0'"
+        ),
         0,
         "group '0' renamed away"
     );
     assert_eq!(
-        db_count(&fixture.db_path, "SELECT count(*) FROM groups WHERE name = 'should_work_zz__'"),
+        db_count(
+            &fixture.db_path,
+            "SELECT count(*) FROM groups WHERE name = 'should_work_zz__'"
+        ),
         1,
         "'should_work_zz__' created from renamed '0'"
     );

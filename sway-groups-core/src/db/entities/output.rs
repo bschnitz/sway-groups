@@ -30,10 +30,8 @@ impl Entity {
     pub fn find_by_active_group(active_group: &Option<String>) -> Select<Self> {
         use sea_orm::{ColumnTrait, QueryFilter};
         match active_group {
-            Some(group) => Self::find()
-                .filter(Column::ActiveGroup.eq(group.clone())),
-            None => Self::find()
-                .filter(Column::ActiveGroup.is_null()),
+            Some(group) => Self::find().filter(Column::ActiveGroup.eq(group.clone())),
+            None => Self::find().filter(Column::ActiveGroup.is_null()),
         }
     }
 

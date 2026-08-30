@@ -1,6 +1,6 @@
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, swayg_output, workspace_count_in_sway,
-    workspace_of_window, ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, swayg_output,
+    workspace_count_in_sway, workspace_of_window, ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_group_a";
@@ -53,10 +53,7 @@ async fn test_05b_multi_group_container_move() {
         GROUP_A
     );
 
-    let active = swayg_output(
-        &fixture.db_path,
-        &["group", "active", &fixture.orig_output],
-    );
+    let active = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active, GROUP_A, "active group = '{}'", GROUP_A);
 
     // --- Launch dummy window WS1 ---
@@ -84,7 +81,8 @@ async fn test_05b_multi_group_container_move() {
         workspace_of_window(WS1).as_deref(),
         Some(WS1),
         "window '{}' is on workspace '{}'",
-        WS1, WS1
+        WS1,
+        WS1
     );
 
     assert_eq!(
@@ -102,7 +100,8 @@ async fn test_05b_multi_group_container_move() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "{} still in group '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
 
     // --- Switch to Group B ---
@@ -117,10 +116,7 @@ async fn test_05b_multi_group_container_move() {
         ])
         .success();
 
-    let active_b = swayg_output(
-        &fixture.db_path,
-        &["group", "active", &fixture.orig_output],
-    );
+    let active_b = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active_b, GROUP_B, "active group = '{}'", GROUP_B);
 
     assert_eq!(
@@ -130,7 +126,8 @@ async fn test_05b_multi_group_container_move() {
         ),
         1,
         "{} NOT auto-deleted (still has {})",
-        GROUP_A, WS1
+        GROUP_A,
+        WS1
     );
 
     // --- Launch dummy window WS2 ---
@@ -158,15 +155,17 @@ async fn test_05b_multi_group_container_move() {
         workspace_of_window(WS2).as_deref(),
         Some(WS1),
         "window '{}' moved to workspace '{}'",
-        WS2, WS1
+        WS2,
+        WS1
     );
 
     // Guard block updates active_group to GROUP_A when switching to WS1 (cross-group move)
-    let active_after_move = swayg_output(
-        &fixture.db_path,
-        &["group", "active", &fixture.orig_output],
+    let active_after_move =
+        swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
+    assert_eq!(
+        active_after_move, GROUP_A,
+        "active group updated to GROUP_A (guard block)"
     );
-    assert_eq!(active_after_move, GROUP_A, "active group updated to GROUP_A (guard block)");
 
     assert_eq!(
         db_count(
@@ -183,14 +182,16 @@ async fn test_05b_multi_group_container_move() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "{} still in group '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
 
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_B),
         0,
         "{} NOT added to group '{}' by container move",
-        WS1, GROUP_B
+        WS1,
+        GROUP_B
     );
 
     assert_eq!(
@@ -220,13 +221,7 @@ async fn test_05b_multi_group_container_move() {
 
     // --- Switch back: first to GROUP_B to trigger its auto-delete ---
     fixture
-        .swayg(&[
-            "group",
-            "select",
-            GROUP_B,
-            "--output",
-            &fixture.orig_output,
-        ])
+        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
 
     // GROUP_B is empty → auto-deleted when switching away

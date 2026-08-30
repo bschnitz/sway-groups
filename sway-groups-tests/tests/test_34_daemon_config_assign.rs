@@ -1,9 +1,9 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_count, db_query, get_focused_workspace, orig_active_group, pause_test_daemon,
-    resume_test_daemon, start_test_daemon_with_config, stop_test_daemon,
-    ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, db_query, get_focused_workspace, orig_active_group,
+    pause_test_daemon, resume_test_daemon, start_test_daemon_with_config, stop_test_daemon,
+    ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_cfga_34";
@@ -32,11 +32,16 @@ async fn test_34_daemon_config_assign() {
     // --- Setup: init, create groups ---
     fixture.init().success();
     fixture
-        .swayg(&["group", "select", GROUP_A, "--output", &orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_A,
+            "--output",
+            &orig_output,
+            "--create",
+        ])
         .success();
-    fixture
-        .swayg(&["group", "create", GROUP_B])
-        .success();
+    fixture.swayg(&["group", "create", GROUP_B]).success();
 
     // --- Test 1: config rule assigns workspace to specific groups ---
     write_test_config(&format!(
@@ -51,7 +56,10 @@ async fn test_34_daemon_config_assign() {
     std::thread::sleep(std::time::Duration::from_millis(2500));
 
     let focused = get_focused_workspace().expect("get focused workspace");
-    assert_eq!(focused, ASSIGNED_WS, "sway assignment rule moved window to workspace");
+    assert_eq!(
+        focused, ASSIGNED_WS,
+        "sway assignment rule moved window to workspace"
+    );
 
     assert_eq!(
         ws_in_group_count(&fixture.db_path, ASSIGNED_WS, GROUP_A),
@@ -90,11 +98,16 @@ async fn test_34_daemon_config_assign() {
     // --- Test 2: global flag (no groups → falls back to active group + sets global) ---
     fixture.init().success();
     fixture
-        .swayg(&["group", "select", GROUP_A, "--output", &orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_A,
+            "--output",
+            &orig_output,
+            "--create",
+        ])
         .success();
-    fixture
-        .swayg(&["group", "create", GROUP_B])
-        .success();
+    fixture.swayg(&["group", "create", GROUP_B]).success();
 
     write_test_config(&format!(
         "[[assign]]\nmatch = \"{ASSIGNED_WS}\"\nglobal = true\n"
@@ -134,7 +147,12 @@ async fn test_34_daemon_config_assign() {
 
     fixture
         .swayg(&[
-            "group", "select", &orig_group, "--output", &orig_output, "--create",
+            "group",
+            "select",
+            &orig_group,
+            "--output",
+            &orig_output,
+            "--create",
         ])
         .success();
 }

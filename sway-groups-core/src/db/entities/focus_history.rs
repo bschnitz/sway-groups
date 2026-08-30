@@ -27,13 +27,11 @@ impl Entity {
     pub fn find_by_max_age(max_age: chrono::Duration) -> Select<Self> {
         use sea_orm::{ColumnTrait, QueryFilter};
         let cutoff = chrono::Utc::now().naive_utc() - max_age;
-        Self::find()
-            .filter(Column::FocusedAt.lt(cutoff))
+        Self::find().filter(Column::FocusedAt.lt(cutoff))
     }
 
     pub fn find_by_workspace_name(workspace_name: &str) -> Select<Self> {
         use sea_orm::{ColumnTrait, QueryFilter};
-        Self::find()
-            .filter(Column::WorkspaceName.eq(workspace_name))
+        Self::find().filter(Column::WorkspaceName.eq(workspace_name))
     }
 }

@@ -1,7 +1,6 @@
 use sway_groups_tests::common::{
-    db_count, db_query, get_focused_workspace, line_starts_with, orig_active_group,
-    output_contains, swayg_output, workspace_exists_in_sway, ws_in_group_count,
-    DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, db_query, get_focused_workspace, line_starts_with,
+    orig_active_group, output_contains, swayg_output, workspace_exists_in_sway, ws_in_group_count,
 };
 
 const GROUP: &str = "zz_test_vis__";
@@ -13,7 +12,11 @@ async fn test_14_workspace_list_output_format() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
     for ws in [WS_A, WS_B] {
-        assert!(!workspace_exists_in_sway(ws), "{} must not exist in sway", ws);
+        assert!(
+            !workspace_exists_in_sway(ws),
+            "{} must not exist in sway",
+            ws
+        );
     }
 
     // --- Remember original state ---
@@ -25,7 +28,14 @@ async fn test_14_workspace_list_output_format() {
     fixture.init().success();
 
     fixture
-        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     let _win_a = DummyWindowHandle::spawn(WS_A).expect("spawn WS_A");
@@ -41,32 +51,57 @@ async fn test_14_workspace_list_output_format() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     // --- Verify setup ---
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)
+        ),
         1,
         "group '{}' exists",
         GROUP
     );
-    assert!(_win_a.exists_in_tree(), "dummy window '{}' is running", WS_A);
-    assert!(_win_b.exists_in_tree(), "dummy window '{}' is running", WS_B);
+    assert!(
+        _win_a.exists_in_tree(),
+        "dummy window '{}' is running",
+        WS_A
+    );
+    assert!(
+        _win_b.exists_in_tree(),
+        "dummy window '{}' is running",
+        WS_B
+    );
     for ws in [WS_A, WS_B] {
         assert_eq!(
             ws_in_group_count(&fixture.db_path, ws, GROUP),
             1,
             "'{}' in group '{}'",
-            ws, GROUP
+            ws,
+            GROUP
         );
     }
 
     // --- Test: workspace list --visible (only active group's workspaces) ---
     let vis_out = swayg_output(
         &fixture.db_path,
-        &["workspace", "list", "--visible", "--output", &fixture.orig_output],
+        &[
+            "workspace",
+            "list",
+            "--visible",
+            "--output",
+            &fixture.orig_output,
+        ],
     );
     assert!(
         !output_contains(&vis_out, WS_A),
@@ -84,28 +119,30 @@ async fn test_14_workspace_list_output_format() {
         &fixture.db_path,
         &["workspace", "list", "--output", &fixture.orig_output],
     );
+    assert!(output_contains(&all_out, WS_A), "'{}' in full list", WS_A);
+    assert!(output_contains(&all_out, WS_B), "'{}' in full list", WS_B);
     assert!(
-        output_contains(&all_out, WS_A),
-        "'{}' in full list",
-        WS_A
-    );
-    assert!(
-        output_contains(&all_out, WS_B),
-        "'{}' in full list",
-        WS_B
-    );
-    assert!(
-        output_contains(&all_out, "hidden") && output_contains(&all_out, WS_A) && all_out.lines().any(|l| l.contains(WS_A) && l.contains("hidden")),
+        output_contains(&all_out, "hidden")
+            && output_contains(&all_out, WS_A)
+            && all_out
+                .lines()
+                .any(|l| l.contains(WS_A) && l.contains("hidden")),
         "'{}' marked as (hidden)",
         WS_A
     );
     assert!(
-        output_contains(&all_out, "hidden") && output_contains(&all_out, WS_B) && all_out.lines().any(|l| l.contains(WS_B) && l.contains("hidden")),
+        output_contains(&all_out, "hidden")
+            && output_contains(&all_out, WS_B)
+            && all_out
+                .lines()
+                .any(|l| l.contains(WS_B) && l.contains("hidden")),
         "'{}' marked as (hidden)",
         WS_B
     );
     assert!(
-        all_out.lines().any(|l| l.contains(&orig_ws) && l.contains("visible")),
+        all_out
+            .lines()
+            .any(|l| l.contains(&orig_ws) && l.contains("visible")),
         "'{}' marked as (visible)",
         orig_ws
     );
@@ -124,7 +161,9 @@ async fn test_14_workspace_list_output_format() {
         &["workspace", "list", "--output", &fixture.orig_output],
     );
     assert!(
-        global_out.lines().any(|l| l.contains(WS_A) && l.contains("global")),
+        global_out
+            .lines()
+            .any(|l| l.contains(WS_A) && l.contains("global")),
         "'{}' marked as (global)",
         WS_A
     );
@@ -132,7 +171,13 @@ async fn test_14_workspace_list_output_format() {
     // --- Test: workspace list --plain (no status markers) ---
     let plain_out = swayg_output(
         &fixture.db_path,
-        &["workspace", "list", "--plain", "--output", &fixture.orig_output],
+        &[
+            "workspace",
+            "list",
+            "--plain",
+            "--output",
+            &fixture.orig_output,
+        ],
     );
     assert!(
         output_contains(&plain_out, WS_A),
@@ -155,13 +200,16 @@ async fn test_14_workspace_list_output_format() {
     // --- Test: workspace list --group (filtered by group) ---
     let grp_out = swayg_output(
         &fixture.db_path,
-        &["workspace", "list", "--group", GROUP, "--output", &fixture.orig_output],
+        &[
+            "workspace",
+            "list",
+            "--group",
+            GROUP,
+            "--output",
+            &fixture.orig_output,
+        ],
     );
-    assert!(
-        output_contains(&grp_out, WS_B),
-        "'{}' in group list",
-        WS_B
-    );
+    assert!(output_contains(&grp_out, WS_B), "'{}' in group list", WS_B);
     assert!(
         !line_starts_with(&grp_out, &orig_ws),
         "'{}' NOT in group list (different group)",
@@ -175,19 +223,37 @@ async fn test_14_workspace_list_output_format() {
     drop(_win_b);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    assert!(!workspace_exists_in_sway(WS_A), "'{}' is gone from sway", WS_A);
-    assert!(!workspace_exists_in_sway(WS_B), "'{}' is gone from sway", WS_B);
+    assert!(
+        !workspace_exists_in_sway(WS_A),
+        "'{}' is gone from sway",
+        WS_A
+    );
+    assert!(
+        !workspace_exists_in_sway(WS_B),
+        "'{}' is gone from sway",
+        WS_B
+    );
 
     // --- Auto-delete empty group ---
     fixture
         .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)
+        ),
         0,
         "'{}' auto-deleted",
         GROUP
@@ -202,7 +268,10 @@ async fn test_14_workspace_list_output_format() {
     );
     let ws_gone = db_count(
         &fixture.db_path,
-        &format!("SELECT count(*) FROM workspaces WHERE name IN ('{}', '{}')", WS_A, WS_B),
+        &format!(
+            "SELECT count(*) FROM workspaces WHERE name IN ('{}', '{}')",
+            WS_A, WS_B
+        ),
     );
     assert_eq!(group_gone, 0, "no test groups remain");
     assert_eq!(ws_gone, 0, "no test workspaces remain");

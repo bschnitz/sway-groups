@@ -1,8 +1,8 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_query, get_focused_workspace, pause_test_daemon, resume_test_daemon, start_test_daemon,
-    swayg_output, ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_query, get_focused_workspace, pause_test_daemon,
+    resume_test_daemon, start_test_daemon, swayg_output, ws_in_group_count,
 };
 
 const TEST_GROUP: &str = "zz_test_assign_group";
@@ -26,11 +26,21 @@ async fn test_28_daemon_with_assignment_rule() {
     resume_test_daemon();
 
     fixture
-        .swayg(&["group", "select", TEST_GROUP, "--output", &orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            TEST_GROUP,
+            "--output",
+            &orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
-        db_query(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
+        db_query(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)
+        ),
         "1",
         "group was created"
     );
@@ -47,12 +57,17 @@ async fn test_28_daemon_with_assignment_rule() {
 
     std::thread::sleep(std::time::Duration::from_millis(2000));
 
-    let ws_count = db_query(&fixture.db_path, &format!(
-        "SELECT count(*) FROM workspaces WHERE name = '{}'", ASSIGNED_WS
-    ));
+    let ws_count = db_query(
+        &fixture.db_path,
+        &format!(
+            "SELECT count(*) FROM workspaces WHERE name = '{}'",
+            ASSIGNED_WS
+        ),
+    );
     assert_eq!(
         ws_count, "1",
-        "daemon should have added assigned workspace '{}' to DB", ASSIGNED_WS
+        "daemon should have added assigned workspace '{}' to DB",
+        ASSIGNED_WS
     );
 
     let _active_group = swayg_output(&fixture.db_path, &["group", "active", &orig_output]);
@@ -66,7 +81,8 @@ async fn test_28_daemon_with_assignment_rule() {
     let in_group = ws_in_group_count(&fixture.db_path, ASSIGNED_WS, TEST_GROUP);
     assert_eq!(
         in_group, 1,
-        "workspace '{}' should be in group '{}' after move", ASSIGNED_WS, TEST_GROUP
+        "workspace '{}' should be in group '{}' after move",
+        ASSIGNED_WS, TEST_GROUP
     );
 
     let active_after_move = swayg_output(&fixture.db_path, &["group", "active", &orig_output]);

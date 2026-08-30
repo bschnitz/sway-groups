@@ -1,8 +1,8 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, swayg_output, workspace_count_in_sway,
-    workspace_of_window, ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, swayg_output,
+    workspace_count_in_sway, workspace_of_window, ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_group_a";
@@ -56,10 +56,7 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         GROUP_A
     );
 
-    let active = swayg_output(
-        &fixture.db_path,
-        &["group", "active", &fixture.orig_output],
-    );
+    let active = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active, GROUP_A, "active group = '{}'", GROUP_A);
 
     let _win1 = DummyWindowHandle::spawn(WS1).expect("spawn dummy window WS1");
@@ -85,7 +82,8 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         workspace_of_window(WS1).as_deref(),
         Some(WS1),
         "window '{}' is on workspace '{}'",
-        WS1, WS1
+        WS1,
+        WS1
     );
 
     assert_eq!(
@@ -102,7 +100,8 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "{} is in group '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
 
     // --- Switch to Group B, launch WS2, move to WS2 ---
@@ -117,10 +116,7 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         ])
         .success();
 
-    let active_b = swayg_output(
-        &fixture.db_path,
-        &["group", "active", &fixture.orig_output],
-    );
+    let active_b = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active_b, GROUP_B, "active group = '{}'", GROUP_B);
 
     assert_eq!(
@@ -130,7 +126,8 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         ),
         1,
         "{} NOT auto-deleted (still has {})",
-        GROUP_A, WS1
+        GROUP_A,
+        WS1
     );
 
     let _win2 = DummyWindowHandle::spawn(WS2).expect("spawn dummy window WS2");
@@ -156,7 +153,8 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         workspace_of_window(WS2).as_deref(),
         Some(WS2),
         "window '{}' is on workspace '{}'",
-        WS2, WS2
+        WS2,
+        WS2
     );
 
     assert_eq!(
@@ -173,7 +171,8 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         ws_in_group_count(&fixture.db_path, WS2, GROUP_B),
         1,
         "{} is in group '{}'",
-        WS2, GROUP_B
+        WS2,
+        GROUP_B
     );
 
     // --- Verify initial state before rename ---
@@ -198,9 +197,7 @@ async fn test_05c_multi_group_workspace_rename_merge() {
     );
 
     // --- Rename WS2 -> WS1 (merge) ---
-    fixture
-        .swayg(&["workspace", "rename", WS2, WS1])
-        .success();
+    fixture.swayg(&["workspace", "rename", WS2, WS1]).success();
 
     assert_eq!(
         db_count(
@@ -248,14 +245,16 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         workspace_of_window(WS1).as_deref(),
         Some(WS1),
         "window '{}' is on workspace '{}'",
-        WS1, WS1
+        WS1,
+        WS1
     );
 
     assert_eq!(
         workspace_of_window(WS2).as_deref(),
         Some(WS1),
         "window '{}' merged to workspace '{}'",
-        WS2, WS1
+        WS2,
+        WS1
     );
 
     // --- Switch away and back to let sway clean up empty workspace ---
@@ -284,9 +283,13 @@ async fn test_05c_multi_group_workspace_rename_merge() {
     let visible_a = swayg_output(
         &fixture.db_path,
         &[
-            "workspace", "list", "--plain",
-            "--group", GROUP_A,
-            "--output", &fixture.orig_output,
+            "workspace",
+            "list",
+            "--plain",
+            "--group",
+            GROUP_A,
+            "--output",
+            &fixture.orig_output,
         ],
     );
     assert!(
@@ -298,9 +301,13 @@ async fn test_05c_multi_group_workspace_rename_merge() {
     let visible_b = swayg_output(
         &fixture.db_path,
         &[
-            "workspace", "list", "--plain",
-            "--group", GROUP_B,
-            "--output", &fixture.orig_output,
+            "workspace",
+            "list",
+            "--plain",
+            "--group",
+            GROUP_B,
+            "--output",
+            &fixture.orig_output,
         ],
     );
     assert!(
@@ -311,7 +318,14 @@ async fn test_05c_multi_group_workspace_rename_merge() {
 
     // --- Switch back to default group on test DB ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     // --- Kill dummy windows ---
@@ -336,7 +350,14 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
@@ -355,7 +376,14 @@ async fn test_05c_multi_group_workspace_rename_merge() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(

@@ -1,5 +1,5 @@
 use sway_groups_tests::common::{
-    db_count, output_contains, swayg_output, window_count_in_tree, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, output_contains, swayg_output, window_count_in_tree,
 };
 
 const GROUP: &str = "zz_test_status";
@@ -54,7 +54,14 @@ async fn test_17_status() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -104,7 +111,10 @@ async fn test_17_status() {
     // Verify it's gone via init sync
     fixture.init().success();
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)
+        ),
         0,
         "'{}' gone after cleanup",
         GROUP
@@ -121,9 +131,5 @@ async fn test_17_status() {
         &fixture.db_path,
         &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1),
     );
-    assert_eq!(
-        (group_gone, ws_gone),
-        (0, 0),
-        "no test data remains"
-    );
+    assert_eq!((group_gone, ws_gone), (0, 0), "no test data remains");
 }

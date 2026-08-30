@@ -2,9 +2,9 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_query, get_focused_workspace, orig_active_group, output_contains, swayg_output,
-    window_count_in_tree, workspace_count_in_sway, workspace_of_window, DummyWindowHandle,
-    TestFixture,
+    DummyWindowHandle, TestFixture, db_query, get_focused_workspace, orig_active_group,
+    output_contains, swayg_output, window_count_in_tree, workspace_count_in_sway,
+    workspace_of_window,
 };
 
 const GROUP_A: &str = "zz_test_group_a__05d";
@@ -33,7 +33,8 @@ async fn test_05d_multi_group_global() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
     assert_eq!(
-        workspace_count_in_sway(WS1), 0,
+        workspace_count_in_sway(WS1),
+        0,
         "precondition: {} must not exist in sway",
         WS1
     );
@@ -47,7 +48,14 @@ async fn test_05d_multi_group_global() {
 
     // --- Create Group A ---
     fixture
-        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_A,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
@@ -94,19 +102,21 @@ async fn test_05d_multi_group_global() {
 
     // --- Switch to Group B ---
     fixture
-        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_B,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
-    let active = swayg_output(
-        &fixture.db_path,
-        &["group", "active", &fixture.orig_output],
-    );
+    let active = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active, GROUP_B, "active group = {}", GROUP_B);
 
     // --- Add WS1 to Group B (multi-group) ---
-    fixture
-        .swayg(&["workspace", "add", WS1])
-        .success();
+    fixture.swayg(&["workspace", "add", WS1]).success();
 
     let ws1_still_in_ga: String = db_query(
         &fixture.db_path,
@@ -127,9 +137,7 @@ async fn test_05d_multi_group_global() {
     assert_eq!(ws1_in_gb, "1", "{} is in group {}", WS1, GROUP_B);
 
     // --- Set WS1 global ---
-    fixture
-        .swayg(&["workspace", "global", WS1])
-        .success();
+    fixture.swayg(&["workspace", "global", WS1]).success();
 
     let ws1_global: String = db_query(
         &fixture.db_path,
@@ -148,7 +156,14 @@ async fn test_05d_multi_group_global() {
 
     let visible = swayg_output(
         &fixture.db_path,
-        &["workspace", "list", "--visible", "--plain", "--output", &fixture.orig_output],
+        &[
+            "workspace",
+            "list",
+            "--visible",
+            "--plain",
+            "--output",
+            &fixture.orig_output,
+        ],
     );
     assert!(
         output_contains(&visible, WS1),
@@ -172,7 +187,14 @@ async fn test_05d_multi_group_global() {
 
     let visible_gb = swayg_output(
         &fixture.db_path,
-        &["workspace", "list", "--visible", "--plain", "--output", &fixture.orig_output],
+        &[
+            "workspace",
+            "list",
+            "--visible",
+            "--plain",
+            "--output",
+            &fixture.orig_output,
+        ],
     );
     assert!(
         output_contains(&visible_gb, WS1),
@@ -182,7 +204,14 @@ async fn test_05d_multi_group_global() {
 
     // --- Switch back to original group ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
@@ -196,11 +225,7 @@ async fn test_05d_multi_group_global() {
     drop(_win1);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    assert_eq!(
-        window_count_in_tree(WS1), 0,
-        "dummy window {} is gone",
-        WS1
-    );
+    assert_eq!(window_count_in_tree(WS1), 0, "dummy window {} is gone", WS1);
 
     // --- Post-condition: sync DB and verify no test data ---
     fixture.init().success();

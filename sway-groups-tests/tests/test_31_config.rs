@@ -2,8 +2,8 @@ use std::process::Command;
 
 use assert_cmd::cargo::CommandCargoExt;
 use sway_groups_tests::common::{
-    db_count, orig_active_group, workspace_exists_in_sway,
-    ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, orig_active_group, workspace_exists_in_sway,
+    ws_in_group_count,
 };
 
 const GROUP_FALLBACK: &str = "zz_test_fallback_31";
@@ -43,7 +43,11 @@ async fn test_31_config() {
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
-    assert!(!workspace_exists_in_sway(WS1), "precondition: {} must not exist in sway", WS1);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "precondition: {} must not exist in sway",
+        WS1
+    );
 
     // Write custom config TOML to a temp file
     let config_path = std::env::temp_dir().join("swayg-test-31-config.toml");
@@ -66,7 +70,14 @@ async fn test_31_config() {
 
     // Create GROUP_A and put WS1 into it
     fixture
-        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_A,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     let _win1 = DummyWindowHandle::spawn(WS1).expect("spawn dummy window WS1");
@@ -81,18 +92,27 @@ async fn test_31_config() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "{} is in '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_FALLBACK),
         0,
         "{} is NOT yet in '{}' (fallback)",
-        WS1, GROUP_FALLBACK
+        WS1,
+        GROUP_FALLBACK
     );
 
     // Switch to neutral group before delete
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     // Delete GROUP_A with --force and custom --config.
@@ -110,7 +130,10 @@ async fn test_31_config() {
         .success();
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)
+        ),
         0,
         "{} was deleted",
         GROUP_A
@@ -119,7 +142,8 @@ async fn test_31_config() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_FALLBACK),
         1,
         "{} moved to custom fallback group '{}' (not default '0')",
-        WS1, GROUP_FALLBACK
+        WS1,
+        GROUP_FALLBACK
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, "0"),
@@ -148,7 +172,10 @@ async fn test_31_config() {
         "no test groups remain"
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)
+        ),
         0,
         "no test workspace remains"
     );

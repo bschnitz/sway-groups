@@ -1,7 +1,6 @@
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, swayg_output,
-    workspace_count_in_sway, workspace_of_window, ws_in_group_count, DummyWindowHandle,
-    TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, orig_active_group,
+    swayg_output, workspace_count_in_sway, workspace_of_window, ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_group_a";
@@ -47,10 +46,7 @@ async fn test_05a_multi_group_workspace_add() {
         GROUP_A
     );
 
-    let active = swayg_output(
-        &fixture.db_path,
-        &["group", "active", &fixture.orig_output],
-    );
+    let active = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active, GROUP_A, "active group = '{}'", GROUP_A);
 
     // --- Launch dummy window WS1 ---
@@ -78,7 +74,8 @@ async fn test_05a_multi_group_workspace_add() {
         sway_groups_tests::common::workspace_of_window(WS1).as_deref(),
         Some(WS1),
         "window '{}' is on workspace '{}'",
-        WS1, WS1
+        WS1,
+        WS1
     );
 
     assert_eq!(
@@ -95,7 +92,8 @@ async fn test_05a_multi_group_workspace_add() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "{} is in group '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
 
     // --- Switch to Group B ---
@@ -110,10 +108,7 @@ async fn test_05a_multi_group_workspace_add() {
         ])
         .success();
 
-    let active_b = swayg_output(
-        &fixture.db_path,
-        &["group", "active", &fixture.orig_output],
-    );
+    let active_b = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active_b, GROUP_B, "active group = '{}'", GROUP_B);
 
     assert_eq!(
@@ -123,13 +118,12 @@ async fn test_05a_multi_group_workspace_add() {
         ),
         1,
         "{} NOT auto-deleted (still has {})",
-        GROUP_A, WS1
+        GROUP_A,
+        WS1
     );
 
     // --- workspace add for existing WS1 (already in Group A, adding to Group B) ---
-    fixture
-        .swayg(&["workspace", "add", WS1])
-        .success();
+    fixture.swayg(&["workspace", "add", WS1]).success();
 
     assert_eq!(
         db_count(
@@ -145,14 +139,16 @@ async fn test_05a_multi_group_workspace_add() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "{} is in group '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
 
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_B),
         1,
         "{} is in group '{}'",
-        WS1, GROUP_B
+        WS1,
+        GROUP_B
     );
 
     assert_eq!(

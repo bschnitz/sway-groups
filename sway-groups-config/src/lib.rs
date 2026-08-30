@@ -73,7 +73,6 @@ pub enum BarDisplay {
     None,
 }
 
-
 impl Default for DefaultsConfig {
     fn default() -> Self {
         Self {

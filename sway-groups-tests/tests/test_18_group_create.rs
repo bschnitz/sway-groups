@@ -1,11 +1,10 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, swayg_output, swayg_stderr, TestFixture,
+    TestFixture, db_count, get_focused_workspace, orig_active_group, swayg_output, swayg_stderr,
 };
 
 const GROUP: &str = "zz_test_create";
-
 
 #[tokio::test]
 async fn test_18_group_create() {
@@ -43,15 +42,10 @@ async fn test_18_group_create() {
     );
 
     let active = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
-    assert_eq!(
-        active, "",
-        "active group is empty (none set) after init"
-    );
+    assert_eq!(active, "", "active group is empty (none set) after init");
 
     // --- 4. Test: create same group again (error) ---
-    fixture
-        .swayg(&["group", "create", GROUP])
-        .failure();
+    fixture.swayg(&["group", "create", GROUP]).failure();
 
     let stderr_output = swayg_stderr(&fixture.db_path, &["group", "create", GROUP]);
     assert!(

@@ -1,7 +1,4 @@
-use sway_groups_tests::common::{
-    TestFixture, swayg_output,
-    db_count, db_query, orig_active_group,
-};
+use sway_groups_tests::common::{TestFixture, db_count, db_query, orig_active_group, swayg_output};
 
 const TEST_GROUP: &str = "zz_test_group_select";
 
@@ -17,18 +14,31 @@ async fn test_01_group_select() {
     fixture.init().success();
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)
+        ),
         0,
         "no test group after init"
     );
 
     // --- Test: group select --create ---
     fixture
-        .swayg(&["group", "select", TEST_GROUP, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            TEST_GROUP,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)
+        ),
         1,
         "group was created"
     );
@@ -38,11 +48,21 @@ async fn test_01_group_select() {
 
     // --- Test: switch back to default group (auto-delete) ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", TEST_GROUP)
+        ),
         0,
         "test group auto-deleted"
     );

@@ -1,8 +1,8 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, swayg_output, window_count_in_tree,
-    workspace_exists_in_sway, workspace_of_window, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, orig_active_group,
+    swayg_output, window_count_in_tree, workspace_exists_in_sway, workspace_of_window,
 };
 
 const GROUP: &str = "zz_test_nav_move";
@@ -109,8 +109,7 @@ async fn test_19_nav_move_to() {
     );
 
     // --- 5. Test: kitty is now on target workspace ---
-    let ws_of_kitty =
-        workspace_of_window(KITTY_APP_ID).expect("find workspace of kitty");
+    let ws_of_kitty = workspace_of_window(KITTY_APP_ID).expect("find workspace of kitty");
     assert_eq!(
         ws_of_kitty, WS_TARGET,
         "kitty is on workspace '{}'",
@@ -155,9 +154,5 @@ async fn test_19_nav_move_to() {
             WS_TARGET
         ),
     );
-    assert_eq!(
-        (group_gone, ws_gone),
-        (0, 0),
-        "no test data remains in DB"
-    );
+    assert_eq!((group_gone, ws_gone), (0, 0), "no test data remains in DB");
 }

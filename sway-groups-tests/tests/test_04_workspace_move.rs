@@ -1,7 +1,6 @@
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, swayg_output,
-    workspace_exists_in_sway, workspace_of_window, ws_in_group_count, DummyWindowHandle,
-    TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, orig_active_group,
+    swayg_output, workspace_exists_in_sway, workspace_of_window, ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_move_a";
@@ -15,7 +14,11 @@ async fn test_04_workspace_move() {
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
-    assert!(!workspace_exists_in_sway(WS1), "{} must not exist in sway", WS1);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "{} must not exist in sway",
+        WS1
+    );
 
     // --- Init ---
     fixture.init().success();
@@ -53,11 +56,7 @@ async fn test_04_workspace_move() {
         .swayg(&["container", "move", WS1, "--switch-to-workspace"])
         .success();
 
-    assert_eq!(
-        get_focused_workspace().unwrap(),
-        WS1,
-        "focused on WS1"
-    );
+    assert_eq!(get_focused_workspace().unwrap(), WS1, "focused on WS1");
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
@@ -152,11 +151,7 @@ async fn test_04_workspace_move() {
     drop(_kitty);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    assert!(
-        !workspace_exists_in_sway(WS1),
-        "{} is gone from sway",
-        WS1
-    );
+    assert!(!workspace_exists_in_sway(WS1), "{} is gone from sway", WS1);
 
     fixture
         .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])

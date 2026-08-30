@@ -1,14 +1,13 @@
 //! Database connection and management.
 
-use sea_orm::{ConnectOptions, Database, DatabaseConnection, Schema, ConnectionTrait};
-use std::path::PathBuf;
 use anyhow::Result as AnyResult;
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Schema};
+use std::path::PathBuf;
 use tracing::info;
 
 use crate::db::entities::{
-    FocusHistoryEntity, GroupEntity, GroupStateEntity, HiddenWorkspaceEntity,
-    OutputEntity, PendingWorkspaceEventEntity, SettingEntity,
-    WorkspaceEntity, WorkspaceGroupEntity,
+    FocusHistoryEntity, GroupEntity, GroupStateEntity, HiddenWorkspaceEntity, OutputEntity,
+    PendingWorkspaceEventEntity, SettingEntity, WorkspaceEntity, WorkspaceGroupEntity,
 };
 
 /// Database manager for sway-groups.

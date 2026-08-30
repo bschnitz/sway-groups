@@ -1,10 +1,10 @@
 use std::collections::HashSet;
 
-use crate::db::entities::{GroupEntity, OutputEntity};
 use crate::db::DatabaseManager;
+use crate::db::entities::{GroupEntity, OutputEntity};
 use crate::error::Result;
-use crate::sway::waybar_client::{WidgetSpec, WaybarClient, WaybarMessage};
 use crate::sway::SwayIpcClient;
+use crate::sway::waybar_client::{WaybarClient, WaybarMessage, WidgetSpec};
 use sea_orm::EntityTrait;
 use tracing::info;
 
@@ -43,7 +43,11 @@ pub struct WaybarSyncService {
 }
 
 impl WaybarSyncService {
-    pub fn new(db: DatabaseManager, ipc_client: SwayIpcClient, waybar_client: WaybarClient) -> Self {
+    pub fn new(
+        db: DatabaseManager,
+        ipc_client: SwayIpcClient,
+        waybar_client: WaybarClient,
+    ) -> Self {
         let groups_client = WaybarClient::new_groups();
         Self {
             db,
@@ -193,8 +197,10 @@ impl WaybarSyncService {
                         continue;
                     }
 
-                    let memberships =
-                        memberships_map.get(&ws.id).map(|v| v.as_slice()).unwrap_or(&[]);
+                    let memberships = memberships_map
+                        .get(&ws.id)
+                        .map(|v| v.as_slice())
+                        .unwrap_or(&[]);
                     let membership_group_names: Vec<String> = memberships
                         .iter()
                         .filter_map(|m| group_name_map.get(&m.group_id).cloned())
@@ -272,8 +278,7 @@ impl WaybarSyncService {
         // Load memberships for all groups (needed for empty-filtering and urgent detection)
         let group_ids: Vec<i32> = groups.iter().map(|g| g.id).collect();
         let memberships_map =
-            crate::db::queries::load_memberships_by_group_ids(self.db.conn(), &group_ids)
-                .await?;
+            crate::db::queries::load_memberships_by_group_ids(self.db.conn(), &group_ids).await?;
 
         let all_ws_ids: Vec<i32> = memberships_map
             .values()
@@ -291,7 +296,14 @@ impl WaybarSyncService {
                 .filter(|g| {
                     memberships_map
                         .get(&g.id)
-                        .map(|ms| ms.iter().any(|m| !ws_map.get(&m.workspace_id).map(|w| w.is_global).unwrap_or(true)))
+                        .map(|ms| {
+                            ms.iter().any(|m| {
+                                !ws_map
+                                    .get(&m.workspace_id)
+                                    .map(|w| w.is_global)
+                                    .unwrap_or(true)
+                            })
+                        })
                         .unwrap_or(false)
                 })
                 .map(|g| g.id)
@@ -313,9 +325,10 @@ impl WaybarSyncService {
 
         for group in &groups {
             if let Some(ref non_empty) = non_empty_group_ids
-                && !non_empty.contains(&group.id) {
-                    continue;
-                }
+                && !non_empty.contains(&group.id)
+            {
+                continue;
+            }
 
             let is_active = active_group.as_deref() == Some(&group.name);
 

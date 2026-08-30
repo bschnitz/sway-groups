@@ -1,8 +1,8 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_count, orig_active_group, window_count_in_tree,
-    workspace_exists_in_sway, ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, orig_active_group, window_count_in_tree,
+    workspace_exists_in_sway, ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_pa";
@@ -21,23 +21,19 @@ async fn test_16_group_prune() {
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
-    assert!(!workspace_exists_in_sway(WS1), "precondition: {} must not exist in sway", WS1);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "precondition: {} must not exist in sway",
+        WS1
+    );
 
     // --- 2. Setup: init + create 4 groups + dummy window in group A + switch back ---
     fixture.init().success();
 
-    fixture
-        .swayg(&["group", "create", GROUP_A])
-        .success();
-    fixture
-        .swayg(&["group", "create", GROUP_B])
-        .success();
-    fixture
-        .swayg(&["group", "create", GROUP_C])
-        .success();
-    fixture
-        .swayg(&["group", "create", GROUP_D])
-        .success();
+    fixture.swayg(&["group", "create", GROUP_A]).success();
+    fixture.swayg(&["group", "create", GROUP_B]).success();
+    fixture.swayg(&["group", "create", GROUP_C]).success();
+    fixture.swayg(&["group", "create", GROUP_D]).success();
 
     fixture
         .swayg(&[
@@ -237,7 +233,14 @@ async fn test_16_group_prune() {
         .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
@@ -264,9 +267,5 @@ async fn test_16_group_prune() {
         &fixture.db_path,
         &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1),
     );
-    assert_eq!(
-        (groups_gone, ws_gone),
-        (0, 0),
-        "no test data remains in DB"
-    );
+    assert_eq!((groups_gone, ws_gone), (0, 0), "no test data remains in DB");
 }

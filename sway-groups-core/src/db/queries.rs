@@ -8,8 +8,8 @@ use std::collections::{HashMap, HashSet};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 
 use crate::db::entities::{
-    group, setting, workspace, workspace_group, GroupEntity, HiddenWorkspaceEntity,
-    SettingEntity, WorkspaceEntity, WorkspaceGroupEntity,
+    GroupEntity, HiddenWorkspaceEntity, SettingEntity, WorkspaceEntity, WorkspaceGroupEntity,
+    group, setting, workspace, workspace_group,
 };
 use crate::error::Result;
 
@@ -103,11 +103,12 @@ pub(crate) async fn load_group_names_by_ids(
 }
 
 /// Load the full set of (workspace_id, group_id) hidden pairs.
-pub(crate) async fn load_hidden_pairs(
-    conn: &DatabaseConnection,
-) -> Result<HashSet<(i32, i32)>> {
+pub(crate) async fn load_hidden_pairs(conn: &DatabaseConnection) -> Result<HashSet<(i32, i32)>> {
     let rows = HiddenWorkspaceEntity::find().all(conn).await?;
-    Ok(rows.into_iter().map(|r| (r.workspace_id, r.group_id)).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.workspace_id, r.group_id))
+        .collect())
 }
 
 // ---------------------------------------------------------------------------
@@ -115,20 +116,13 @@ pub(crate) async fn load_hidden_pairs(
 // ---------------------------------------------------------------------------
 
 /// Read a raw setting value by key. Returns `None` if not present.
-pub(crate) async fn get_setting(
-    conn: &DatabaseConnection,
-    key: &str,
-) -> Result<Option<String>> {
+pub(crate) async fn get_setting(conn: &DatabaseConnection, key: &str) -> Result<Option<String>> {
     let row = SettingEntity::find_by_id(key.to_string()).one(conn).await?;
     Ok(row.map(|r| r.value))
 }
 
 /// Upsert a setting value.
-pub(crate) async fn set_setting(
-    conn: &DatabaseConnection,
-    key: &str,
-    value: &str,
-) -> Result<()> {
+pub(crate) async fn set_setting(conn: &DatabaseConnection, key: &str, value: &str) -> Result<()> {
     let existing = SettingEntity::find_by_id(key.to_string()).one(conn).await?;
     match existing {
         Some(row) => {
@@ -244,7 +238,10 @@ pub(crate) async fn compute_visible_workspaces(
             continue;
         }
         if let Some(ws) = ws_map.get(name) {
-            let memberships = memberships_map.get(&ws.id).map(|v| v.as_slice()).unwrap_or(&[]);
+            let memberships = memberships_map
+                .get(&ws.id)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
             let membership_group_names: Vec<String> = memberships
                 .iter()
                 .filter_map(|m| group_name_map.get(&m.group_id).cloned())

@@ -1,18 +1,18 @@
 mod dbus_monitor;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
 use sea_orm::{ActiveModelTrait, ModelTrait, Set};
 use sway_groups_core::db::DatabaseManager;
 use sway_groups_core::db::entities::{
-    workspace, workspace_group,
     GroupEntity, OutputEntity, PendingWorkspaceEventEntity, WorkspaceEntity, WorkspaceGroupEntity,
+    workspace, workspace_group,
 };
 use sway_groups_core::sway::SwayIpcClient;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 fn default_db_path() -> PathBuf {
@@ -46,7 +46,6 @@ fn write_state(state_file: &std::path::Path, state: &str) {
     }
 }
 
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
@@ -69,7 +68,9 @@ async fn main() -> Result<()> {
 
     let file_appender = tracing_appender::rolling::daily(&db_parent, "swayg-daemon.log");
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("sway_groups_daemon=info".parse()?))
+        .with_env_filter(
+            EnvFilter::from_default_env().add_directive("sway_groups_daemon=info".parse()?),
+        )
         .with_writer(file_appender)
         .with_ansi(false)
         .init();
@@ -104,7 +105,11 @@ async fn main() -> Result<()> {
     });
 
     write_state(&state_file, "running");
-    info!("swayg-daemon starting (db={}, state_file={})", db_path.display(), state_file.display());
+    info!(
+        "swayg-daemon starting (db={}, state_file={})",
+        db_path.display(),
+        state_file.display()
+    );
 
     let ipc = SwayIpcClient::new()?;
 
@@ -142,7 +147,12 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn handle_workspace_event(db_path: &Path, ipc: &SwayIpcClient, payload: &[u8], config: &sway_groups_config::SwaygConfig) {
+async fn handle_workspace_event(
+    db_path: &Path,
+    ipc: &SwayIpcClient,
+    payload: &[u8],
+    config: &sway_groups_config::SwaygConfig,
+) {
     let event: serde_json::Value = match serde_json::from_slice(payload) {
         Ok(v) => v,
         Err(e) => {
@@ -184,8 +194,18 @@ async fn handle_workspace_event(db_path: &Path, ipc: &SwayIpcClient, payload: &[
     handle_workspace_created(&db, ipc, &ws_name, ws_info, config).await;
 }
 
-async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_name: &str, ws_info: &serde_json::Map<String, serde_json::Value>, config: &sway_groups_config::SwaygConfig) {
-    let ws_output = ws_info.get("output").and_then(|v| v.as_str()).unwrap_or("").to_string();
+async fn handle_workspace_created(
+    db: &DatabaseManager,
+    ipc: &SwayIpcClient,
+    ws_name: &str,
+    ws_info: &serde_json::Map<String, serde_json::Value>,
+    config: &sway_groups_config::SwaygConfig,
+) {
+    let ws_output = ws_info
+        .get("output")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let ws_num = ws_info.get("num").and_then(|v| v.as_i64());
     let now = chrono::Utc::now().naive_utc();
 
@@ -209,7 +229,10 @@ async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_
         .unwrap_or_default();
 
     if !pending.is_empty() {
-        info!("Workspace '{}' is in pending events, skipping (swayg will handle it)", ws_name);
+        info!(
+            "Workspace '{}' is in pending events, skipping (swayg will handle it)",
+            ws_name
+        );
         return;
     }
 
@@ -228,9 +251,16 @@ async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_
                 .await
                 .unwrap_or_default();
             if memberships.is_empty() {
-                info!("Workspace '{}' exists but is orphaned (no group, not global), adopting", ws_name);
+                info!(
+                    "Workspace '{}' exists but is orphaned (no group, not global), adopting",
+                    ws_name
+                );
                 adopt_into_active_group(db, ws.id, &ws_output, now).await;
-                let waybar_sync = sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
+                let waybar_sync = sway_groups_core::services::WaybarSyncService::with_config(
+                    db.clone(),
+                    ipc.clone(),
+                    config,
+                );
                 if let Err(e) = waybar_sync.update_waybar().await {
                     warn!("Failed to update waybar: {}", e);
                 }
@@ -239,7 +269,10 @@ async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_
         return;
     }
 
-    info!("External workspace detected: '{}' on output '{}'", ws_name, ws_output);
+    info!(
+        "External workspace detected: '{}' on output '{}'",
+        ws_name, ws_output
+    );
 
     // Check config assignment rules before inserting.
     let rules = config.matching_rules(ws_name);
@@ -287,12 +320,21 @@ async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_
                     ..Default::default()
                 };
                 if let Err(e) = membership.insert(db.conn()).await {
-                    error!("Failed to add workspace '{}' to group '{}': {}", ws_name, group_name, e);
+                    error!(
+                        "Failed to add workspace '{}' to group '{}': {}",
+                        ws_name, group_name, e
+                    );
                 } else {
-                    info!("Added workspace '{}' to group '{}' (config rule)", ws_name, group_name);
+                    info!(
+                        "Added workspace '{}' to group '{}' (config rule)",
+                        ws_name, group_name
+                    );
                 }
             } else {
-                warn!("Config rule references group '{}' which does not exist, skipping", group_name);
+                warn!(
+                    "Config rule references group '{}' which does not exist, skipping",
+                    group_name
+                );
             }
         }
     } else {
@@ -302,9 +344,7 @@ async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_
             .await
             .unwrap_or(None);
 
-        let active_group = output_model
-            .as_ref()
-            .and_then(|o| o.active_group.clone());
+        let active_group = output_model.as_ref().and_then(|o| o.active_group.clone());
 
         if let Some(ref ag) = active_group {
             if let Some(group) = GroupEntity::find_by_name(ag)
@@ -319,25 +359,40 @@ async fn handle_workspace_created(db: &DatabaseManager, ipc: &SwayIpcClient, ws_
                     ..Default::default()
                 };
                 if let Err(e) = membership.insert(db.conn()).await {
-                    error!("Failed to add workspace '{}' to group '{}': {}", ws_name, ag, e);
+                    error!(
+                        "Failed to add workspace '{}' to group '{}': {}",
+                        ws_name, ag, e
+                    );
                     return;
                 }
                 info!("Added external workspace '{}' to group '{}'", ws_name, ag);
             } else {
-                warn!("Active group '{}' not found for output '{}', workspace '{}' not assigned to any group", ag, ws_output, ws_name);
+                warn!(
+                    "Active group '{}' not found for output '{}', workspace '{}' not assigned to any group",
+                    ag, ws_output, ws_name
+                );
             }
         } else {
-            info!("No active group for output '{}', workspace '{}' not assigned", ws_output, ws_name);
+            info!(
+                "No active group for output '{}', workspace '{}' not assigned",
+                ws_output, ws_name
+            );
         }
     }
 
-    let waybar_sync = sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
+    let waybar_sync =
+        sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
     if let Err(e) = waybar_sync.update_waybar().await {
         warn!("Failed to update waybar: {}", e);
     }
 }
 
-async fn handle_workspace_destroyed(db: &DatabaseManager, ipc: &SwayIpcClient, ws_name: &str, config: &sway_groups_config::SwaygConfig) {
+async fn handle_workspace_destroyed(
+    db: &DatabaseManager,
+    ipc: &SwayIpcClient,
+    ws_name: &str,
+    config: &sway_groups_config::SwaygConfig,
+) {
     let existing = WorkspaceEntity::find_by_name(ws_name)
         .one(db.conn())
         .await
@@ -363,15 +418,25 @@ async fn handle_workspace_destroyed(db: &DatabaseManager, ipc: &SwayIpcClient, w
         return;
     }
 
-    info!("Removed destroyed workspace '{}' from DB ({} memberships cleaned)", ws_name, memberships.len());
+    info!(
+        "Removed destroyed workspace '{}' from DB ({} memberships cleaned)",
+        ws_name,
+        memberships.len()
+    );
 
-    let waybar_sync = sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
+    let waybar_sync =
+        sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
     if let Err(e) = waybar_sync.update_waybar().await {
         warn!("Failed to update waybar: {}", e);
     }
 }
 
-async fn handle_window_event(db_path: &Path, ipc: &SwayIpcClient, payload: &[u8], config: &sway_groups_config::SwaygConfig) {
+async fn handle_window_event(
+    db_path: &Path,
+    ipc: &SwayIpcClient,
+    payload: &[u8],
+    config: &sway_groups_config::SwaygConfig,
+) {
     let event: serde_json::Value = match serde_json::from_slice(payload) {
         Ok(v) => v,
         Err(_) => return,
@@ -392,7 +457,8 @@ async fn handle_window_event(db_path: &Path, ipc: &SwayIpcClient, payload: &[u8]
         }
     };
 
-    let waybar_sync = sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
+    let waybar_sync =
+        sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
     if let Err(e) = waybar_sync.update_waybar().await {
         warn!("Failed to update waybar workspaces: {}", e);
     }
@@ -413,9 +479,7 @@ async fn adopt_into_active_group(
         .await
         .unwrap_or(None);
 
-    let active_group = output_model
-        .as_ref()
-        .and_then(|o| o.active_group.clone());
+    let active_group = output_model.as_ref().and_then(|o| o.active_group.clone());
 
     if let Some(ref ag) = active_group
         && let Some(group) = GroupEntity::find_by_name(ag)

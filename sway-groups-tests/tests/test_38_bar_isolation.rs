@@ -6,8 +6,8 @@
 //! state back. The fixture now gives each test process a runtime directory of
 //! its own; this test fails if that ever stops being true.
 
-use sway_groups_tests::common::sway_instance::instance_dir;
 use sway_groups_tests::common::TestFixture;
+use sway_groups_tests::common::sway_instance::instance_dir;
 
 const WS: &str = "zz_test_bar_isolation";
 
@@ -37,5 +37,7 @@ async fn test_38_bar_isolation() {
     // A command that syncs the bars has to succeed all the same: a missing
     // socket is a skipped send, not an error.
     fixture.swayg(&["workspace", "add", WS]).success();
-    fixture.swayg(&["sync", "--all", "--init-bars", "--init-bars-retries", "1"]).success();
+    fixture
+        .swayg(&["sync", "--all", "--init-bars", "--init-bars-retries", "1"])
+        .success();
 }

@@ -2,7 +2,9 @@
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use sway_groups_core::services::{GroupService, NavigationService, WaybarSyncService, WorkspaceService};
+use sway_groups_core::services::{
+    GroupService, NavigationService, WaybarSyncService, WorkspaceService,
+};
 use sway_groups_core::sway::SwayIpcClient;
 
 #[derive(Parser)]
@@ -407,15 +409,85 @@ pub async fn run(
     db_path: PathBuf,
 ) -> anyhow::Result<()> {
     match cli.command {
-        Command::Group { action } => run_group(action, group_service, workspace_service, waybar_sync, ipc_client).await?,
-        Command::Workspace { action } => run_workspace(action, workspace_service, group_service, nav_service, waybar_sync, ipc_client).await?,
-        Command::Nav { action } => run_nav(action, nav_service, group_service, workspace_service, waybar_sync, ipc_client).await?,
-        Command::Container { action } => run_container(action, nav_service, group_service, workspace_service, waybar_sync, ipc_client).await?,
-        Command::Sync { all, workspaces, groups, outputs, repair, init_bars, init_bars_retries, init_bars_delay_ms } => {
-            run_sync(all, workspaces, groups, outputs, repair, init_bars, init_bars_retries, init_bars_delay_ms, workspace_service, group_service, waybar_sync).await?;
+        Command::Group { action } => {
+            run_group(
+                action,
+                group_service,
+                workspace_service,
+                waybar_sync,
+                ipc_client,
+            )
+            .await?
         }
-        Command::Init { restart_daemon_service } => {
-            run_init(db_path, workspace_service, group_service, waybar_sync, restart_daemon_service).await?;
+        Command::Workspace { action } => {
+            run_workspace(
+                action,
+                workspace_service,
+                group_service,
+                nav_service,
+                waybar_sync,
+                ipc_client,
+            )
+            .await?
+        }
+        Command::Nav { action } => {
+            run_nav(
+                action,
+                nav_service,
+                group_service,
+                workspace_service,
+                waybar_sync,
+                ipc_client,
+            )
+            .await?
+        }
+        Command::Container { action } => {
+            run_container(
+                action,
+                nav_service,
+                group_service,
+                workspace_service,
+                waybar_sync,
+                ipc_client,
+            )
+            .await?
+        }
+        Command::Sync {
+            all,
+            workspaces,
+            groups,
+            outputs,
+            repair,
+            init_bars,
+            init_bars_retries,
+            init_bars_delay_ms,
+        } => {
+            run_sync(
+                all,
+                workspaces,
+                groups,
+                outputs,
+                repair,
+                init_bars,
+                init_bars_retries,
+                init_bars_delay_ms,
+                workspace_service,
+                group_service,
+                waybar_sync,
+            )
+            .await?;
+        }
+        Command::Init {
+            restart_daemon_service,
+        } => {
+            run_init(
+                db_path,
+                workspace_service,
+                group_service,
+                waybar_sync,
+                restart_daemon_service,
+            )
+            .await?;
         }
         Command::Repair => {
             run_repair(workspace_service, group_service, waybar_sync, ipc_client).await?;
@@ -427,7 +499,15 @@ pub async fn run(
             run_config(action)?;
         }
         Command::Notification { action } => {
-            run_notification(action, group_service, nav_service, workspace_service, waybar_sync, ipc_client).await?;
+            run_notification(
+                action,
+                group_service,
+                nav_service,
+                workspace_service,
+                waybar_sync,
+                ipc_client,
+            )
+            .await?;
         }
     }
     Ok(())
@@ -498,7 +578,11 @@ async fn run_group(
             waybar_sync.update_waybar_groups().await?;
             println!("Renamed group \"{}\" to \"{}\"", old_name, new_name);
         }
-        GroupAction::Select { output, group, create } => {
+        GroupAction::Select {
+            output,
+            group,
+            create,
+        } => {
             if create {
                 let groups = group_service.list_all_group_names().await?;
                 if !groups.iter().any(|g| g == &group) {
@@ -506,21 +590,33 @@ async fn run_group(
                     println!("Created group \"{}\"", group);
                 }
             }
-            let resolved_output = resolve_group_output(output.as_deref(), &group, group_service, ipc_client).await?;
-            group_service.set_active_group(&resolved_output, &group).await?;
+            let resolved_output =
+                resolve_group_output(output.as_deref(), &group, group_service, ipc_client).await?;
+            group_service
+                .set_active_group(&resolved_output, &group)
+                .await?;
             waybar_sync.update_waybar().await?;
             waybar_sync.update_waybar_groups().await?;
-            println!("Set active group for \"{}\" to \"{}\"", resolved_output, group);
+            println!(
+                "Set active group for \"{}\" to \"{}\"",
+                resolved_output, group
+            );
         }
         GroupAction::Active { output } => {
-            let active = group_service.get_active_group(&output).await.unwrap_or(None);
+            let active = group_service
+                .get_active_group(&output)
+                .await
+                .unwrap_or(None);
             println!("{}", active.unwrap_or_default());
         }
         GroupAction::Next { output, wrap } => {
             let current_output = resolve_output(output.as_deref(), ipc_client)?;
             if let Some(next_name) = group_service.next_group_name(&current_output, wrap).await? {
-                let resolved_output = resolve_group_output(None, &next_name, group_service, ipc_client).await?;
-                group_service.set_active_group(&resolved_output, &next_name).await?;
+                let resolved_output =
+                    resolve_group_output(None, &next_name, group_service, ipc_client).await?;
+                group_service
+                    .set_active_group(&resolved_output, &next_name)
+                    .await?;
                 waybar_sync.update_waybar().await?;
                 waybar_sync.update_waybar_groups().await?;
                 println!("Switched from active group to \"{}\"", next_name);
@@ -537,8 +633,11 @@ async fn run_group(
         GroupAction::Prev { output, wrap } => {
             let current_output = resolve_output(output.as_deref(), ipc_client)?;
             if let Some(prev_name) = group_service.prev_group_name(&current_output, wrap).await? {
-                let resolved_output = resolve_group_output(None, &prev_name, group_service, ipc_client).await?;
-                group_service.set_active_group(&resolved_output, &prev_name).await?;
+                let resolved_output =
+                    resolve_group_output(None, &prev_name, group_service, ipc_client).await?;
+                group_service
+                    .set_active_group(&resolved_output, &prev_name)
+                    .await?;
                 waybar_sync.update_waybar().await?;
                 waybar_sync.update_waybar_groups().await?;
                 println!("Switched from active group to \"{}\"", prev_name);
@@ -562,10 +661,11 @@ async fn run_group(
             }
         }
         GroupAction::UnhideAll { group } => {
-            let group_name = match resolve_group(group.as_deref(), group_service, ipc_client).await? {
-                Some(g) => g,
-                None => return Ok(()),
-            };
+            let group_name =
+                match resolve_group(group.as_deref(), group_service, ipc_client).await? {
+                    Some(g) => g,
+                    None => return Ok(()),
+                };
             let removed = workspace_service.unhide_all_in_group(&group_name).await?;
             waybar_sync.update_waybar().await?;
             if removed == 0 {
@@ -587,13 +687,23 @@ async fn run_workspace(
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
-        WorkspaceAction::List { output, group, visible, plain, groups, flatten } => {
+        WorkspaceAction::List {
+            output,
+            group,
+            visible,
+            plain,
+            groups,
+            flatten,
+        } => {
             if visible {
-                let output_name = output.as_deref()
+                let output_name = output
+                    .as_deref()
                     .map(|s| s.to_string())
                     .or_else(|| ipc_client.get_primary_output().ok())
                     .unwrap_or_default();
-                let workspaces = workspace_service.list_visible_workspaces(&output_name).await?;
+                let workspaces = workspace_service
+                    .list_visible_workspaces(&output_name)
+                    .await?;
                 if workspaces.is_empty() {
                     if !plain {
                         println!("No visible workspaces found.");
@@ -604,14 +714,17 @@ async fn run_workspace(
                     }
                 }
             } else {
-                let workspaces = workspace_service.list_workspaces(output.as_deref(), group.as_deref()).await?;
+                let workspaces = workspace_service
+                    .list_workspaces(output.as_deref(), group.as_deref())
+                    .await?;
                 if workspaces.is_empty() {
                     if !plain {
                         println!("No workspaces found.");
                     }
                 } else {
                     let active_group_name = if group.is_none() {
-                        let output_name = output.as_deref()
+                        let output_name = output
+                            .as_deref()
                             .map(|s| s.to_string())
                             .or_else(|| ipc_client.get_primary_output().ok());
                         match output_name {
@@ -625,15 +738,22 @@ async fn run_workspace(
                     if !plain {
                         let group_label = group.as_deref().unwrap_or("active");
                         let output_label = output.as_deref().unwrap_or("all");
-                        println!("Workspaces in group \"{}\" on \"{}\":", group_label, output_label);
+                        println!(
+                            "Workspaces in group \"{}\" on \"{}\":",
+                            group_label, output_label
+                        );
                     }
                     for ws in &workspaces {
                         if plain && groups && flatten {
                             let mut sorted_groups: Vec<&String> = ws.groups.iter().collect();
                             sorted_groups.sort_by(|a, b| {
                                 if let Some(ref active) = active_group_name {
-                                    if active.as_deref() == Some(a.as_str()) { return std::cmp::Ordering::Less; }
-                                    if active.as_deref() == Some(b.as_str()) { return std::cmp::Ordering::Greater; }
+                                    if active.as_deref() == Some(a.as_str()) {
+                                        return std::cmp::Ordering::Less;
+                                    }
+                                    if active.as_deref() == Some(b.as_str()) {
+                                        return std::cmp::Ordering::Greater;
+                                    }
                                 }
                                 a.cmp(b)
                             });
@@ -653,7 +773,11 @@ async fn run_workspace(
                             let status = if ws.is_global {
                                 "(global)"
                             } else if let Some(ref active) = active_group_name {
-                                if ws.groups.iter().any(|g| Some(g.as_str()) == active.as_deref()) {
+                                if ws
+                                    .groups
+                                    .iter()
+                                    .any(|g| Some(g.as_str()) == active.as_deref())
+                                {
                                     "(visible)"
                                 } else if !ws.groups.is_empty() {
                                     "(hidden)"
@@ -669,7 +793,11 @@ async fn run_workspace(
                 }
             }
         }
-        WorkspaceAction::Add { workspace, group, container } => {
+        WorkspaceAction::Add {
+            workspace,
+            group,
+            container,
+        } => {
             let target_group = match &group {
                 Some(g) => g.clone(),
                 None => {
@@ -679,7 +807,10 @@ async fn run_workspace(
                             match group_service.get_active_group(out).await.unwrap_or(None) {
                                 Some(g) => g,
                                 None => {
-                                    eprintln!("No active group for output '{}'. Specify a group explicitly.", out);
+                                    eprintln!(
+                                        "No active group for output '{}'. Specify a group explicitly.",
+                                        out
+                                    );
                                     return Ok(());
                                 }
                             }
@@ -733,16 +864,29 @@ async fn run_workspace(
                 );
             }
             waybar_sync.update_waybar().await?;
-            println!("Added workspace \"{}\" to group \"{}\"", workspace, target_group);
+            println!(
+                "Added workspace \"{}\" to group \"{}\"",
+                workspace, target_group
+            );
         }
         WorkspaceAction::Move { workspace, groups } => {
-            let target_groups: Vec<&str> = groups.split(',').map(|g| g.trim()).filter(|g| !g.is_empty()).collect();
+            let target_groups: Vec<&str> = groups
+                .split(',')
+                .map(|g| g.trim())
+                .filter(|g| !g.is_empty())
+                .collect();
             if target_groups.is_empty() {
                 anyhow::bail!("No groups specified for move. Use --groups <group1,group2,...>");
             }
-            workspace_service.move_to_groups(&workspace, &target_groups).await?;
+            workspace_service
+                .move_to_groups(&workspace, &target_groups)
+                .await?;
             waybar_sync.update_waybar().await?;
-            println!("Moved workspace \"{}\" to group(s): {}", workspace, target_groups.join(", "));
+            println!(
+                "Moved workspace \"{}\" to group(s): {}",
+                workspace,
+                target_groups.join(", ")
+            );
         }
         WorkspaceAction::Remove { workspace, group } => {
             let source_group = match &group {
@@ -754,7 +898,10 @@ async fn run_workspace(
                             match group_service.get_active_group(out).await.unwrap_or(None) {
                                 Some(g) => g,
                                 None => {
-                                    eprintln!("No active group for output '{}'. Specify a group explicitly.", out);
+                                    eprintln!(
+                                        "No active group for output '{}'. Specify a group explicitly.",
+                                        out
+                                    );
                                     return Ok(());
                                 }
                             }
@@ -766,14 +913,24 @@ async fn run_workspace(
                     }
                 }
             };
-            workspace_service.remove_from_group(&workspace, &source_group).await?;
+            workspace_service
+                .remove_from_group(&workspace, &source_group)
+                .await?;
             waybar_sync.update_waybar().await?;
-            println!("Removed workspace \"{}\" from group \"{}\"", workspace, source_group);
+            println!(
+                "Removed workspace \"{}\" from group \"{}\"",
+                workspace, source_group
+            );
         }
         WorkspaceAction::Rename { old_name, new_name } => {
-            let pending_id = workspace_service.register_pending_event(&new_name, "rename").await.ok();
+            let pending_id = workspace_service
+                .register_pending_event(&new_name, "rename")
+                .await
+                .ok();
             let result: anyhow::Result<()> = async {
-                let merged = workspace_service.rename_workspace(&old_name, &new_name).await?;
+                let merged = workspace_service
+                    .rename_workspace(&old_name, &new_name)
+                    .await?;
                 waybar_sync.update_waybar().await?;
                 if merged {
                     println!("Merged workspace \"{}\" into \"{}\"", old_name, new_name);
@@ -781,7 +938,8 @@ async fn run_workspace(
                     println!("Renamed workspace \"{}\" to \"{}\"", old_name, new_name);
                 }
                 Ok(())
-            }.await;
+            }
+            .await;
             if let Some(id) = pending_id {
                 workspace_service.remove_pending_event(id).await.ok();
             }
@@ -790,7 +948,10 @@ async fn run_workspace(
         WorkspaceAction::Global { workspace, toggle } => {
             let ws = match workspace {
                 Some(w) => w,
-                None => ipc_client.get_focused_workspace().map(|ws| ws.name).unwrap_or_default(),
+                None => ipc_client
+                    .get_focused_workspace()
+                    .map(|ws| ws.name)
+                    .unwrap_or_default(),
             };
             let make_global = if toggle {
                 !workspace_service.is_global(&ws).await.unwrap_or(false)
@@ -808,36 +969,61 @@ async fn run_workspace(
         WorkspaceAction::Unglobal { workspace } => {
             let ws = match workspace {
                 Some(w) => w,
-                None => ipc_client.get_focused_workspace().map(|ws| ws.name).unwrap_or_default(),
+                None => ipc_client
+                    .get_focused_workspace()
+                    .map(|ws| ws.name)
+                    .unwrap_or_default(),
             };
             workspace_service.set_global(&ws, false).await?;
             waybar_sync.update_waybar().await?;
             println!("Removed global status from workspace \"{}\"", ws);
         }
         WorkspaceAction::Groups { workspace } => {
-            let groups = workspace_service.get_groups_for_workspace(&workspace).await?;
+            let groups = workspace_service
+                .get_groups_for_workspace(&workspace)
+                .await?;
             if groups.is_empty() {
                 println!("Workspace \"{}\" is not in any group.", workspace);
             } else {
-                println!("Workspace \"{}\" is in groups: {}", workspace,
-                    groups.iter().map(|g| format!("\"{}\"", g)).collect::<Vec<_>>().join(", "));
+                println!(
+                    "Workspace \"{}\" is in groups: {}",
+                    workspace,
+                    groups
+                        .iter()
+                        .map(|g| format!("\"{}\"", g))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
             }
         }
-        WorkspaceAction::Hide { workspace, group, toggle } => {
+        WorkspaceAction::Hide {
+            workspace,
+            group,
+            toggle,
+        } => {
             let ws = match workspace {
                 Some(w) => w,
-                None => ipc_client.get_focused_workspace().map(|w| w.name).unwrap_or_default(),
+                None => ipc_client
+                    .get_focused_workspace()
+                    .map(|w| w.name)
+                    .unwrap_or_default(),
             };
-            let group_name = match resolve_group(group.as_deref(), group_service, ipc_client).await? {
-                Some(g) => g,
-                None => return Ok(()),
-            };
+            let group_name =
+                match resolve_group(group.as_deref(), group_service, ipc_client).await? {
+                    Some(g) => g,
+                    None => return Ok(()),
+                };
             let new_state = if toggle {
-                !workspace_service.is_hidden(&ws, &group_name).await.unwrap_or(false)
+                !workspace_service
+                    .is_hidden(&ws, &group_name)
+                    .await
+                    .unwrap_or(false)
             } else {
                 true
             };
-            workspace_service.set_hidden(&ws, &group_name, new_state).await?;
+            workspace_service
+                .set_hidden(&ws, &group_name, new_state)
+                .await?;
             if new_state && !workspace_service.get_show_hidden().await? {
                 focus_away_from_hidden(&ws, ipc_client, nav_service).await?;
             }
@@ -851,13 +1037,19 @@ async fn run_workspace(
         WorkspaceAction::Unhide { workspace, group } => {
             let ws = match workspace {
                 Some(w) => w,
-                None => ipc_client.get_focused_workspace().map(|w| w.name).unwrap_or_default(),
+                None => ipc_client
+                    .get_focused_workspace()
+                    .map(|w| w.name)
+                    .unwrap_or_default(),
             };
-            let group_name = match resolve_group(group.as_deref(), group_service, ipc_client).await? {
-                Some(g) => g,
-                None => return Ok(()),
-            };
-            workspace_service.set_hidden(&ws, &group_name, false).await?;
+            let group_name =
+                match resolve_group(group.as_deref(), group_service, ipc_client).await? {
+                    Some(g) => g,
+                    None => return Ok(()),
+                };
+            workspace_service
+                .set_hidden(&ws, &group_name, false)
+                .await?;
             waybar_sync.update_waybar().await?;
             println!("Unhid workspace \"{}\" in group \"{}\"", ws, group_name);
         }
@@ -872,9 +1064,15 @@ async fn run_workspace(
                 // show_hidden turned off — if focused workspace is hidden, move away
                 if let Ok(focused) = ipc_client.get_focused_workspace() {
                     let output = ipc_client.get_primary_output().unwrap_or_default();
-                    let group_name = group_service.get_active_group(&output).await.unwrap_or(None);
+                    let group_name = group_service
+                        .get_active_group(&output)
+                        .await
+                        .unwrap_or(None);
                     if let Some(ref gn) = group_name
-                        && workspace_service.is_hidden(&focused.name, gn).await.unwrap_or(false)
+                        && workspace_service
+                            .is_hidden(&focused.name, gn)
+                            .await
+                            .unwrap_or(false)
                     {
                         focus_away_from_hidden(&focused.name, ipc_client, nav_service).await?;
                     }
@@ -905,10 +1103,17 @@ async fn resolve_group(
             return Ok(None);
         }
     };
-    match group_service.get_active_group(&output).await.unwrap_or(None) {
+    match group_service
+        .get_active_group(&output)
+        .await
+        .unwrap_or(None)
+    {
         Some(g) => Ok(Some(g)),
         None => {
-            eprintln!("No active group for output '{}'. Specify a group explicitly.", output);
+            eprintln!(
+                "No active group for output '{}'. Specify a group explicitly.",
+                output
+            );
             Ok(None)
         }
     }
@@ -922,7 +1127,10 @@ async fn focus_away_from_hidden(
     ipc_client: &SwayIpcClient,
     nav_service: &NavigationService,
 ) -> anyhow::Result<()> {
-    let focused = ipc_client.get_focused_workspace().map(|w| w.name).unwrap_or_default();
+    let focused = ipc_client
+        .get_focused_workspace()
+        .map(|w| w.name)
+        .unwrap_or_default();
     if focused != hidden_ws {
         return Ok(());
     }
@@ -963,7 +1171,9 @@ async fn switch_to_workspace_group(
     if !in_active && !ws_groups.is_empty() {
         // First group alphabetically that contains this workspace.
         let target_group = ws_groups.iter().min().unwrap();
-        group_service.set_active_group(&output, target_group).await?;
+        group_service
+            .set_active_group(&output, target_group)
+            .await?;
         waybar_sync.update_waybar().await?;
         waybar_sync.update_waybar_groups().await?;
     }
@@ -979,10 +1189,17 @@ async fn run_nav(
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
-        NavAction::Next { output, wrap, all_outputs } => {
+        NavAction::Next {
+            output,
+            wrap,
+            all_outputs,
+        } => {
             let output = resolve_output(output.as_deref(), ipc_client)?;
             if all_outputs {
-                if let Some(target) = nav_service.next_workspace_all_outputs(&output, wrap).await? {
+                if let Some(target) = nav_service
+                    .next_workspace_all_outputs(&output, wrap)
+                    .await?
+                {
                     waybar_sync.update_waybar().await?;
                     println!("Navigated to \"{}\"", target);
                 }
@@ -997,10 +1214,17 @@ async fn run_nav(
                 println!("Navigated to \"{}\"", target);
             }
         }
-        NavAction::Prev { output, wrap, all_outputs } => {
+        NavAction::Prev {
+            output,
+            wrap,
+            all_outputs,
+        } => {
             let output = resolve_output(output.as_deref(), ipc_client)?;
             if all_outputs {
-                if let Some(target) = nav_service.prev_workspace_all_outputs(&output, wrap).await? {
+                if let Some(target) = nav_service
+                    .prev_workspace_all_outputs(&output, wrap)
+                    .await?
+                {
                     waybar_sync.update_waybar().await?;
                     println!("Navigated to \"{}\"", target);
                 }
@@ -1015,13 +1239,20 @@ async fn run_nav(
                 println!("Navigated to \"{}\"", target);
             }
         }
-        NavAction::Go { workspace, output: _ } => {
-            let is_new_workspace = ipc_client.get_workspaces()
+        NavAction::Go {
+            workspace,
+            output: _,
+        } => {
+            let is_new_workspace = ipc_client
+                .get_workspaces()
                 .map(|ws| !ws.iter().any(|w| w.name == workspace))
                 .unwrap_or(true);
 
             let pending_id = if is_new_workspace {
-                workspace_service.register_pending_event(&workspace, "add").await.ok()
+                workspace_service
+                    .register_pending_event(&workspace, "add")
+                    .await
+                    .ok()
             } else {
                 None
             };
@@ -1029,12 +1260,20 @@ async fn run_nav(
             let result: anyhow::Result<()> = async {
                 // Group-aware: switch to the workspace's own group first, so we
                 // jump *to* it instead of pulling it into the current group.
-                switch_to_workspace_group(&workspace, group_service, workspace_service, waybar_sync, ipc_client).await?;
+                switch_to_workspace_group(
+                    &workspace,
+                    group_service,
+                    workspace_service,
+                    waybar_sync,
+                    ipc_client,
+                )
+                .await?;
                 nav_service.go_workspace(&workspace).await?;
                 waybar_sync.update_waybar().await?;
                 println!("Navigated to \"{}\"", workspace);
                 Ok(())
-            }.await;
+            }
+            .await;
 
             if let Some(id) = pending_id {
                 workspace_service.remove_pending_event(id).await.ok();
@@ -1063,13 +1302,21 @@ async fn run_container(
     ipc_client: &SwayIpcClient,
 ) -> anyhow::Result<()> {
     match action {
-        ContainerAction::Move { workspace, con_id, switch_to_workspace } => {
-            let is_new_workspace = ipc_client.get_workspaces()
+        ContainerAction::Move {
+            workspace,
+            con_id,
+            switch_to_workspace,
+        } => {
+            let is_new_workspace = ipc_client
+                .get_workspaces()
                 .map(|ws| !ws.iter().any(|w| w.name == workspace))
                 .unwrap_or(true);
 
             let pending_id = if is_new_workspace {
-                workspace_service.register_pending_event(&workspace, "add").await.ok()
+                workspace_service
+                    .register_pending_event(&workspace, "add")
+                    .await
+                    .ok()
             } else {
                 None
             };
@@ -1084,18 +1331,28 @@ async fn run_container(
 
                     if let Ok(groups) = workspace_service.get_groups_for_workspace(&workspace).await
                         && !groups.is_empty()
-                            && let Ok(output) = ipc_client.get_primary_output() {
-                                let current = group_service.get_active_group(&output).await.unwrap_or(None);
-                                if !groups.iter().any(|g| current.as_deref() == Some(g.as_str())) {
-                                    group_service.set_active_group_db_only(&output, &groups[0]).await?;
-                                }
-                            }
+                        && let Ok(output) = ipc_client.get_primary_output()
+                    {
+                        let current = group_service
+                            .get_active_group(&output)
+                            .await
+                            .unwrap_or(None);
+                        if !groups
+                            .iter()
+                            .any(|g| current.as_deref() == Some(g.as_str()))
+                        {
+                            group_service
+                                .set_active_group_db_only(&output, &groups[0])
+                                .await?;
+                        }
+                    }
                 }
 
                 waybar_sync.update_waybar().await?;
                 println!("Moved container to \"{}\"", workspace);
                 Ok(())
-            }.await;
+            }
+            .await;
 
             if let Some(id) = pending_id {
                 workspace_service.remove_pending_event(id).await.ok();
@@ -1146,12 +1403,18 @@ async fn run_sync(
     }
 
     if repair {
-        let (removed_ws, added_ws, removed_groups) = workspace_service.repair(group_service).await?;
+        let (removed_ws, added_ws, removed_groups) =
+            workspace_service.repair(group_service).await?;
         println!("Repair complete:");
         println!("  Workspaces removed from DB: {}", removed_ws);
         if added_ws > 0 {
             let dg = group_service.default_group().to_string();
-            if group_service.list_groups(None).await?.iter().all(|g| g.name != dg) {
+            if group_service
+                .list_groups(None)
+                .await?
+                .iter()
+                .all(|g| g.name != dg)
+            {
                 group_service.create_group(&dg).await?;
             }
             println!("  Workspaces added to group '{}': {}", dg, added_ws);
@@ -1161,9 +1424,16 @@ async fn run_sync(
 
     if init_bars {
         let delay = std::time::Duration::from_millis(init_bars_delay_ms);
-        waybar_sync.update_waybar_with_retry(init_bars_retries, delay).await?;
-        waybar_sync.update_waybar_groups_with_retry(init_bars_retries, delay).await?;
-        println!("Bars initialized (retries={}, delay={}ms).", init_bars_retries, init_bars_delay_ms);
+        waybar_sync
+            .update_waybar_with_retry(init_bars_retries, delay)
+            .await?;
+        waybar_sync
+            .update_waybar_groups_with_retry(init_bars_retries, delay)
+            .await?;
+        println!(
+            "Bars initialized (retries={}, delay={}ms).",
+            init_bars_retries, init_bars_delay_ms
+        );
     } else {
         waybar_sync.update_waybar().await?;
         waybar_sync.update_waybar_groups().await?;
@@ -1206,7 +1476,11 @@ async fn run_init(
     let ipc = sway_groups_core::sway::SwayIpcClient::new()?;
     let group_svc = GroupService::new(db.clone(), ipc.clone());
     let workspace_svc = WorkspaceService::new(db.clone(), ipc.clone());
-    let waybar_sync_svc = WaybarSyncService::new(db.clone(), ipc.clone(), sway_groups_core::sway::WaybarClient::new());
+    let waybar_sync_svc = WaybarSyncService::new(
+        db.clone(),
+        ipc.clone(),
+        sway_groups_core::sway::WaybarClient::new(),
+    );
 
     workspace_svc.sync_from_sway().await?;
     waybar_sync_svc.update_waybar().await?;
@@ -1215,7 +1489,10 @@ async fn run_init(
     if group_svc.list_groups(None).await?.is_empty() {
         let dg = group_svc.default_group().to_string();
         group_svc.create_group(&dg).await?;
-        println!("Created default group '{}' (no groups found after sync).", dg);
+        println!(
+            "Created default group '{}' (no groups found after sync).",
+            dg
+        );
     }
 
     println!("Initialized: created database, synced workspaces and outputs.");
@@ -1227,8 +1504,10 @@ async fn run_init(
         if result.status.success() {
             println!("Restarted swayg-daemon service.");
         } else {
-            eprintln!("Failed to restart swayg-daemon service: {}",
-                String::from_utf8_lossy(&result.stderr));
+            eprintln!(
+                "Failed to restart swayg-daemon service: {}",
+                String::from_utf8_lossy(&result.stderr)
+            );
         }
     }
 
@@ -1245,7 +1524,12 @@ async fn run_repair(
 
     if added_ws > 0 {
         let dg = group_service.default_group().to_string();
-        if group_service.list_groups(None).await?.iter().all(|g| g.name != dg) {
+        if group_service
+            .list_groups(None)
+            .await?
+            .iter()
+            .all(|g| g.name != dg)
+        {
             group_service.create_group(&dg).await?;
         }
     }
@@ -1271,13 +1555,23 @@ async fn run_status(
     println!("show_hidden_workspaces = {}", show_hidden);
 
     for output in &outputs {
-        let active_group = group_service.get_active_group(&output.name).await
+        let active_group = group_service
+            .get_active_group(&output.name)
+            .await
             .unwrap_or(None);
-        println!("{}: active group = \"{}\"", output.name, active_group.as_deref().unwrap_or("(none)"));
+        println!(
+            "{}: active group = \"{}\"",
+            output.name,
+            active_group.as_deref().unwrap_or("(none)")
+        );
 
-        let visible = workspace_service.list_visible_workspaces(&output.name).await?;
+        let visible = workspace_service
+            .list_visible_workspaces(&output.name)
+            .await?;
 
-        let all_ws = workspace_service.list_workspaces(Some(&output.name), None).await?;
+        let all_ws = workspace_service
+            .list_workspaces(Some(&output.name), None)
+            .await?;
 
         let mut inactive = Vec::new();
         let mut global_ws = Vec::new();
@@ -1293,7 +1587,11 @@ async fn run_status(
         // Determine user-hidden workspaces for the active group (if any).
         if let Some(ref ag) = active_group {
             for ws in &all_ws {
-                if workspace_service.is_hidden(&ws.name, ag).await.unwrap_or(false) {
+                if workspace_service
+                    .is_hidden(&ws.name, ag)
+                    .await
+                    .unwrap_or(false)
+                {
                     hidden_names.push(ws.name.clone());
                 }
             }
@@ -1310,7 +1608,8 @@ async fn run_status(
         }
 
         let sway_workspaces = ipc_client.get_workspaces()?;
-        let sway_names: std::collections::HashSet<String> = sway_workspaces.iter()
+        let sway_names: std::collections::HashSet<String> = sway_workspaces
+            .iter()
             .filter(|w| w.output == output.name)
             .map(|w| w.name.clone())
             .collect();
@@ -1338,9 +1637,30 @@ async fn run_status(
         global_ws.sort();
         global_ws.dedup();
 
-        println!("  Visible:  {}", if visible_names.is_empty() { "(none)".to_string() } else { visible_names.join(", ") });
-        println!("  Inactive: {}", if inactive.is_empty() { "(none)".to_string() } else { inactive.join(", ") });
-        println!("  Hidden:   {}", if hidden_names.is_empty() { "(none)".to_string() } else { hidden_names.join(", ") });
+        println!(
+            "  Visible:  {}",
+            if visible_names.is_empty() {
+                "(none)".to_string()
+            } else {
+                visible_names.join(", ")
+            }
+        );
+        println!(
+            "  Inactive: {}",
+            if inactive.is_empty() {
+                "(none)".to_string()
+            } else {
+                inactive.join(", ")
+            }
+        );
+        println!(
+            "  Hidden:   {}",
+            if hidden_names.is_empty() {
+                "(none)".to_string()
+            } else {
+                hidden_names.join(", ")
+            }
+        );
         if !global_ws.is_empty() {
             println!("  Global:   {}", global_ws.join(", "));
         }
@@ -1352,17 +1672,15 @@ async fn run_status(
 fn run_config(action: ConfigAction) -> anyhow::Result<()> {
     let config = sway_groups_config::SwaygConfig::default();
     match action {
-        ConfigAction::Dump { output } => {
-            match output {
-                Some(path) => {
-                    config.dump_to(&path)?;
-                    println!("Wrote default config to {}", path.display());
-                }
-                None => {
-                    print!("{}", config.dump()?);
-                }
+        ConfigAction::Dump { output } => match output {
+            Some(path) => {
+                config.dump_to(&path)?;
+                println!("Wrote default config to {}", path.display());
             }
-        }
+            None => {
+                print!("{}", config.dump()?);
+            }
+        },
     }
     Ok(())
 }
@@ -1397,7 +1715,14 @@ async fn run_notification(
             };
 
             let ws_name = &record.workspace_name;
-            switch_to_workspace_group(ws_name, group_service, workspace_service, waybar_sync, ipc_client).await?;
+            switch_to_workspace_group(
+                ws_name,
+                group_service,
+                workspace_service,
+                waybar_sync,
+                ipc_client,
+            )
+            .await?;
             nav_service.go_workspace(ws_name).await?;
             waybar_sync.update_waybar().await?;
         }

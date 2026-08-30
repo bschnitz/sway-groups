@@ -1,7 +1,6 @@
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, swayg_output,
-    workspace_exists_in_sway, workspace_of_window, ws_in_group_count, DummyWindowHandle,
-    TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, orig_active_group,
+    swayg_output, workspace_exists_in_sway, workspace_of_window, ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_rem_a";
@@ -15,17 +14,31 @@ async fn test_05f_multi_group_workspace_remove() {
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
-    assert!(!workspace_exists_in_sway(WS1), "{} must not exist in sway", WS1);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "{} must not exist in sway",
+        WS1
+    );
 
     // --- Setup: init + Group A + WS1 in Group A ---
     fixture.init().success();
 
     fixture
-        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_A,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)
+        ),
         1,
         "group '{}' was created",
         GROUP_A
@@ -46,27 +59,44 @@ async fn test_05f_multi_group_workspace_remove() {
         .swayg(&["container", "move", WS1, "--switch-to-workspace"])
         .success();
 
-    assert_eq!(get_focused_workspace().unwrap(), WS1, "focused on '{}'", WS1);
+    assert_eq!(
+        get_focused_workspace().unwrap(),
+        WS1,
+        "focused on '{}'",
+        WS1
+    );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "'{}' in group '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
 
     // --- Switch to Group B + add WS1 (multi-group membership) ---
     fixture
-        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_B,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     let active_b = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active_b, GROUP_B, "active group = '{}'", GROUP_B);
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)
+        ),
         1,
         "'{}' NOT auto-deleted (still has {})",
-        GROUP_A, WS1
+        GROUP_A,
+        WS1
     );
 
     fixture.swayg(&["workspace", "add", WS1]).success();
@@ -75,13 +105,15 @@ async fn test_05f_multi_group_workspace_remove() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "'{}' still in group '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_B),
         1,
         "'{}' now in group '{}'",
-        WS1, GROUP_B
+        WS1,
+        GROUP_B
     );
 
     // --- TEST: workspace remove WS1 from Group B (active) ---
@@ -91,23 +123,31 @@ async fn test_05f_multi_group_workspace_remove() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_B),
         0,
         "'{}' removed from group '{}'",
-        WS1, GROUP_B
+        WS1,
+        GROUP_B
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "'{}' still in group '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)
+        ),
         1,
         "'{}' still in DB",
         WS1
     );
     assert!(workspace_exists_in_sway(WS1), "'{}' still in sway", WS1);
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)
+        ),
         1,
         "'{}' still exists",
         GROUP_A
@@ -116,7 +156,14 @@ async fn test_05f_multi_group_workspace_remove() {
     // --- Verify WS1 NOT visible in Group B ---
     let visible_b = swayg_output(
         &fixture.db_path,
-        &["workspace", "list", "--visible", "--plain", "--output", &fixture.orig_output],
+        &[
+            "workspace",
+            "list",
+            "--visible",
+            "--plain",
+            "--output",
+            &fixture.orig_output,
+        ],
     );
     assert!(
         !visible_b.lines().any(|l| l.contains(WS1)),
@@ -134,7 +181,14 @@ async fn test_05f_multi_group_workspace_remove() {
 
     let visible_a = swayg_output(
         &fixture.db_path,
-        &["workspace", "list", "--visible", "--plain", "--output", &fixture.orig_output],
+        &[
+            "workspace",
+            "list",
+            "--visible",
+            "--plain",
+            "--output",
+            &fixture.orig_output,
+        ],
     );
     assert!(
         visible_a.lines().any(|l| l.contains(WS1)),
@@ -144,13 +198,24 @@ async fn test_05f_multi_group_workspace_remove() {
 
     // --- Switch back to orig group (Group A should NOT auto-delete, WS1 still in sway) ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)
+        ),
         1,
         "'{}' NOT auto-deleted ({} still in sway)",
-        GROUP_A, WS1
+        GROUP_A,
+        WS1
     );
 
     // --- Kill window on orig_group, then auto-delete Group A ---
@@ -168,14 +233,25 @@ async fn test_05f_multi_group_workspace_remove() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)
+        ),
         0,
         "'{}' auto-deleted ({} gone from sway)",
-        GROUP_A, WS1
+        GROUP_A,
+        WS1
     );
 
     // --- Post-condition: init to sync DB state ---

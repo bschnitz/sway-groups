@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use assert_cmd::assert::OutputAssertExt;
 
 use binaries::binaries;
-use sway_instance::{instance_dir, SwayInstance};
+use sway_instance::{SwayInstance, instance_dir};
 
 pub const TEST_PREFIX: &str = "zz_test_";
 /// The window that keeps the fixture's starting workspace from evaporating.
@@ -37,14 +37,16 @@ fn daemon_state_file() -> PathBuf {
 
 pub fn swayg(db_path: &PathBuf, args: &[&str]) -> assert_cmd::assert::Assert {
     Command::new(&binaries().swayg)
-        .arg("--db").arg(db_path)
+        .arg("--db")
+        .arg(db_path)
         .args(args)
         .assert()
 }
 
 pub fn swayg_output(db_path: &PathBuf, args: &[&str]) -> String {
     let output = Command::new(&binaries().swayg)
-        .arg("--db").arg(db_path)
+        .arg("--db")
+        .arg(db_path)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -464,8 +466,8 @@ fn swaymsg_json(args: &[&str]) -> Option<serde_json::Value> {
 }
 
 pub fn get_primary_output() -> Result<String> {
-    let workspaces = swaymsg_json(&["-t", "get_workspaces"])
-        .context("Failed to get workspaces from sway")?;
+    let workspaces =
+        swaymsg_json(&["-t", "get_workspaces"]).context("Failed to get workspaces from sway")?;
     let arr = workspaces.as_array().context("workspaces not an array")?;
     let focused = arr
         .iter()
@@ -479,8 +481,8 @@ pub fn get_primary_output() -> Result<String> {
 }
 
 pub fn get_focused_output() -> Result<String> {
-    let workspaces = swaymsg_json(&["-t", "get_workspaces"])
-        .context("Failed to get workspaces from sway")?;
+    let workspaces =
+        swaymsg_json(&["-t", "get_workspaces"]).context("Failed to get workspaces from sway")?;
     let arr = workspaces.as_array().context("workspaces not an array")?;
     let focused = arr
         .iter()
@@ -494,8 +496,8 @@ pub fn get_focused_output() -> Result<String> {
 }
 
 pub fn get_focused_workspace() -> Result<String> {
-    let workspaces = swaymsg_json(&["-t", "get_workspaces"])
-        .context("Failed to get workspaces from sway")?;
+    let workspaces =
+        swaymsg_json(&["-t", "get_workspaces"]).context("Failed to get workspaces from sway")?;
     let arr = workspaces.as_array().context("workspaces not an array")?;
     let focused = arr
         .iter()
@@ -529,9 +531,10 @@ fn find_app_id(node: &serde_json::Value, app_id: &str) -> bool {
     }
     for key in &["nodes", "floating_nodes"] {
         if let Some(children) = node.get(key).and_then(|v| v.as_array())
-            && children.iter().any(|c| find_app_id(c, app_id)) {
-                return true;
-            }
+            && children.iter().any(|c| find_app_id(c, app_id))
+        {
+            return true;
+        }
     }
     false
 }

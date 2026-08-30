@@ -26,14 +26,12 @@ impl Entity {
 
     pub fn find_by_group_name(group_name: &str) -> Select<Self> {
         use sea_orm::{ColumnTrait, QueryFilter};
-        Self::find()
-            .filter(Column::GroupName.eq(group_name))
+        Self::find().filter(Column::GroupName.eq(group_name))
     }
 
     pub fn find_by_last_focused_workspace(workspace_name: &str) -> Select<Self> {
         use sea_orm::{ColumnTrait, QueryFilter};
-        Self::find()
-            .filter(Column::LastFocusedWorkspace.eq(workspace_name))
+        Self::find().filter(Column::LastFocusedWorkspace.eq(workspace_name))
     }
 
     pub fn find_last_visited_output_for_group(group_name: &str) -> Select<Self> {

@@ -1,8 +1,8 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    create_virtual_output, db_count, get_focused_output, orig_active_group,
-    swayg_output, unplug_output, TestFixture,
+    TestFixture, create_virtual_output, db_count, get_focused_output, orig_active_group,
+    swayg_output, unplug_output,
 };
 
 const GROUP: &str = "zz_test_oo_fallback";
@@ -120,7 +120,9 @@ async fn test_22_optional_output_fallback() {
     );
 
     // --- Cleanup: auto-delete test group ---
-    fixture.swayg(&["group", "delete", GROUP, "--force"]).success();
+    fixture
+        .swayg(&["group", "delete", GROUP, "--force"])
+        .success();
     assert_eq!(
         db_count(
             &fixture.db_path,

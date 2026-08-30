@@ -1,7 +1,6 @@
-
 use sway_groups_tests::common::{
-    db_count, orig_active_group, swayg_stderr,
-    workspace_exists_in_sway, ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, orig_active_group, swayg_stderr,
+    workspace_exists_in_sway, ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_grp_err_a_30";
@@ -14,7 +13,11 @@ async fn test_30_error_handling() {
     let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
-    assert!(!workspace_exists_in_sway(WS1), "precondition: {} must not exist in sway", WS1);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "precondition: {} must not exist in sway",
+        WS1
+    );
 
     // --- Init ---
     fixture.init().success();
@@ -30,14 +33,24 @@ async fn test_30_error_handling() {
     );
 
     assert_eq!(
-        db_count(&fixture.db_path, "SELECT count(*) FROM groups WHERE name = ''"),
+        db_count(
+            &fixture.db_path,
+            "SELECT count(*) FROM groups WHERE name = ''"
+        ),
         0,
         "no empty-name group created in DB"
     );
 
     // --- Setup for remaining tests: create GROUP_A, spawn WS1, add to group ---
     fixture
-        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_A,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     let _win1 = DummyWindowHandle::spawn(WS1).expect("spawn dummy window WS1");
@@ -52,12 +65,20 @@ async fn test_30_error_handling() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "{} is in group '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
 
     // --- Test: workspace add WS --group <explicit> ---
     fixture
-        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_B,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     fixture
@@ -68,13 +89,15 @@ async fn test_30_error_handling() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "{} still in '{}' (membership preserved)",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_B),
         1,
         "{} now also in '{}' via explicit --group",
-        WS1, GROUP_B
+        WS1,
+        GROUP_B
     );
 
     // --- Test: workspace remove WS --group <explicit> ---
@@ -86,13 +109,15 @@ async fn test_30_error_handling() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_B),
         0,
         "{} removed from '{}' via explicit --group",
-        WS1, GROUP_B
+        WS1,
+        GROUP_B
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "{} still in '{}' (other membership untouched)",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
 
     // --- Test: group delete without --force on non-empty group ---
@@ -110,7 +135,10 @@ async fn test_30_error_handling() {
     );
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)
+        ),
         1,
         "{} NOT deleted (no --force)",
         GROUP_A
@@ -120,7 +148,14 @@ async fn test_30_error_handling() {
     // GROUP_B was auto-deleted already when we switched to GROUP_A above.
     // Switching to "0" first keeps GROUP_A alive (WS1 still in sway).
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     drop(_win1);
@@ -132,7 +167,14 @@ async fn test_30_error_handling() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     // --- Post-condition: no test data remains ---
@@ -141,13 +183,19 @@ async fn test_30_error_handling() {
     assert_eq!(
         db_count(
             &fixture.db_path,
-            &format!("SELECT count(*) FROM groups WHERE name IN ('{}', '{}')", GROUP_A, GROUP_B),
+            &format!(
+                "SELECT count(*) FROM groups WHERE name IN ('{}', '{}')",
+                GROUP_A, GROUP_B
+            ),
         ),
         0,
         "no test groups remain"
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)
+        ),
         0,
         "no test workspace remains"
     );

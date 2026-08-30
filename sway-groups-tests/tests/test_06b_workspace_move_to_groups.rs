@@ -1,6 +1,6 @@
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, workspace_exists_in_sway,
-    ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, orig_active_group,
+    workspace_exists_in_sway, ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_grp_a_06b";
@@ -12,7 +12,11 @@ const WS1: &str = "zz_test_ws1_06b";
 async fn test_06b_workspace_move_to_groups() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    assert!(!workspace_exists_in_sway(WS1), "precondition: {} must not exist in sway", WS1);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "precondition: {} must not exist in sway",
+        WS1
+    );
 
     // --- Remember original state ---
     let orig_group = orig_active_group(&fixture.orig_output);
@@ -27,7 +31,14 @@ async fn test_06b_workspace_move_to_groups() {
 
     // --- Setup: create groups A and B, add workspace to both ---
     fixture
-        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_A,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     let _win1 = DummyWindowHandle::spawn(WS1).expect("spawn dummy window WS1");
@@ -37,26 +48,44 @@ async fn test_06b_workspace_move_to_groups() {
         .success();
 
     fixture
-        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_B,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
-    fixture
-        .swayg(&["workspace", "add", WS1])
-        .success();
+    fixture.swayg(&["workspace", "add", WS1]).success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     // --- Verify setup ---
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)
+        ),
         1,
         "group '{}' exists",
         GROUP_A
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)
+        ),
         1,
         "group '{}' exists",
         GROUP_B
@@ -65,13 +94,15 @@ async fn test_06b_workspace_move_to_groups() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "{} is in group '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_B),
         1,
         "{} is in group '{}'",
-        WS1, GROUP_B
+        WS1,
+        GROUP_B
     );
     assert!(workspace_exists_in_sway(WS1), "{} is in sway", WS1);
 
@@ -84,22 +115,28 @@ async fn test_06b_workspace_move_to_groups() {
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         0,
         "{} NOT in group '{}' (removed from all)",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_B),
         0,
         "{} NOT in group '{}' (removed from all)",
-        WS1, GROUP_B
+        WS1,
+        GROUP_B
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_C),
         1,
         "{} is in group '{}'",
-        WS1, GROUP_C
+        WS1,
+        GROUP_C
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_C)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_C)
+        ),
         1,
         "group '{}' auto-created",
         GROUP_C
@@ -107,47 +144,77 @@ async fn test_06b_workspace_move_to_groups() {
 
     // --- Test: move WS1 to Group A and Group B (comma-separated) ---
     fixture
-        .swayg(&["workspace", "move", WS1, "--groups", &format!("{},{}", GROUP_A, GROUP_B)])
+        .swayg(&[
+            "workspace",
+            "move",
+            WS1,
+            "--groups",
+            &format!("{},{}", GROUP_A, GROUP_B),
+        ])
         .success();
 
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_A),
         1,
         "{} is in group '{}'",
-        WS1, GROUP_A
+        WS1,
+        GROUP_A
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_B),
         1,
         "{} is in group '{}'",
-        WS1, GROUP_B
+        WS1,
+        GROUP_B
     );
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS1, GROUP_C),
         0,
         "{} NOT in group '{}' (removed)",
-        WS1, GROUP_C
+        WS1,
+        GROUP_C
     );
 
     // --- Cleanup ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     drop(_win1);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    assert!(!workspace_exists_in_sway(WS1), "{} is gone from sway after kill", WS1);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "{} is gone from sway after kill",
+        WS1
+    );
 
     // Auto-delete Group C
     fixture
         .swayg(&["group", "select", GROUP_C, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_C)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_C)
+        ),
         0,
         "{} auto-deleted",
         GROUP_C
@@ -158,10 +225,20 @@ async fn test_06b_workspace_move_to_groups() {
         .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_A)
+        ),
         0,
         "{} auto-deleted",
         GROUP_A
@@ -172,10 +249,20 @@ async fn test_06b_workspace_move_to_groups() {
         .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_B)
+        ),
         0,
         "{} auto-deleted",
         GROUP_B

@@ -1,8 +1,8 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_query, pause_test_daemon, resume_test_daemon, start_test_daemon, workspace_count_in_sway,
-    TestFixture,
+    TestFixture, db_query, pause_test_daemon, resume_test_daemon, start_test_daemon,
+    workspace_count_in_sway,
 };
 
 const WS_EXT: &str = "zz_test_ws_ext";
@@ -48,9 +48,10 @@ async fn test_27_daemon_catches_external_workspace() {
     resume_test_daemon();
 
     assert_eq!(
-        db_query(&fixture.db_path, &format!(
-            "SELECT count(*) FROM workspaces WHERE name = '{}'", WS_EXT
-        )),
+        db_query(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS_EXT)
+        ),
         "0",
         "precondition: WS_EXT not in DB"
     );
@@ -62,30 +63,34 @@ async fn test_27_daemon_catches_external_workspace() {
         .status();
     std::thread::sleep(std::time::Duration::from_millis(300));
 
-    assert_eq!(
-        workspace_count_in_sway(WS_EXT), 1,
-        "WS_EXT exists in sway"
-    );
+    assert_eq!(workspace_count_in_sway(WS_EXT), 1, "WS_EXT exists in sway");
 
     std::thread::sleep(std::time::Duration::from_secs(2));
 
-    let ws_count = db_query(&fixture.db_path, &format!(
-        "SELECT count(*) FROM workspaces WHERE name = '{}'", WS_EXT
-    ));
+    let ws_count = db_query(
+        &fixture.db_path,
+        &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS_EXT),
+    );
     assert_eq!(
         ws_count, "1",
-        "external workspace '{}' should appear in swayg DB after daemon processes event", WS_EXT
+        "external workspace '{}' should appear in swayg DB after daemon processes event",
+        WS_EXT
     );
 
-    let group_count = db_query(&fixture.db_path, &format!(
-        "SELECT count(*) FROM workspace_groups wg \
+    let group_count = db_query(
+        &fixture.db_path,
+        &format!(
+            "SELECT count(*) FROM workspace_groups wg \
          JOIN workspaces w ON w.id = wg.workspace_id \
          JOIN groups g ON g.id = wg.group_id \
-         WHERE w.name = '{}'", WS_EXT
-    ));
+         WHERE w.name = '{}'",
+            WS_EXT
+        ),
+    );
     assert_eq!(
         group_count, "1",
-        "external workspace '{}' should be assigned to a group", WS_EXT
+        "external workspace '{}' should be assigned to a group",
+        WS_EXT
     );
 
     pause_test_daemon();

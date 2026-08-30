@@ -1,9 +1,9 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    create_virtual_output, db_count, db_query, get_focused_output,
-    orig_active_group, swayg_output, unplug_output, workspace_exists_in_sway,
-    workspace_of_window, ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, create_virtual_output, db_count, db_query, get_focused_output,
+    orig_active_group, swayg_output, unplug_output, workspace_exists_in_sway, workspace_of_window,
+    ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_onext_a";
@@ -266,7 +266,14 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
 
     // --- Cleanup: switch back to default group on test DB ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     let _ = std::process::Command::new("swaymsg")
         .args(["workspace", &fixture.orig_workspace])
@@ -313,7 +320,14 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
         .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     assert_eq!(
         db_count(
@@ -328,7 +342,14 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
         .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     assert_eq!(
         db_count(

@@ -18,8 +18,7 @@ pub struct NotificationRecord {
 
 /// Path to the notifications file: `$XDG_RUNTIME_DIR/swayg-notifications.json`.
 pub fn notifications_path() -> PathBuf {
-    let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
-        .unwrap_or_else(|_| String::from("/tmp"));
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| String::from("/tmp"));
     PathBuf::from(runtime_dir).join("swayg-notifications.json")
 }
 
@@ -108,8 +107,11 @@ mod tests {
             use std::sync::atomic::{AtomicU32, Ordering};
             static COUNTER: AtomicU32 = AtomicU32::new(0);
             let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir()
-                .join(format!("swayg-test-notif-{}-{}.json", std::process::id(), id));
+            let path = std::env::temp_dir().join(format!(
+                "swayg-test-notif-{}-{}.json",
+                std::process::id(),
+                id
+            ));
             let _ = fs::remove_file(&path);
             Self(path)
         }

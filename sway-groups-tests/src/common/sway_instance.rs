@@ -13,11 +13,11 @@
 //! multi-output behaviour testable.
 
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 use std::process::{Child, Command, Stdio};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 /// How long to wait for the compositor to come up.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
@@ -136,14 +136,19 @@ impl SwayInstance {
             if self.socket.exists()
                 && let Ok(display) = std::fs::read_to_string(display_file)
                 && !display.trim().is_empty()
-                && output_names(&self.socket).map(|o| !o.is_empty()).unwrap_or(false)
+                && output_names(&self.socket)
+                    .map(|o| !o.is_empty())
+                    .unwrap_or(false)
             {
                 self.wayland_display = display.trim().to_string();
                 return Ok(());
             }
             std::thread::sleep(Duration::from_millis(50));
         }
-        bail!("headless sway did not become ready within {:?}", STARTUP_TIMEOUT)
+        bail!(
+            "headless sway did not become ready within {:?}",
+            STARTUP_TIMEOUT
+        )
     }
 }
 

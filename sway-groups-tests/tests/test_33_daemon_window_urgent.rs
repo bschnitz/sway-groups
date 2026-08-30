@@ -1,8 +1,8 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    get_focused_workspace, orig_active_group, resume_test_daemon, start_test_daemon,
-    DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, get_focused_workspace, orig_active_group, resume_test_daemon,
+    start_test_daemon,
 };
 
 const GROUP: &str = "zz_test_urg_33";
@@ -21,13 +21,10 @@ fn is_workspace_urgent(ws_name: &str) -> bool {
     let Ok(arr) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
         return false;
     };
-    arr.as_array()
-        .unwrap_or(&vec![])
-        .iter()
-        .any(|w| {
-            w.get("name").and_then(|n| n.as_str()) == Some(ws_name)
-                && w.get("urgent").and_then(|u| u.as_bool()) == Some(true)
-        })
+    arr.as_array().unwrap_or(&vec![]).iter().any(|w| {
+        w.get("name").and_then(|n| n.as_str()) == Some(ws_name)
+            && w.get("urgent").and_then(|u| u.as_bool()) == Some(true)
+    })
 }
 
 #[tokio::test]
@@ -43,7 +40,12 @@ async fn test_33_daemon_handles_window_urgent_event() {
 
     fixture
         .swayg(&[
-            "group", "select", GROUP, "--output", &fixture.orig_output, "--create",
+            "group",
+            "select",
+            GROUP,
+            "--output",
+            &fixture.orig_output,
+            "--create",
         ])
         .success();
 
@@ -119,7 +121,12 @@ async fn test_33_daemon_handles_window_urgent_event() {
     // --- Cleanup ---
     fixture
         .swayg(&[
-            "group", "select", &orig_group, "--output", &fixture.orig_output, "--create",
+            "group",
+            "select",
+            &orig_group,
+            "--output",
+            &fixture.orig_output,
+            "--create",
         ])
         .success();
     let _ = Command::new("swaymsg")

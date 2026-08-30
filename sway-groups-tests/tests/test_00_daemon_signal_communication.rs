@@ -1,8 +1,8 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    daemon_state, db_query, get_focused_workspace, pause_test_daemon, resume_test_daemon,
-    start_test_daemon, workspace_count_in_sway, TestFixture,
+    TestFixture, daemon_state, db_query, get_focused_workspace, pause_test_daemon,
+    resume_test_daemon, start_test_daemon, workspace_count_in_sway,
 };
 
 const WS_A: &str = "zz_test_d0_ws_a";
@@ -72,9 +72,10 @@ async fn test_00_daemon_signal_communication() {
 
     std::thread::sleep(std::time::Duration::from_millis(2000));
 
-    let ws_a_in_db = db_query(&fixture.db_path, &format!(
-        "SELECT count(*) FROM workspaces WHERE name = '{}'", WS_A
-    ));
+    let ws_a_in_db = db_query(
+        &fixture.db_path,
+        &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS_A),
+    );
     assert_eq!(ws_a_in_db, "1", "daemon added WS_A to DB while running");
 
     pause_test_daemon();
@@ -90,9 +91,10 @@ async fn test_00_daemon_signal_communication() {
 
     std::thread::sleep(std::time::Duration::from_millis(2000));
 
-    let ws_b_in_db = db_query(&fixture.db_path, &format!(
-        "SELECT count(*) FROM workspaces WHERE name = '{}'", WS_B
-    ));
+    let ws_b_in_db = db_query(
+        &fixture.db_path,
+        &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS_B),
+    );
     assert_eq!(ws_b_in_db, "0", "daemon did NOT add WS_B while paused");
 
     pause_test_daemon();

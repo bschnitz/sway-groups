@@ -1,6 +1,6 @@
 use sway_groups_tests::common::{
-    db_count, db_exec, orig_active_group, swayg_output,
-    workspace_exists_in_sway, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, db_exec, orig_active_group, swayg_output,
+    workspace_exists_in_sway,
 };
 
 const GROUP: &str = "zz_test_sync__";
@@ -12,8 +12,16 @@ const WS_STALE: &str = "zz_tg_stale__s";
 async fn test_15_sync_flags() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    assert!(!workspace_exists_in_sway(WS1), "{} must not exist in sway", WS1);
-    assert!(!workspace_exists_in_sway(WS_STALE), "{} must not exist in sway", WS_STALE);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "{} must not exist in sway",
+        WS1
+    );
+    assert!(
+        !workspace_exists_in_sway(WS_STALE),
+        "{} must not exist in sway",
+        WS_STALE
+    );
 
     // --- Remember original state ---
     let orig_group = orig_active_group(&fixture.orig_output);
@@ -23,7 +31,14 @@ async fn test_15_sync_flags() {
     fixture.init().success();
 
     fixture
-        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     let _win = DummyWindowHandle::spawn(WS1).expect("spawn dummy window");
@@ -34,7 +49,14 @@ async fn test_15_sync_flags() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     // Insert stale workspace into DB
@@ -65,25 +87,40 @@ async fn test_15_sync_flags() {
 
     // --- Verify setup ---
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)
+        ),
         1,
         "group '{}' exists",
         GROUP
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP2)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP2)
+        ),
         1,
         "group '{}' exists",
         GROUP2
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS_STALE)),
+        db_count(
+            &fixture.db_path,
+            &format!(
+                "SELECT count(*) FROM workspaces WHERE name = '{}'",
+                WS_STALE
+            )
+        ),
         1,
         "'{}' in DB (not in sway)",
         WS_STALE
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)
+        ),
         0,
         "'{}' NOT in DB (removed)",
         WS1
@@ -100,13 +137,22 @@ async fn test_15_sync_flags() {
     );
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS_STALE)),
+        db_count(
+            &fixture.db_path,
+            &format!(
+                "SELECT count(*) FROM workspaces WHERE name = '{}'",
+                WS_STALE
+            )
+        ),
         0,
         "'{}' removed (was not in sway)",
         WS_STALE
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)
+        ),
         1,
         "'{}' re-added to DB (found in sway)",
         WS1
@@ -151,17 +197,31 @@ async fn test_15_sync_flags() {
     drop(_win);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    assert!(!workspace_exists_in_sway(WS1), "'{}' is gone from sway", WS1);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "'{}' is gone from sway",
+        WS1
+    );
 
     // --- Switch back to original group ---
     fixture
         .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)
+        ),
         0,
         "'{}' auto-deleted",
         GROUP

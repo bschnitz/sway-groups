@@ -1,7 +1,7 @@
 use anyhow::Result;
 
-use crate::db::entities::OutputEntity;
 use crate::db::DatabaseManager;
+use crate::db::entities::OutputEntity;
 use crate::sway::SwayIpcClient;
 
 pub struct VisibilityService {
@@ -40,14 +40,12 @@ impl VisibilityService {
             .map(|w| w.name.clone())
             .collect();
 
-        Ok(
-            crate::db::queries::compute_visible_workspaces(
-                self.db.conn(),
-                &sway_names,
-                active_group.as_deref(),
-            )
-            .await?,
+        Ok(crate::db::queries::compute_visible_workspaces(
+            self.db.conn(),
+            &sway_names,
+            active_group.as_deref(),
         )
+        .await?)
     }
 
     /// Returns all visible workspaces across all outputs (for global navigation).
@@ -77,14 +75,12 @@ impl VisibilityService {
         let sway_workspaces = self.ipc_client.get_workspaces()?;
         let sway_names: Vec<String> = sway_workspaces.iter().map(|w| w.name.clone()).collect();
 
-        Ok(
-            crate::db::queries::compute_visible_workspaces(
-                self.db.conn(),
-                &sway_names,
-                Some(active_group),
-            )
-            .await?,
+        Ok(crate::db::queries::compute_visible_workspaces(
+            self.db.conn(),
+            &sway_names,
+            Some(active_group),
         )
+        .await?)
     }
 
     async fn resolve_active_group(&self, output_name: &str) -> Result<Option<String>> {

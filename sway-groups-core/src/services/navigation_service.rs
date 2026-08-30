@@ -1,10 +1,10 @@
 //! Workspace navigation service.
 
-use crate::db::entities::{
-    focus_history, workspace, workspace_group, FocusHistoryEntity, GroupEntity, OutputEntity,
-    WorkspaceEntity, WorkspaceGroupEntity,
-};
 use crate::db::DatabaseManager;
+use crate::db::entities::{
+    FocusHistoryEntity, GroupEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity,
+    focus_history, workspace, workspace_group,
+};
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
 use sea_orm::{ActiveModelTrait, IntoActiveModel, ModelTrait, Set};
@@ -455,23 +455,21 @@ impl NavigationService {
 
         if !in_group
             && let Some(ref ag) = active_group
-                && let Some(group) = GroupEntity::find_by_name(ag)
-                    .one(self.db.conn())
-                    .await?
-                {
-                    let now = chrono::Utc::now().naive_utc();
-                    let membership = workspace_group::ActiveModel {
-                        workspace_id: Set(ws.id),
-                        group_id: Set(group.id),
-                        created_at: Set(Some(now)),
-                        ..Default::default()
-                    };
-                    membership.insert(self.db.conn()).await?;
-                    info!(
-                        "Added workspace '{}' to active group '{}'",
-                        workspace_name, ag
-                    );
-                }
+            && let Some(group) = GroupEntity::find_by_name(ag).one(self.db.conn()).await?
+        {
+            let now = chrono::Utc::now().naive_utc();
+            let membership = workspace_group::ActiveModel {
+                workspace_id: Set(ws.id),
+                group_id: Set(group.id),
+                created_at: Set(Some(now)),
+                ..Default::default()
+            };
+            membership.insert(self.db.conn()).await?;
+            info!(
+                "Added workspace '{}' to active group '{}'",
+                workspace_name, ag
+            );
+        }
         Ok(())
     }
 
@@ -516,22 +514,20 @@ impl NavigationService {
                 .unwrap_or(None);
 
             if let Some(ref ag) = active_group
-                && let Some(group) = GroupEntity::find_by_name(ag)
-                    .one(self.db.conn())
-                    .await?
-                {
-                    let membership = workspace_group::ActiveModel {
-                        workspace_id: Set(ws.id),
-                        group_id: Set(group.id),
-                        created_at: Set(Some(now)),
-                        ..Default::default()
-                    };
-                    membership.insert(self.db.conn()).await?;
-                    info!(
-                        "Added workspace '{}' to active group '{}'",
-                        workspace_name, ag
-                    );
-                }
+                && let Some(group) = GroupEntity::find_by_name(ag).one(self.db.conn()).await?
+            {
+                let membership = workspace_group::ActiveModel {
+                    workspace_id: Set(ws.id),
+                    group_id: Set(group.id),
+                    created_at: Set(Some(now)),
+                    ..Default::default()
+                };
+                membership.insert(self.db.conn()).await?;
+                info!(
+                    "Added workspace '{}' to active group '{}'",
+                    workspace_name, ag
+                );
+            }
         }
 
         Ok(())

@@ -1,6 +1,6 @@
 use sway_groups_tests::common::{
-    db_count, db_exec, get_focused_workspace, orig_active_group,
-    ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, db_exec, get_focused_workspace, orig_active_group,
+    ws_in_group_count,
 };
 
 use std::process::{Command, Stdio};
@@ -17,7 +17,14 @@ async fn test_35_orphan_workspace_repair() {
     // --- Setup: init, create group, create workspace ---
     fixture.init().success();
     fixture
-        .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     let _win = DummyWindowHandle::spawn(WS_A).expect("spawn WS_A");
@@ -57,7 +64,14 @@ async fn test_35_orphan_workspace_repair() {
     // Switch active group to "0" before repair so the pruned GROUP doesn't
     // leave a dangling active_group reference.
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     fixture.swayg(&["sync", "--repair"]).success();
 
@@ -83,7 +97,12 @@ async fn test_35_orphan_workspace_repair() {
     // --- Cleanup ---
     fixture
         .swayg(&[
-            "group", "select", &orig_group, "--output", &fixture.orig_output, "--create",
+            "group",
+            "select",
+            &orig_group,
+            "--output",
+            &fixture.orig_output,
+            "--create",
         ])
         .success();
     let _ = Command::new("swaymsg")

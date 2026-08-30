@@ -19,13 +19,11 @@ impl Entity {
     pub fn find_stale(timeout: chrono::Duration) -> Select<Self> {
         use sea_orm::{ColumnTrait, QueryFilter};
         let cutoff = chrono::Utc::now().naive_utc() - timeout;
-        Self::find()
-            .filter(Column::CreatedAt.lt(cutoff))
+        Self::find().filter(Column::CreatedAt.lt(cutoff))
     }
 
     pub fn find_by_name(name: &str) -> Select<Self> {
         use sea_orm::{ColumnTrait, QueryFilter};
-        Self::find()
-            .filter(Column::WorkspaceName.eq(name))
+        Self::find().filter(Column::WorkspaceName.eq(name))
     }
 }

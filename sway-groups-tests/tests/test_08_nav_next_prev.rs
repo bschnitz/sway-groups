@@ -1,8 +1,8 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, swayg_output, workspace_exists_in_sway,
-    workspace_of_window, ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, orig_active_group,
+    swayg_output, workspace_exists_in_sway, workspace_of_window, ws_in_group_count,
 };
 
 const GROUP: &str = "zz_test_nav";
@@ -20,7 +20,11 @@ async fn test_08_nav_next_prev() {
     let orig_ws = get_focused_workspace().expect("get focused workspace");
 
     for ws in [WS_A, WS_B, WS_C] {
-        assert!(!workspace_exists_in_sway(ws), "{} must not exist in sway", ws);
+        assert!(
+            !workspace_exists_in_sway(ws),
+            "{} must not exist in sway",
+            ws
+        );
     }
 
     // --- Setup: init + create group + launch 3 dummies + move containers + focus alpha ---
@@ -157,13 +161,7 @@ async fn test_08_nav_next_prev() {
 
     // --- Test: nav next with wrap at boundary (gamma → alpha) ---
     fixture
-        .swayg(&[
-            "nav",
-            "next",
-            "--output",
-            &fixture.orig_output,
-            "--wrap",
-        ])
+        .swayg(&["nav", "next", "--output", &fixture.orig_output, "--wrap"])
         .success();
     assert_eq!(
         get_focused_workspace().unwrap(),
@@ -211,13 +209,7 @@ async fn test_08_nav_next_prev() {
 
     // --- Test: nav prev with wrap at boundary (alpha → gamma) ---
     fixture
-        .swayg(&[
-            "nav",
-            "prev",
-            "--output",
-            &fixture.orig_output,
-            "--wrap",
-        ])
+        .swayg(&["nav", "prev", "--output", &fixture.orig_output, "--wrap"])
         .success();
     assert_eq!(
         get_focused_workspace().unwrap(),

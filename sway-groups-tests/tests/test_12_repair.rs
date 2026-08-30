@@ -1,6 +1,6 @@
 use sway_groups_tests::common::{
-    db_count, db_exec, orig_active_group, output_contains, 
-    swayg_output, workspace_exists_in_sway, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, db_exec, orig_active_group, output_contains,
+    swayg_output, workspace_exists_in_sway,
 };
 
 const GROUP: &str = "zz_test_repair__";
@@ -12,8 +12,16 @@ const WS_STALE: &str = "zz_tg_stale__";
 async fn test_12_repair() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    assert!(!workspace_exists_in_sway(WS1), "{} must not exist in sway", WS1);
-    assert!(!workspace_exists_in_sway(WS_STALE), "{} must not exist in sway", WS_STALE);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "{} must not exist in sway",
+        WS1
+    );
+    assert!(
+        !workspace_exists_in_sway(WS_STALE),
+        "{} must not exist in sway",
+        WS_STALE
+    );
 
     // --- Remember original state ---
     let orig_group = orig_active_group(&fixture.orig_output);
@@ -41,12 +49,17 @@ async fn test_12_repair() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
-    fixture
-        .swayg(&["group", "create", GROUP_EMPTY])
-        .success();
+    fixture.swayg(&["group", "create", GROUP_EMPTY]).success();
 
     // Insert stale workspace into DB (exists in DB but not in sway)
     db_exec(
@@ -92,25 +105,40 @@ async fn test_12_repair() {
 
     // --- Verify setup ---
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)
+        ),
         1,
         "group '{}' exists",
         GROUP
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_EMPTY)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_EMPTY)
+        ),
         1,
         "group '{}' exists",
         GROUP_EMPTY
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS_STALE)),
+        db_count(
+            &fixture.db_path,
+            &format!(
+                "SELECT count(*) FROM workspaces WHERE name = '{}'",
+                WS_STALE
+            )
+        ),
         1,
         "'{}' in DB (not in sway)",
         WS_STALE
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)
+        ),
         0,
         "'{}' NOT in DB (removed)",
         WS1
@@ -121,13 +149,22 @@ async fn test_12_repair() {
     fixture.swayg(&["repair"]).success();
 
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS_STALE)),
+        db_count(
+            &fixture.db_path,
+            &format!(
+                "SELECT count(*) FROM workspaces WHERE name = '{}'",
+                WS_STALE
+            )
+        ),
         0,
         "'{}' removed from DB (was not in sway)",
         WS_STALE
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS1)
+        ),
         1,
         "'{}' re-added to DB (found in sway)",
         WS1
@@ -147,13 +184,19 @@ async fn test_12_repair() {
         WS1
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_EMPTY)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP_EMPTY)
+        ),
         0,
         "'{}' pruned (was effectively empty)",
         GROUP_EMPTY
     );
     assert_eq!(
-        db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)),
+        db_count(
+            &fixture.db_path,
+            &format!("SELECT count(*) FROM groups WHERE name = '{}'", GROUP)
+        ),
         0,
         "'{}' pruned (WS1 was removed from DB, group effectively empty)",
         GROUP
@@ -181,18 +224,28 @@ async fn test_12_repair() {
     drop(_win);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    assert!(!workspace_exists_in_sway(WS1), "'{}' is gone from sway", WS1);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "'{}' is gone from sway",
+        WS1
+    );
 
     // --- Post-condition: init to sync DB state ---
     fixture.init().success();
 
     let group_gone = db_count(
         &fixture.db_path,
-        &format!("SELECT count(*) FROM groups WHERE name IN ('{}', '{}')", GROUP, GROUP_EMPTY),
+        &format!(
+            "SELECT count(*) FROM groups WHERE name IN ('{}', '{}')",
+            GROUP, GROUP_EMPTY
+        ),
     );
     let ws_gone = db_count(
         &fixture.db_path,
-        &format!("SELECT count(*) FROM workspaces WHERE name IN ('{}', '{}')", WS1, WS_STALE),
+        &format!(
+            "SELECT count(*) FROM workspaces WHERE name IN ('{}', '{}')",
+            WS1, WS_STALE
+        ),
     );
     assert_eq!(group_gone, 0, "no test groups remain");
     assert_eq!(ws_gone, 0, "no test workspaces remain");

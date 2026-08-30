@@ -1,8 +1,8 @@
 use std::process::Stdio;
 
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, workspace_exists_in_sway,
-    workspace_of_window, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, orig_active_group,
+    workspace_exists_in_sway, workspace_of_window,
 };
 
 const GROUP: &str = "zz_test_nav2";
@@ -19,7 +19,11 @@ async fn test_09_nav_go_back() {
     let orig_ws = get_focused_workspace().expect("get focused workspace");
 
     for ws in [WS_A, WS_B] {
-        assert!(!workspace_exists_in_sway(ws), "{} must not exist in sway", ws);
+        assert!(
+            !workspace_exists_in_sway(ws),
+            "{} must not exist in sway",
+            ws
+        );
     }
 
     // --- Setup: init + create group + launch 2 dummies + move containers + switch back ---

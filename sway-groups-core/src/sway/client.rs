@@ -48,8 +48,7 @@ impl SwayIpcClient {
     /// Create a new sway IPC client.
     /// Uses the SWAYSOCK environment variable to find the socket.
     pub fn new() -> Result<Self> {
-        let socket_path = std::env::var("SWAYSOCK")
-            .map_err(|_| Error::SwayNotRunning)?;
+        let socket_path = std::env::var("SWAYSOCK").map_err(|_| Error::SwayNotRunning)?;
 
         Ok(Self { socket_path })
     }
@@ -63,8 +62,7 @@ impl SwayIpcClient {
 
     /// Connect to sway and return a stream.
     fn connect(&self) -> Result<UnixStream> {
-        UnixStream::connect(&self.socket_path)
-            .map_err(|_| Error::SwayNotRunning)
+        UnixStream::connect(&self.socket_path).map_err(|_| Error::SwayNotRunning)
     }
 
     /// Subscribe to sway events. Returns an EventStream that yields events.
@@ -82,7 +80,9 @@ impl SwayIpcClient {
         let response = Self::read_message(&mut stream)?;
         let result: serde_json::Value = serde_json::from_slice(&response)?;
         if result.get("success").and_then(|v| v.as_bool()) != Some(true) {
-            return Err(Error::SwayIpc("Failed to subscribe to sway events".to_string()));
+            return Err(Error::SwayIpc(
+                "Failed to subscribe to sway events".to_string(),
+            ));
         }
 
         Ok(EventStream { stream })
@@ -160,7 +160,10 @@ impl SwayIpcClient {
                 Ok(())
             } else {
                 Err(Error::SwayIpc(
-                    result.error.clone().unwrap_or_else(|| "Unknown error".to_string()),
+                    result
+                        .error
+                        .clone()
+                        .unwrap_or_else(|| "Unknown error".to_string()),
                 ))
             }
         } else {

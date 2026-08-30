@@ -1,6 +1,6 @@
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, workspace_exists_in_sway, ws_in_group_count,
-    DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, orig_active_group,
+    workspace_exists_in_sway, ws_in_group_count,
 };
 
 const WS1: &str = "zz_tg_cm_ws1";
@@ -10,8 +10,16 @@ const WS2: &str = "zz_tg_cm_ws2";
 async fn test_24_container_move() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    assert!(!workspace_exists_in_sway(WS1), "precondition: {} not in sway", WS1);
-    assert!(!workspace_exists_in_sway(WS2), "precondition: {} not in sway", WS2);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "precondition: {} not in sway",
+        WS1
+    );
+    assert!(
+        !workspace_exists_in_sway(WS2),
+        "precondition: {} not in sway",
+        WS2
+    );
 
     // --- Remember original state ---
     let orig_group = orig_active_group(&fixture.orig_output);
@@ -22,7 +30,14 @@ async fn test_24_container_move() {
     fixture.init().success();
 
     fixture
-        .swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            &orig_group,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     // No group creation needed — we test that container move doesn't touch groups
@@ -50,9 +65,7 @@ async fn test_24_container_move() {
     let _win2 = DummyWindowHandle::spawn(WS2).expect("spawn second");
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    fixture
-        .swayg(&["container", "move", WS2])
-        .success();
+    fixture.swayg(&["container", "move", WS2]).success();
 
     // WS2 was added to orig_group (new workspace, auto-added by container move)
     assert_eq!(
@@ -69,7 +82,11 @@ async fn test_24_container_move() {
     );
 
     // Focus didn't change (still on WS1)
-    assert_eq!(get_focused_workspace().unwrap(), WS1, "still focused on WS1");
+    assert_eq!(
+        get_focused_workspace().unwrap(),
+        WS1,
+        "still focused on WS1"
+    );
 
     // --- Cleanup: switch back, kill windows ---
     fixture.swayg(&["nav", "go", &orig_ws]).success();
@@ -87,7 +104,10 @@ async fn test_24_container_move() {
 
     for ws in [WS1, WS2] {
         assert_eq!(
-            db_count(&fixture.db_path, &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", ws)),
+            db_count(
+                &fixture.db_path,
+                &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", ws)
+            ),
             0,
             "no test workspaces remain"
         );

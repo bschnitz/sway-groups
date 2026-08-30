@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_query, get_focused_workspace, orig_active_group, swayg_output,
-    window_count_in_tree, workspace_count_in_sway, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_query, get_focused_workspace, orig_active_group,
+    swayg_output, window_count_in_tree, workspace_count_in_sway,
 };
 
 const GROUP_A: &str = "zz_test_group_a__05g";
@@ -33,12 +33,14 @@ async fn test_05g_multi_group_auto_delete() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
     assert_eq!(
-        workspace_count_in_sway(WS1), 0,
+        workspace_count_in_sway(WS1),
+        0,
         "precondition: {} must not exist in sway",
         WS1
     );
     assert_eq!(
-        workspace_count_in_sway(WS2), 0,
+        workspace_count_in_sway(WS2),
+        0,
         "precondition: {} must not exist in sway",
         WS2
     );
@@ -53,7 +55,14 @@ async fn test_05g_multi_group_auto_delete() {
     fixture.init().success();
 
     fixture
-        .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_A,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     let _win1 = DummyWindowHandle::spawn(WS1).expect("spawn dummy window WS1");
@@ -64,12 +73,17 @@ async fn test_05g_multi_group_auto_delete() {
         .success();
 
     fixture
-        .swayg(&["group", "select", GROUP_B, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_B,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
-    fixture
-        .swayg(&["workspace", "add", WS1])
-        .success();
+    fixture.swayg(&["workspace", "add", WS1]).success();
 
     let _win2 = DummyWindowHandle::spawn(WS2).expect("spawn dummy window WS2");
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -79,7 +93,14 @@ async fn test_05g_multi_group_auto_delete() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     // --- Verify setup ---
@@ -124,49 +145,42 @@ async fn test_05g_multi_group_auto_delete() {
     );
     assert_eq!(ws2_in_gb, "1", "{} is in group {}", WS2, GROUP_B);
 
-    assert_eq!(
-        workspace_count_in_sway(WS1), 1,
-        "{} is in sway",
-        WS1
-    );
+    assert_eq!(workspace_count_in_sway(WS1), 1, "{} is in sway", WS1);
 
-    assert_eq!(
-        workspace_count_in_sway(WS2), 1,
-        "{} is in sway",
-        WS2
-    );
+    assert_eq!(workspace_count_in_sway(WS2), 1, "{} is in sway", WS2);
 
     // --- Test: switch to Group A, back — Group A should NOT auto-delete ---
     fixture
         .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
 
-    let active = swayg_output(
-        &fixture.db_path,
-        &["group", "active", &fixture.orig_output],
-    );
+    let active = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active, GROUP_A, "active group = {}", GROUP_A);
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
         db_count(&fixture.db_path, "groups", "name", GROUP_A),
         1,
         "{} NOT auto-deleted ({} still in sway)",
-        GROUP_A, WS1
+        GROUP_A,
+        WS1
     );
 
     // --- Kill dummy window WS1, verify WS1 gone from sway ---
     drop(_win1);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    assert_eq!(
-        window_count_in_tree(WS1), 0,
-        "dummy window {} is gone",
-        WS1
-    );
+    assert_eq!(window_count_in_tree(WS1), 0, "dummy window {} is gone", WS1);
 
     let _ = Command::new("swaymsg")
         .args(["workspace", &orig_ws])
@@ -175,32 +189,33 @@ async fn test_05g_multi_group_auto_delete() {
         .status();
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    assert_eq!(
-        workspace_count_in_sway(WS1), 0,
-        "{} gone from sway",
-        WS1
-    );
+    assert_eq!(workspace_count_in_sway(WS1), 0, "{} gone from sway", WS1);
 
     // --- Test: switch to Group A, back — Group A NOW auto-deleted ---
     fixture
         .swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output])
         .success();
 
-    let active = swayg_output(
-        &fixture.db_path,
-        &["group", "active", &fixture.orig_output],
-    );
+    let active = swayg_output(&fixture.db_path, &["group", "active", &fixture.orig_output]);
     assert_eq!(active, GROUP_A, "active group = {}", GROUP_A);
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
         db_count(&fixture.db_path, "groups", "name", GROUP_A),
         0,
         "{} auto-deleted ({} gone from sway, no non-global workspaces)",
-        GROUP_A, WS1
+        GROUP_A,
+        WS1
     );
 
     // --- Cleanup: Group B should NOT auto-delete (still has WS2) ---
@@ -209,25 +224,29 @@ async fn test_05g_multi_group_auto_delete() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(
         db_count(&fixture.db_path, "groups", "name", GROUP_B),
         1,
         "{} NOT auto-deleted (still has {})",
-        GROUP_B, WS2
+        GROUP_B,
+        WS2
     );
 
     // --- Kill dummy window WS2 ---
     drop(_win2);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    assert_eq!(
-        window_count_in_tree(WS2), 0,
-        "dummy window {} is gone",
-        WS2
-    );
+    assert_eq!(window_count_in_tree(WS2), 0, "dummy window {} is gone", WS2);
 
     // --- Switch to Group B then back (NOW auto-delete Group B) ---
     fixture
@@ -235,7 +254,14 @@ async fn test_05g_multi_group_auto_delete() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
 
     assert_eq!(

@@ -1,9 +1,9 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    create_virtual_output, db_count, get_focused_output, orig_active_group,
-    swayg_output, unplug_output, workspace_exists_in_sway, workspace_of_window,
-    ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, create_virtual_output, db_count, get_focused_output,
+    orig_active_group, swayg_output, unplug_output, workspace_exists_in_sway, workspace_of_window,
+    ws_in_group_count,
 };
 
 const GROUP: &str = "zz_test_oo_sel";
@@ -162,7 +162,14 @@ async fn test_20_optional_output_select_auto_resolve() {
 
     // --- Cleanup: switch back to default group on test DB ---
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     let _ = std::process::Command::new("swaymsg")
         .args(["workspace", &fixture.orig_workspace])
@@ -185,7 +192,14 @@ async fn test_20_optional_output_select_auto_resolve() {
         .swayg(&["group", "select", GROUP, "--output", &fixture.orig_output])
         .success();
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     assert_eq!(
         db_count(

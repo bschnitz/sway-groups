@@ -6,8 +6,8 @@
 //! configured. The fixture points the variable into the instance directory
 //! instead; this test fails if that ever stops being true.
 
-use sway_groups_tests::common::sway_instance::instance_dir;
 use sway_groups_tests::common::TestFixture;
+use sway_groups_tests::common::sway_instance::instance_dir;
 
 const WS: &str = "zz_test_config_isolation";
 

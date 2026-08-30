@@ -1,7 +1,6 @@
-
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, swayg_output,
-    workspace_exists_in_sway, ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, orig_active_group,
+    swayg_output, workspace_exists_in_sway, ws_in_group_count,
 };
 
 const GROUP: &str = "zz_test_rn";
@@ -16,7 +15,11 @@ async fn test_10_workspace_rename_simple() {
     assert!(!orig_group.is_empty(), "original group must not be empty");
 
     for ws in [WS_SRC, WS_DST] {
-        assert!(!workspace_exists_in_sway(ws), "{} must not exist in sway", ws);
+        assert!(
+            !workspace_exists_in_sway(ws),
+            "{} must not exist in sway",
+            ws
+        );
     }
 
     // --- Setup: init + create group + launch dummy + move to WS_SRC ---
@@ -51,9 +54,17 @@ async fn test_10_workspace_rename_simple() {
         GROUP
     );
 
-    assert!(_win.exists_in_tree(), "dummy window '{}' is running", WS_SRC);
+    assert!(
+        _win.exists_in_tree(),
+        "dummy window '{}' is running",
+        WS_SRC
+    );
 
-    assert!(workspace_exists_in_sway(WS_SRC), "'{}' exists in sway", WS_SRC);
+    assert!(
+        workspace_exists_in_sway(WS_SRC),
+        "'{}' exists in sway",
+        WS_SRC
+    );
 
     assert_eq!(
         ws_in_group_count(&fixture.db_path, WS_SRC, GROUP),
@@ -122,26 +133,20 @@ async fn test_10_workspace_rename_simple() {
         "'{}' listed in group via workspace list",
         WS_DST
     );
-    assert!(
-        !list_out.contains(WS_SRC),
-        "'{}' NOT listed",
-        WS_SRC
-    );
+    assert!(!list_out.contains(WS_SRC), "'{}' NOT listed", WS_SRC);
 
     // --- Cleanup: kill dummy window, auto-delete group ---
     drop(_win);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    assert!(!workspace_exists_in_sway(WS_SRC), "dummy window '{}' is gone", WS_SRC);
+    assert!(
+        !workspace_exists_in_sway(WS_SRC),
+        "dummy window '{}' is gone",
+        WS_SRC
+    );
 
     fixture
-        .swayg(&[
-            "group",
-            "select",
-            "0",
-            "--output",
-            &fixture.orig_output,
-        ])
+        .swayg(&["group", "select", "0", "--output", &fixture.orig_output])
         .success();
 
     assert_eq!(

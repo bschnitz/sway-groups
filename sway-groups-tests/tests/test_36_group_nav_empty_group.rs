@@ -9,8 +9,8 @@
 use std::path::PathBuf;
 
 use sway_groups_tests::common::{
-    db_count, db_exec, get_focused_workspace, orig_active_group, swayg_output,
-    workspace_exists_in_sway, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, db_exec, get_focused_workspace, orig_active_group,
+    swayg_output, workspace_exists_in_sway,
 };
 
 /// Non-empty group, sorts first of the three.
@@ -44,7 +44,14 @@ async fn test_36_group_nav_empty_group() {
     fixture.init().success();
 
     fixture
-        .swayg(&["group", "select", GROUP_FILLED, "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_FILLED,
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     let _win = DummyWindowHandle::spawn(WS_FILLED).expect("spawn WS_FILLED");
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -53,7 +60,9 @@ async fn test_36_group_nav_empty_group() {
         .success();
 
     fixture.swayg(&["group", "create", GROUP_EMPTY]).success();
-    fixture.swayg(&["group", "create", GROUP_ELSEWHERE]).success();
+    fixture
+        .swayg(&["group", "create", GROUP_ELSEWHERE])
+        .success();
 
     // Pin the third group to an output that is not the one under test.
     db_exec(
@@ -65,20 +74,33 @@ async fn test_36_group_nav_empty_group() {
     );
 
     fixture
-        .swayg(&["group", "select", GROUP_FILLED, "--output", &fixture.orig_output])
+        .swayg(&[
+            "group",
+            "select",
+            GROUP_FILLED,
+            "--output",
+            &fixture.orig_output,
+        ])
         .success();
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     // --- Verify setup ---
     for g in [GROUP_FILLED, GROUP_EMPTY, GROUP_ELSEWHERE] {
         assert_eq!(
-            db_count(&fixture.db_path, &format!("SELECT count(*) FROM groups WHERE name = '{}'", g)),
+            db_count(
+                &fixture.db_path,
+                &format!("SELECT count(*) FROM groups WHERE name = '{}'", g)
+            ),
             1,
             "group '{}' exists",
             g
         );
     }
-    assert!(_win.exists_in_tree(), "dummy window '{}' is running", WS_FILLED);
+    assert!(
+        _win.exists_in_tree(),
+        "dummy window '{}' is running",
+        WS_FILLED
+    );
     assert_eq!(
         get_active_group(&fixture.db_path, &fixture.orig_output),
         GROUP_FILLED,
@@ -136,7 +158,14 @@ async fn test_36_group_nav_empty_group() {
         .success();
 
     fixture
-        .swayg(&["group", "select", "0", "--output", &fixture.orig_output, "--create"])
+        .swayg(&[
+            "group",
+            "select",
+            "0",
+            "--output",
+            &fixture.orig_output,
+            "--create",
+        ])
         .success();
     drop(_win);
 
@@ -170,7 +199,10 @@ async fn test_36_group_nav_empty_group() {
     assert_eq!(
         db_count(
             &fixture.db_path,
-            &format!("SELECT count(*) FROM workspaces WHERE name = '{}'", WS_FILLED),
+            &format!(
+                "SELECT count(*) FROM workspaces WHERE name = '{}'",
+                WS_FILLED
+            ),
         ),
         0,
         "no test workspaces remain"

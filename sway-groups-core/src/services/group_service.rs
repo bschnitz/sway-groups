@@ -1,10 +1,11 @@
 //! Group management service.
 
-use crate::db::entities::{
-    group, group_state, hidden_workspace, output, workspace_group, FocusHistoryEntity, GroupEntity,
-    GroupStateEntity, HiddenWorkspaceEntity, OutputEntity, WorkspaceEntity, WorkspaceGroupEntity,
-};
 use crate::db::DatabaseManager;
+use crate::db::entities::{
+    FocusHistoryEntity, GroupEntity, GroupStateEntity, HiddenWorkspaceEntity, OutputEntity,
+    WorkspaceEntity, WorkspaceGroupEntity, group, group_state, hidden_workspace, output,
+    workspace_group,
+};
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
 use sea_orm::{
@@ -91,9 +92,7 @@ impl GroupService {
             let mut workspace_names: Vec<String> = memberships
                 .iter()
                 .filter_map(|m| workspaces.get(&m.workspace_id))
-                .filter(|ws| {
-                    output_filter.is_none() || ws.output.as_deref() == output_filter
-                })
+                .filter(|ws| output_filter.is_none() || ws.output.as_deref() == output_filter)
                 .map(|ws| ws.name.clone())
                 .collect();
             workspace_names.sort();
@@ -187,7 +186,10 @@ impl GroupService {
             .await?
             .is_some()
         {
-            return Err(Error::InvalidArgs(format!("Group '{}' already exists", name)));
+            return Err(Error::InvalidArgs(format!(
+                "Group '{}' already exists",
+                name
+            )));
         }
 
         let now = chrono::Utc::now().naive_utc();
@@ -295,8 +297,7 @@ impl GroupService {
             }
         };
 
-        let ws_map =
-            crate::db::queries::load_workspaces_by_ids(self.db.conn(), ws_ids).await?;
+        let ws_map = crate::db::queries::load_workspaces_by_ids(self.db.conn(), ws_ids).await?;
         let memberships_map =
             crate::db::queries::load_memberships_by_workspace_ids(self.db.conn(), ws_ids).await?;
 
@@ -326,10 +327,9 @@ impl GroupService {
                         ws.name, self.default_group
                     );
                 } else {
-                    if let Ok(histories) =
-                        FocusHistoryEntity::find_by_workspace_name(&ws.name)
-                            .all(self.db.conn())
-                            .await
+                    if let Ok(histories) = FocusHistoryEntity::find_by_workspace_name(&ws.name)
+                        .all(self.db.conn())
+                        .await
                     {
                         for h in histories {
                             h.delete(self.db.conn()).await.ok();
@@ -422,16 +422,16 @@ impl GroupService {
 
         let old_group = self.get_active_group(output).await.unwrap_or(None);
         if old_group.as_deref() != Some(group)
-            && let Some(ref og) = old_group {
-                self.save_current_workspace(output, og).await?;
-            }
+            && let Some(ref og) = old_group
+        {
+            self.save_current_workspace(output, og).await?;
+        }
         debug!(
             "set_active_group: output={}, old_group={:?}, new_group='{}'",
             output, old_group, group
         );
 
-        let old_group_needs_cleanup =
-            old_group.is_some() && old_group.as_deref() != Some(group);
+        let old_group_needs_cleanup = old_group.is_some() && old_group.as_deref() != Some(group);
 
         self.upsert_output_active_group(output, group).await?;
 
@@ -440,7 +440,9 @@ impl GroupService {
         // Switch to the target output first so workspace focus lands correctly
         self.focus_output(output)?;
 
-        let group_workspaces = self.get_workspaces_for_group_on_output(group, output).await?;
+        let group_workspaces = self
+            .get_workspaces_for_group_on_output(group, output)
+            .await?;
         debug!(
             "set_active_group: workspaces in group '{}' on '{}': {:?}",
             group, output, group_workspaces
@@ -511,30 +513,29 @@ impl GroupService {
 
         info!("Set active group for {} to '{}'", output, group);
 
-        if old_group_needs_cleanup
-            && let Some(ref old) = old_group {
-                match self.should_delete_old_group(old).await {
-                    Ok(true) => {
-                        self.delete_group(old, true).await?;
-                        info!(
-                            "Auto-removed empty group '{}' after switch (no workspaces left in sway)",
-                            old
-                        );
-                    }
-                    Ok(false) => {
-                        debug!(
-                            "set_active_group: old group '{}' still has workspaces in sway, not deleting",
-                            old
-                        );
-                    }
-                    Err(e) => {
-                        debug!(
-                            "set_active_group: error checking old group '{}': {}",
-                            old, e
-                        );
-                    }
+        if old_group_needs_cleanup && let Some(ref old) = old_group {
+            match self.should_delete_old_group(old).await {
+                Ok(true) => {
+                    self.delete_group(old, true).await?;
+                    info!(
+                        "Auto-removed empty group '{}' after switch (no workspaces left in sway)",
+                        old
+                    );
+                }
+                Ok(false) => {
+                    debug!(
+                        "set_active_group: old group '{}' still has workspaces in sway, not deleting",
+                        old
+                    );
+                }
+                Err(e) => {
+                    debug!(
+                        "set_active_group: error checking old group '{}': {}",
+                        old, e
+                    );
                 }
             }
+        }
 
         Ok(())
     }
@@ -544,14 +545,18 @@ impl GroupService {
     pub async fn set_active_group_db_only(&self, output: &str, group: &str) -> Result<()> {
         let old_group = self.get_active_group(output).await.unwrap_or(None);
         if old_group.as_deref() != Some(group)
-            && let Some(ref og) = old_group {
-                self.save_current_workspace(output, og).await?;
-            }
+            && let Some(ref og) = old_group
+        {
+            self.save_current_workspace(output, og).await?;
+        }
 
         self.upsert_output_active_group(output, group).await?;
         self.update_group_last_visited(group, output).await?;
 
-        info!("Updated active group for {} to '{}' (db-only)", output, group);
+        info!(
+            "Updated active group for {} to '{}' (db-only)",
+            output, group
+        );
         Ok(())
     }
 
@@ -709,9 +714,7 @@ impl GroupService {
     // -----------------------------------------------------------------------
 
     pub async fn find_last_visited_output(&self, group: &str) -> Result<Option<String>> {
-        let group_model = GroupEntity::find_by_name(group)
-            .one(self.db.conn())
-            .await?;
+        let group_model = GroupEntity::find_by_name(group).one(self.db.conn()).await?;
         Ok(group_model.and_then(|g| g.last_active_output))
     }
 
@@ -775,9 +778,10 @@ impl GroupService {
         let command = format!("focus output \"{}\"", output_name);
         let results = self.ipc_client.run_command(&command)?;
         if let Some(result) = results.first()
-            && result.success {
-                return Ok(());
-            }
+            && result.success
+        {
+            return Ok(());
+        }
         Ok(())
     }
 
@@ -927,16 +931,16 @@ impl GroupService {
             && let Some(group) = GroupEntity::find_by_name(group_name)
                 .one(self.db.conn())
                 .await?
-            {
-                let membership = workspace_group::ActiveModel {
-                    workspace_id: Set(ws.id),
-                    group_id: Set(group.id),
-                    created_at: Set(Some(now)),
-                    ..Default::default()
-                };
-                membership.insert(self.db.conn()).await?;
-                info!("Added workspace '{}' to group '{}'", ws_name, group_name);
-            }
+        {
+            let membership = workspace_group::ActiveModel {
+                workspace_id: Set(ws.id),
+                group_id: Set(group.id),
+                created_at: Set(Some(now)),
+                ..Default::default()
+            };
+            membership.insert(self.db.conn()).await?;
+            info!("Added workspace '{}' to group '{}'", ws_name, group_name);
+        }
 
         Ok(())
     }

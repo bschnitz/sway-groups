@@ -8,8 +8,8 @@
 //! window that already exists into it.
 
 use sway_groups_tests::common::{
-    con_id_of_window, get_focused_workspace, swayg_stderr, workspace_exists_in_sway,
-    workspace_of_window, ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, con_id_of_window, get_focused_workspace, swayg_stderr,
+    workspace_exists_in_sway, workspace_of_window, ws_in_group_count,
 };
 
 const GROUP: &str = "zz_test_add_ct";

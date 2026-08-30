@@ -102,8 +102,7 @@ impl WaybarClient {
 
     fn resolve_socket_path_with_name(name: &str) -> Option<PathBuf> {
         let runtime_dir = std::env::var("XDG_RUNTIME_DIR").ok()?;
-        let path = PathBuf::from(runtime_dir)
-            .join(format!("waybar-dynamic-{}.sock", name));
+        let path = PathBuf::from(runtime_dir).join(format!("waybar-dynamic-{}.sock", name));
         Some(path)
     }
 
@@ -115,11 +114,21 @@ impl WaybarClient {
 
     /// Send a message with retry. Retries up to `retries` times with `delay` between attempts.
     /// Only retries if the socket file does not exist.
-    pub fn send_with_retry(&self, message: &WaybarMessage, retries: u32, delay: std::time::Duration) -> Result<()> {
+    pub fn send_with_retry(
+        &self,
+        message: &WaybarMessage,
+        retries: u32,
+        delay: std::time::Duration,
+    ) -> Result<()> {
         self.send_inner(message, retries, delay)
     }
 
-    fn send_inner(&self, message: &WaybarMessage, retries: u32, delay: std::time::Duration) -> Result<()> {
+    fn send_inner(
+        &self,
+        message: &WaybarMessage,
+        retries: u32,
+        delay: std::time::Duration,
+    ) -> Result<()> {
         let socket_path = match &self.socket_path {
             Some(p) => p,
             None => {
@@ -154,7 +163,10 @@ impl WaybarClient {
                     let payload = serde_json::to_string(message)?;
                     writeln!(stream, "{}", payload)?;
                     stream.flush()?;
-                    info!("waybar-dynamic: sent message to {:?} successfully", socket_path);
+                    info!(
+                        "waybar-dynamic: sent message to {:?} successfully",
+                        socket_path
+                    );
                     return Ok(());
                 }
                 Err(e) if e.raw_os_error() == Some(111) && attempts > 1 => {

@@ -1,8 +1,8 @@
 use std::process::Stdio;
 
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, swayg_output, workspace_exists_in_sway,
-    ws_in_group_count, DummyWindowHandle, TestFixture,
+    DummyWindowHandle, TestFixture, db_count, get_focused_workspace, orig_active_group,
+    swayg_output, workspace_exists_in_sway, ws_in_group_count,
 };
 
 const GROUP_A: &str = "zz_test_ga";
@@ -19,7 +19,11 @@ async fn test_11_workspace_groups() {
 
     let orig_ws = get_focused_workspace().expect("get focused workspace");
 
-    assert!(!workspace_exists_in_sway(WS1), "{} must not exist in sway", WS1);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "{} must not exist in sway",
+        WS1
+    );
 
     // --- Setup: init + create groups A and C + kitty + move + add to group B ---
     fixture.init().success();
@@ -35,9 +39,7 @@ async fn test_11_workspace_groups() {
         ])
         .success();
 
-    fixture
-        .swayg(&["group", "create", GROUP_B])
-        .success();
+    fixture.swayg(&["group", "create", GROUP_B]).success();
 
     let _win = DummyWindowHandle::spawn(WS1).expect("spawn dummy window");
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -49,9 +51,7 @@ async fn test_11_workspace_groups() {
         .swayg(&["workspace", "add", WS1, "--group", GROUP_B])
         .success();
 
-    fixture
-        .swayg(&["group", "create", GROUP_C])
-        .success();
+    fixture.swayg(&["group", "create", GROUP_C]).success();
 
     fixture
         .swayg(&[
@@ -117,9 +117,7 @@ async fn test_11_workspace_groups() {
     );
 
     // --- Test: workspace groups WS1 ---
-    fixture
-        .swayg(&["workspace", "groups", WS1])
-        .success();
+    fixture.swayg(&["workspace", "groups", WS1]).success();
 
     let groups_out = swayg_output(&fixture.db_path, &["workspace", "groups", WS1]);
 
@@ -143,7 +141,11 @@ async fn test_11_workspace_groups() {
     drop(_win);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    assert!(!workspace_exists_in_sway(WS1), "dummy window '{}' is gone", WS1);
+    assert!(
+        !workspace_exists_in_sway(WS1),
+        "dummy window '{}' is gone",
+        WS1
+    );
 
     fixture
         .swayg(&[
