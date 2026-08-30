@@ -311,8 +311,26 @@ impl NavigationService {
     // Private helpers
     // -----------------------------------------------------------------------
 
+    /// Whether sway currently has a workspace of this name.
+    fn workspace_exists_in_sway(&self, workspace_name: &str) -> Result<bool> {
+        Ok(self
+            .ipc_client
+            .get_workspaces()?
+            .iter()
+            .any(|w| w.name == workspace_name))
+    }
+
+    /// Focus a workspace, recording it and keeping the DB in sync.
+    ///
+    /// A workspace sway does not know yet is *created* by this jump, so it joins
+    /// the active group. One that already exists lives where it lives: adopting
+    /// it here would pull it into a group it never belonged to — the very thing
+    /// jumping to its own group is meant to avoid. Whether such a workspace has
+    /// a group at all makes no difference; a group-less one is an orphan for
+    /// `repair` or the daemon to adopt, not for a jump.
     async fn navigate_to_workspace(&self, workspace_name: &str) -> Result<()> {
         let sway_name = self.resolve_sway_workspace_name(workspace_name)?;
+        let is_new_workspace = !self.workspace_exists_in_sway(&sway_name)?;
 
         let command = format!("workspace \"{}\"", sway_name);
         let results = self.ipc_client.run_command(&command)?;
@@ -321,7 +339,9 @@ impl NavigationService {
             if result.success {
                 self.record_focus(&sway_name).await?;
                 self.upsert_workspace_in_db(&sway_name).await?;
-                self.ensure_workspace_in_active_group(&sway_name).await?;
+                if is_new_workspace {
+                    self.ensure_workspace_in_active_group(&sway_name).await?;
+                }
 
                 info!("Navigated to workspace '{}'", sway_name);
                 Ok(())

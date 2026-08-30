@@ -290,6 +290,11 @@ async fn test_23_workspace_list_groups_flag() {
         "test groups auto-deleted"
     );
 
+    // Selecting a group focuses that group's workspaces, so restore the original
+    // focus once the group juggling above is done.
+    fixture.swayg(&["nav", "go", &orig_ws]).success();
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
     assert_eq!(
         get_focused_workspace().unwrap(),
         orig_ws,

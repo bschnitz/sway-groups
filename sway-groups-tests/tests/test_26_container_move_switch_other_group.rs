@@ -108,10 +108,13 @@ async fn test_26_container_move_switch_to_other_group() {
     drop(_win_mover);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    for g in [GROUP_A, GROUP_B] {
-        fixture.swayg(&["group", "select", g, "--output", &fixture.orig_output]).success();
-        fixture.swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output, "--create"]).success();
-    }
+    // Both test groups are empty now, and an empty group is pruned as soon as it
+    // is left: GROUP_B when we switch away from it, GROUP_A when we return to the
+    // original group. Selecting GROUP_B afterwards would fail - it is already gone.
+    fixture.swayg(&["group", "select", GROUP_A, "--output", &fixture.orig_output]).success();
+    fixture.swayg(&["group", "select", &orig_group, "--output", &fixture.orig_output, "--create"]).success();
+
+    fixture.swayg(&["nav", "go", &orig_ws]).success();
 
     fixture.init().success();
     assert_eq!(
