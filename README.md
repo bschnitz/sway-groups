@@ -456,7 +456,7 @@ swayg init
 | `sway-groups-cli` → `swayg` | User-facing CLI |
 | `sway-groups-daemon` → `swayg-daemon` | Catches sway IPC events, keeps DB + bars in sync |
 | `sway-groups-dummy-window` | Wayland dummy window for tests (`publish = false`) |
-| `sway-groups-tests` | Integration tests against a live sway session (`publish = false`) |
+| `sway-groups-tests` | Integration tests, each against its own headless sway (`publish = false`) |
 
 ## Troubleshooting
 
@@ -475,9 +475,13 @@ cargo test -p sway-groups-tests -- --test-threads=1   # integration tests need a
 cargo clippy --workspace --all-targets
 ```
 
-The integration test suite spawns a test-mode daemon, temporarily stops
-the production daemon, and tears everything down in `Drop`. All tests
-must be able to run against a real sway socket.
+Each integration test starts its own headless sway (`WLR_BACKENDS=headless`)
+on a private socket and points `SWAYSOCK`/`WAYLAND_DISPLAY` at it, so the
+binary under test, its daemon and the dummy windows all land there. Whatever a
+test does to workspaces, groups or focus dies with its compositor; your own
+session is never touched, and the production daemon keeps running. The harness
+also builds the three binaries itself and takes their paths from cargo's JSON
+output, so a test can never run against a stale `target/debug/swayg`.
 
 ### Waybar test progress
 
@@ -485,11 +489,16 @@ During test runs a waybar `custom` module shows which test is running
 and overall progress (n/m). The test fixture writes JSON to
 `/tmp/swayg-test-progress.json` which waybar polls every second.
 
+The module ignores the file once it goes untouched for five seconds, so the
+badge clears itself however the run ends -- completed, failed, or interrupted.
+No test needs to switch it off, which is just as well: cargo runs one process
+per test binary and none of them knows it is the last.
+
 Add the module to your waybar config (e.g. in `modules-center`):
 
 ```jsonc
 "custom/swayg_tests": {
-    "exec": "cat /tmp/swayg-test-progress.json 2>/dev/null || echo '{}'",
+    "exec": "find /tmp/swayg-test-progress.json -newermt '-5 seconds' -exec cat {} + 2>/dev/null | grep . || echo '{}'",
     "return-type": "json",
     "interval": 1,
     "tooltip": true

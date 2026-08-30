@@ -674,15 +674,33 @@ fn count_test_files() -> u32 {
         .unwrap_or(0)
 }
 
+/// How long the counter file may go untouched before the next test is treated
+/// as the start of a new run. One test takes seconds, so a minute is generous.
+const COUNTER_STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Whether the counter file is old enough to belong to a previous run.
+fn counter_is_stale() -> bool {
+    std::fs::metadata(TEST_COUNTER_FILE)
+        .and_then(|m| m.modified())
+        .and_then(|t| t.elapsed().map_err(std::io::Error::other))
+        .map(|age| age > COUNTER_STALE_AFTER)
+        .unwrap_or(true)
+}
+
 /// Read the current counter from the progress file, increment it, and write back.
-/// Auto-resets when the previous run completed (counter >= total).
+/// Restarts at 1 when the previous run completed or was abandoned - otherwise a
+/// run that was cut short would leave the next one counting from its number.
 /// Returns (new_current, total).
 fn increment_test_counter() -> (u32, u32) {
     let total = count_test_files();
-    let prev = std::fs::read_to_string(TEST_COUNTER_FILE)
-        .ok()
-        .and_then(|s| s.trim().parse::<u32>().ok())
-        .unwrap_or(0);
+    let prev = if counter_is_stale() {
+        0
+    } else {
+        std::fs::read_to_string(TEST_COUNTER_FILE)
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok())
+            .unwrap_or(0)
+    };
     let current = if prev >= total { 1 } else { prev + 1 };
     let _ = std::fs::write(TEST_COUNTER_FILE, current.to_string());
     (current, total)
@@ -694,7 +712,11 @@ pub fn reset_test_counter() {
 }
 
 /// Write test progress as waybar-compatible JSON to a file.
-/// The waybar custom module reads this file every second.
+///
+/// The waybar module ignores the file once it stops being touched, so the badge
+/// disappears on its own when a run ends - however it ends. Nothing here has to
+/// know that the suite is over, which is good, because nothing can: cargo runs
+/// one process per test binary and none of them is the last by construction.
 fn write_test_progress(text: &str, class: &str, tooltip: &str) {
     let json = format!(
         r#"{{"text": "{}", "class": "{}", "tooltip": "{}"}}"#,

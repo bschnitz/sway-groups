@@ -1,7 +1,7 @@
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    create_virtual_output, db_count, get_focused_output, get_focused_workspace, orig_active_group,
+    create_virtual_output, db_count, get_focused_output, orig_active_group,
     swayg_output, unplug_output, TestFixture,
 };
 
