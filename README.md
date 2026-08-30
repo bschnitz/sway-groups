@@ -16,7 +16,7 @@ back to a group restores its last focus.
 ## Key concepts
 
 - **Workspace** — a sway workspace (`1`, `2`, `3:Firefox`, …).
-- **Group** — a named collection of workspaces. Each output has one *active*
+- **Group** — a named collection of workspaces. Each output has one _active_
   group at a time.
 - **Global workspace** — visible in all groups (e.g. a persistent notes
   workspace).
@@ -154,6 +154,8 @@ cp target/release/libwaybar_dynamic.so ~/.config/waybar/modules/
 Add two waybar-dynamic modules to your `~/.config/waybar/config.jsonc` — one
 for groups, one for workspaces:
 
+<!-- Kept verbatim: prettier would add trailing commas, which waybar rejects. -->
+<!-- prettier-ignore -->
 ```jsonc
 {
     "modules-left": [
@@ -190,79 +192,93 @@ Widgets carry CSS classes you can style in `~/.config/waybar/style.css`:
 ```css
 /* ── swayg workspaces — lavender, lime accent for globals ───────── */
 #waybar-dynamic.swayg_workspaces label {
-    padding: 0 5px;
-    background: transparent;
-    color: #C9A0F8;
-    border-bottom: 3px solid rgba(184, 133, 255, 0.7);
-    border-radius: 0;
-    transition: background 0.15s, color 0.15s;
+  padding: 0 5px;
+  background: transparent;
+  color: #c9a0f8;
+  border-bottom: 3px solid rgba(184, 133, 255, 0.7);
+  border-radius: 0;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 #waybar-dynamic.swayg_workspaces label.focused {
-    background: rgba(184, 133, 255, 0.35);
-    color: #ffffff;
-    border-bottom: 3px solid #D4AAFF;
+  background: rgba(184, 133, 255, 0.35);
+  color: #ffffff;
+  border-bottom: 3px solid #d4aaff;
 }
 #waybar-dynamic.swayg_workspaces label.visible {
-    color: rgba(184, 133, 255, 0.75);
+  color: rgba(184, 133, 255, 0.75);
 }
 #waybar-dynamic.swayg_workspaces label.urgent {
-    background-image: linear-gradient(to top, transparent, rgba(232, 69, 60, 0.7));
-    color: #ffffff;
+  background-image: linear-gradient(
+    to top,
+    transparent,
+    rgba(232, 69, 60, 0.7)
+  );
+  color: #ffffff;
 }
 #waybar-dynamic.swayg_workspaces label.global {
-    color: #b8f060;
-    border-bottom: 3px solid rgba(184, 240, 96, 0.75);
+  color: #b8f060;
+  border-bottom: 3px solid rgba(184, 240, 96, 0.75);
 }
 #waybar-dynamic.swayg_workspaces label.focused.global {
-    background: rgba(184, 133, 255, 0.3);
-    color: #b8f060;
-    border-bottom: 3px solid #b8f060;
+  background: rgba(184, 133, 255, 0.3);
+  color: #b8f060;
+  border-bottom: 3px solid #b8f060;
 }
 #waybar-dynamic.swayg_workspaces label.hover {
-    background: rgba(184, 133, 255, 0.2);
+  background: rgba(184, 133, 255, 0.2);
 }
 
 /* Hidden workspaces: faded + italic + dashed border */
 #waybar-dynamic.swayg_workspaces label.hidden {
-    opacity: 0.45;
-    border-bottom: 3px dashed rgba(184, 133, 255, 0.7);
-    font-style: italic;
+  opacity: 0.45;
+  border-bottom: 3px dashed rgba(184, 133, 255, 0.7);
+  font-style: italic;
 }
 #waybar-dynamic.swayg_workspaces label.hidden.focused {
-    opacity: 0.8;
-    background: rgba(184, 133, 255, 0.25);
-    color: #ffffff;
-    border-bottom: 3px dashed #D4AAFF;
+  opacity: 0.8;
+  background: rgba(184, 133, 255, 0.25);
+  color: #ffffff;
+  border-bottom: 3px dashed #d4aaff;
 }
 #waybar-dynamic.swayg_workspaces label.hidden.urgent {
-    opacity: 1.0;
-    background-image: linear-gradient(to top, transparent, rgba(232, 69, 60, 0.7));
-    color: #ffffff;
-    font-style: normal;
+  opacity: 1;
+  background-image: linear-gradient(
+    to top,
+    transparent,
+    rgba(232, 69, 60, 0.7)
+  );
+  color: #ffffff;
+  font-style: normal;
 }
 
 /* ── swayg groups — blue accent ─────────────────────────────────── */
 #waybar-dynamic.swayg_groups label {
-    padding: 0 5px;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.5);
-    border-bottom: 3px solid rgba(137, 180, 250, 0.3);
-    border-radius: 0;
+  padding: 0 5px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  border-bottom: 3px solid rgba(137, 180, 250, 0.3);
+  border-radius: 0;
 }
 #waybar-dynamic.swayg_groups label.active {
-    color: #ffffff;
-    background: rgba(137, 180, 250, 0.15);
-    border-bottom: 3px solid #89b4fa;
+  color: #ffffff;
+  background: rgba(137, 180, 250, 0.15);
+  border-bottom: 3px solid #89b4fa;
 }
 #waybar-dynamic.swayg_groups label.urgent {
-    background-image: linear-gradient(to top, transparent, rgba(235, 77, 75, 0.7));
-    color: #ffffff;
+  background-image: linear-gradient(
+    to top,
+    transparent,
+    rgba(235, 77, 75, 0.7)
+  );
+  color: #ffffff;
 }
 #waybar-dynamic.swayg_groups label.hover {
-    background: rgba(100, 114, 125, 0.3);
+  background: rgba(100, 114, 125, 0.3);
 }
 #waybar-dynamic.swayg_groups label.active.hover {
-    background: rgba(137, 180, 250, 0.3);
+  background: rgba(137, 180, 250, 0.3);
 }
 ```
 
@@ -449,14 +465,14 @@ swayg init
 
 ## Architecture
 
-| Crate | Role |
-|---|---|
-| `sway-groups-config` | TOML config schema + loader |
-| `sway-groups-core` | DB entities, services, sway/waybar IPC |
-| `sway-groups-cli` → `swayg` | User-facing CLI |
-| `sway-groups-daemon` → `swayg-daemon` | Catches sway IPC events, keeps DB + bars in sync |
-| `sway-groups-dummy-window` | Wayland dummy window for tests (`publish = false`) |
-| `sway-groups-tests` | Integration tests, each against its own headless sway (`publish = false`) |
+| Crate                                 | Role                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| `sway-groups-config`                  | TOML config schema + loader                                               |
+| `sway-groups-core`                    | DB entities, services, sway/waybar IPC                                    |
+| `sway-groups-cli` → `swayg`           | User-facing CLI                                                           |
+| `sway-groups-daemon` → `swayg-daemon` | Catches sway IPC events, keeps DB + bars in sync                          |
+| `sway-groups-dummy-window`            | Wayland dummy window for tests (`publish = false`)                        |
+| `sway-groups-tests`                   | Integration tests, each against its own headless sway (`publish = false`) |
 
 ## Troubleshooting
 
@@ -502,6 +518,8 @@ per test binary and none of them knows it is the last.
 
 Add the module to your waybar config (e.g. in `modules-center`):
 
+<!-- Kept verbatim: prettier would add trailing commas, which waybar rejects. -->
+<!-- prettier-ignore -->
 ```jsonc
 "custom/swayg_tests": {
     "exec": "find /tmp/swayg-test-progress.json -newermt '-5 seconds' -exec cat {} + 2>/dev/null | grep . || echo '{}'",
@@ -515,22 +533,22 @@ Suggested CSS (pill badge, yellow while running, green when done):
 
 ```css
 #custom-swayg_tests {
-    padding: 2px 12px;
-    margin: 4px 0;
-    background: rgba(80, 80, 100, 0.4);
-    color: rgba(255, 255, 255, 0.5);
-    border-radius: 12px;
-    font-size: 12px;
+  padding: 2px 12px;
+  margin: 4px 0;
+  background: rgba(80, 80, 100, 0.4);
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 12px;
+  font-size: 12px;
 }
 #custom-swayg_tests.running {
-    color: #1e1e2e;
-    background: #fac850;
-    font-weight: bold;
+  color: #1e1e2e;
+  background: #fac850;
+  font-weight: bold;
 }
 #custom-swayg_tests.done {
-    color: #1e1e2e;
-    background: #a6e3a1;
-    font-weight: bold;
+  color: #1e1e2e;
+  background: #a6e3a1;
+  font-weight: bold;
 }
 ```
 
