@@ -120,7 +120,7 @@ mod tests {
                 "name": "eDP-1",
                 "nodes": [{
                     "type": "workspace",
-                    "name": "35_conf",
+                    "name": "editor",
                     "nodes": [{
                         "type": "con",
                         "pid": 1001,
@@ -143,7 +143,7 @@ mod tests {
                     }]
                 }, {
                     "type": "workspace",
-                    "name": "35_chat",
+                    "name": "chat",
                     "nodes": [{
                         "type": "con",
                         "pid": 2001,
@@ -159,10 +159,10 @@ mod tests {
         let mut map = HashMap::new();
         collect_pids(&tree, &mut None, &mut map);
 
-        assert_eq!(map.get(&1001), Some(&"35_conf".to_string()));
-        assert_eq!(map.get(&1002), Some(&"35_conf".to_string()));
-        assert_eq!(map.get(&1003), Some(&"35_conf".to_string())); // floating
-        assert_eq!(map.get(&2001), Some(&"35_chat".to_string()));
+        assert_eq!(map.get(&1001), Some(&"editor".to_string()));
+        assert_eq!(map.get(&1002), Some(&"editor".to_string()));
+        assert_eq!(map.get(&1003), Some(&"editor".to_string())); // floating
+        assert_eq!(map.get(&2001), Some(&"chat".to_string()));
         assert_eq!(map.get(&9999), None);
     }
 

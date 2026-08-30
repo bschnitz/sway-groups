@@ -156,8 +156,8 @@ mod tests {
     #[test]
     fn extract_string_arg_with_spaces() {
         assert_eq!(
-            extract_string_arg("   string \"Claude Code\""),
-            Some("Claude Code".to_string()),
+            extract_string_arg("   string \"Mail Client\""),
+            Some("Mail Client".to_string()),
         );
     }
 

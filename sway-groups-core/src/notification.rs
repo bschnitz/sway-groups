@@ -190,7 +190,7 @@ mod tests {
         let file = TempFile::new();
         let path = file.path();
 
-        let record = test_record("35_conf", "kitty", "Claude Code");
+        let record = test_record("editor", "kitty", "Build finished");
         append_notification_to(path, record.clone());
 
         let records = read_notifications_from(path);

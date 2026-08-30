@@ -25,8 +25,15 @@ fn default_db_path() -> PathBuf {
     }
 }
 
+/// Path to the daemon's state file: `$XDG_RUNTIME_DIR/swayg-daemon.state`.
+///
+/// The state describes a running daemon and is worthless once the session
+/// ends, so it belongs in the runtime directory next to the sockets rather
+/// than in a shared `/tmp` path - which additionally carried a misleading
+/// "test" in its name, although this is what production runs on.
 fn default_state_file() -> PathBuf {
-    PathBuf::from("/tmp/swayg-daemon-test.state")
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| String::from("/tmp"));
+    PathBuf::from(runtime_dir).join("swayg-daemon.state")
 }
 
 fn write_state(state_file: &std::path::Path, state: &str) {
