@@ -80,7 +80,7 @@ async fn test_33_daemon_handles_window_urgent_event() {
 
     // --- Test 2: set urgency via swaymsg, sway marks workspace urgent ---
     let res = Command::new("swaymsg")
-        .args(&[&format!("[app_id={}]", WS_B), "urgent", "enable"])
+        .args([&format!("[app_id={}]", WS_B), "urgent", "enable"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -104,7 +104,7 @@ async fn test_33_daemon_handles_window_urgent_event() {
 
     // --- Test 4: clear urgency ---
     Command::new("swaymsg")
-        .args(&[&format!("[app_id={}]", WS_B), "urgent", "disable"])
+        .args([&format!("[app_id={}]", WS_B), "urgent", "disable"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()

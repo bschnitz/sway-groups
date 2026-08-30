@@ -69,10 +69,10 @@ fn pop_last_from(path: &Path) -> Option<NotificationRecord> {
 
 fn write_notifications(path: &Path, records: &[NotificationRecord]) {
     let tmp = path.with_extension("json.tmp");
-    if let Ok(data) = serde_json::to_string_pretty(records) {
-        if std::fs::write(&tmp, data.as_bytes()).is_ok() {
-            let _ = std::fs::rename(&tmp, path);
-        }
+    if let Ok(data) = serde_json::to_string_pretty(records)
+        && std::fs::write(&tmp, data.as_bytes()).is_ok()
+    {
+        let _ = std::fs::rename(&tmp, path);
     }
 }
 

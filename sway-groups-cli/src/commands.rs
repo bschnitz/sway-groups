@@ -873,10 +873,10 @@ async fn run_workspace(
                 if let Ok(focused) = ipc_client.get_focused_workspace() {
                     let output = ipc_client.get_primary_output().unwrap_or_default();
                     let group_name = group_service.get_active_group(&output).await.unwrap_or(None);
-                    if let Some(ref gn) = group_name {
-                        if workspace_service.is_hidden(&focused.name, gn).await.unwrap_or(false) {
-                            focus_away_from_hidden(&focused.name, ipc_client, nav_service).await?;
-                        }
+                    if let Some(ref gn) = group_name
+                        && workspace_service.is_hidden(&focused.name, gn).await.unwrap_or(false)
+                    {
+                        focus_away_from_hidden(&focused.name, ipc_client, nav_service).await?;
                     }
                 }
             }

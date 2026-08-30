@@ -71,19 +71,18 @@ fn collect_pids(
 
     // Track which workspace we're inside.
     let mut ws = current_workspace.clone();
-    if node_type == "workspace" {
-        if let Some(name) = node.get("name").and_then(|v| v.as_str()) {
-            ws = Some(name.to_string());
-        }
+    if node_type == "workspace"
+        && let Some(name) = node.get("name").and_then(|v| v.as_str())
+    {
+        ws = Some(name.to_string());
     }
 
     // If this node has a pid, record it.
-    if let Some(pid) = node.get("pid").and_then(|v| v.as_u64()) {
-        if pid > 0 {
-            if let Some(ref ws_name) = ws {
-                map.insert(pid as u32, ws_name.clone());
-            }
-        }
+    if let Some(pid) = node.get("pid").and_then(|v| v.as_u64())
+        && pid > 0
+        && let Some(ref ws_name) = ws
+    {
+        map.insert(pid as u32, ws_name.clone());
     }
 
     // Recurse into children (nodes, floating_nodes).

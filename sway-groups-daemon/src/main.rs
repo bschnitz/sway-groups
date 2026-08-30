@@ -410,23 +410,22 @@ async fn adopt_into_active_group(
         .as_ref()
         .and_then(|o| o.active_group.clone());
 
-    if let Some(ref ag) = active_group {
-        if let Some(group) = GroupEntity::find_by_name(ag)
+    if let Some(ref ag) = active_group
+        && let Some(group) = GroupEntity::find_by_name(ag)
             .one(db.conn())
             .await
             .unwrap_or(None)
-        {
-            let membership = workspace_group::ActiveModel {
-                workspace_id: Set(ws_id),
-                group_id: Set(group.id),
-                created_at: Set(Some(now)),
-                ..Default::default()
-            };
-            if let Err(e) = membership.insert(db.conn()).await {
-                error!("Failed to adopt workspace into group '{}': {}", ag, e);
-            } else {
-                info!("Adopted orphaned workspace into group '{}'", ag);
-            }
+    {
+        let membership = workspace_group::ActiveModel {
+            workspace_id: Set(ws_id),
+            group_id: Set(group.id),
+            created_at: Set(Some(now)),
+            ..Default::default()
+        };
+        if let Err(e) = membership.insert(db.conn()).await {
+            error!("Failed to adopt workspace into group '{}': {}", ag, e);
+        } else {
+            info!("Adopted orphaned workspace into group '{}'", ag);
         }
     }
 }
