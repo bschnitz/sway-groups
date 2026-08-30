@@ -471,7 +471,7 @@ swayg init
 
 ```sh
 cargo build --workspace
-cargo test -p sway-groups-tests -- --test-threads=1   # integration tests need a serialised sway session
+cargo test -p sway-groups-tests --no-fail-fast        # integration tests, one headless sway each
 cargo clippy --workspace --all-targets
 ```
 
@@ -486,7 +486,8 @@ Whatever a test does to workspaces, groups or focus dies with its compositor;
 your own session is never touched, and the production daemon keeps running.
 The harness also builds the three binaries itself and takes their paths from
 cargo's JSON output, so a test can never run against a stale
-`target/debug/swayg`.
+`target/debug/swayg`. The rules for writing one are in
+[`sway-groups-tests/AI_TEST_INSTRUCTIONS.md`](sway-groups-tests/AI_TEST_INSTRUCTIONS.md).
 
 ### Waybar test progress
 
