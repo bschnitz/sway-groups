@@ -2,7 +2,7 @@ use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
     create_virtual_output, db_count, db_query, get_focused_output, get_focused_workspace,
-    orig_active_group, swayg_live, swayg_output, unplug_output, workspace_exists_in_sway,
+    orig_active_group, swayg_fixture_db, swayg_output, unplug_output, workspace_exists_in_sway,
     workspace_of_window, ws_in_group_count, DummyWindowHandle, TestFixture,
 };
 
@@ -358,7 +358,7 @@ async fn test_21_optional_output_next_prev_auto_resolve() {
     );
 
     // --- Cleanup: restore original group on live DB ---
-    swayg_live(&[
+    swayg_fixture_db(&[
         "group",
         "select",
         &orig_group,

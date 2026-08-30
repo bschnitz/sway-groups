@@ -234,8 +234,8 @@ async fn test_02_workspace_with_containers() {
     );
 
     // --- Cleanup: restore original group on live DB ---
-    use sway_groups_tests::common::swayg_live;
-    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+    use sway_groups_tests::common::swayg_fixture_db;
+    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
     let _ = std::process::Command::new("swaymsg")
         .args(["workspace", &orig_ws])

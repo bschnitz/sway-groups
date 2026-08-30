@@ -2,7 +2,7 @@ use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
     create_virtual_output, db_count, get_focused_output, get_focused_workspace, orig_active_group,
-    swayg_live, swayg_output, unplug_output, TestFixture,
+    swayg_fixture_db, swayg_output, unplug_output, TestFixture,
 };
 
 const GROUP: &str = "zz_test_oo_fallback";
@@ -137,7 +137,7 @@ async fn test_22_optional_output_fallback() {
     );
 
     // --- Cleanup: switch back to original group (live DB) ---
-    swayg_live(&[
+    swayg_fixture_db(&[
         "group",
         "select",
         &orig_group,

@@ -9,42 +9,15 @@ const TEST_GROUP: &str = "zz_test_assign_group";
 const APP_ID: &str = "assignment-test-id";
 const ASSIGNED_WS: &str = "test_workspace_1";
 
-fn check_assignment_rule() {
-    let config_path = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/sway/assignments.conf");
-
-    if !config_path.exists() {
-        panic!(
-            "ASSIGNMENT CONFIG NOT FOUND at {}.\n\
-             Please create it with:\n\
-             \n\
-             for_window [app_id=\"assignment-test-id\"] workspace test_workspace_1\n",
-            config_path.display()
-        );
-    }
-
-    let content = std::fs::read_to_string(&config_path)
-        .unwrap_or_default();
-
-    if !content.contains("assignment-test-id") {
-        panic!(
-            "ASSIGNMENT RULE NOT FOUND in {}.\n\
-             Please add the following line:\n\
-             \n\
-             for_window [app_id=\"assignment-test-id\"] workspace test_workspace_1\n\
-             \n\
-             Then run 'swaymsg reload'.",
-            config_path.display()
-        );
-    }
-}
-
 #[tokio::test]
 async fn test_28_daemon_with_assignment_rule() {
-    check_assignment_rule();
-
-    let fixture = TestFixture::new().await.expect("fixture setup");
+    // The rule under test lives in this compositor's own config, so the
+    // test does not depend on anything in the developer's sway setup.
+    let fixture = TestFixture::with_sway_config(
+        "for_window [app_id=\"assignment-test-id\"] workspace test_workspace_1",
+    )
+    .await
+    .expect("fixture setup");
     let orig_ws = fixture.orig_workspace.clone();
     let orig_output = fixture.orig_output.clone();
 

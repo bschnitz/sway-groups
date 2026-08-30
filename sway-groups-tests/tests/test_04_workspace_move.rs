@@ -1,9 +1,7 @@
-use std::process::Command;
-use std::process::Stdio;
-
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, swayg_live, swayg_output, workspace_exists_in_sway,
-    workspace_of_window, ws_in_group_count, DummyWindowHandle, TestFixture,
+    db_count, get_focused_workspace, orig_active_group, swayg_fixture_db, swayg_output,
+    workspace_exists_in_sway, workspace_of_window, ws_in_group_count, DummyWindowHandle,
+    TestFixture,
 };
 
 const GROUP_A: &str = "zz_test_move_a";
@@ -14,16 +12,7 @@ const WS1: &str = "zz_test_ws1_mov";
 async fn test_04_workspace_move() {
     let fixture = TestFixture::new().await.expect("fixture setup");
 
-    // Get original group from REAL db (before init)
-    let orig_group = {
-        let output = Command::new("swayg")
-            .args(["group", "active", &fixture.orig_output])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .expect("swayg group active failed");
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    };
+    let orig_group = orig_active_group(&fixture.orig_output);
     assert!(!orig_group.is_empty(), "original group must not be empty");
     let orig_ws = get_focused_workspace().expect("get focused workspace");
 
@@ -256,7 +245,7 @@ async fn test_04_workspace_move() {
     );
 
     // --- Cleanup: restore original group on live DB ---
-    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
     let _ = std::process::Command::new("swaymsg")
         .args(["workspace", &orig_ws])

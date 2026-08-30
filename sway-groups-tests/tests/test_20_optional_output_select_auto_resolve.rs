@@ -2,7 +2,7 @@ use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
     create_virtual_output, db_count, get_focused_output, get_focused_workspace, orig_active_group,
-    swayg_live, swayg_output, unplug_output, workspace_exists_in_sway, workspace_of_window,
+    swayg_fixture_db, swayg_output, unplug_output, workspace_exists_in_sway, workspace_of_window,
     ws_in_group_count, DummyWindowHandle, TestFixture,
 };
 
@@ -249,7 +249,7 @@ async fn test_20_optional_output_select_auto_resolve() {
         "no test workspace_groups remain"
     );
     // --- Cleanup: restore original group on live DB ---
-    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
     let _ = std::process::Command::new("swaymsg")
         .args(["workspace", &fixture.orig_workspace])

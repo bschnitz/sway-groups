@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use sway_groups_tests::common::{
-    db_count, get_focused_workspace, orig_active_group, swayg_live, swayg_output,
+    db_count, get_focused_workspace, orig_active_group, swayg_fixture_db, swayg_output,
     workspace_exists_in_sway, ws_in_group_count, DummyWindowHandle, TestFixture,
 };
 
@@ -306,7 +306,7 @@ async fn test_13_group_next_prev() {
     assert_eq!(ws_gone, 0, "no test workspaces remain");
 
     // --- Cleanup: restore original group on live DB ---
-    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
     let _ = std::process::Command::new("swaymsg")
         .args(["workspace", &orig_ws])

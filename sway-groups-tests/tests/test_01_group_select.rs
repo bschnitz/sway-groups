@@ -1,5 +1,5 @@
 use sway_groups_tests::common::{
-    TestFixture, get_focused_workspace, swayg_output, swayg_live,
+    TestFixture, get_focused_workspace, swayg_output, swayg_fixture_db,
     db_count, db_query, orig_active_group,
 };
 
@@ -63,7 +63,7 @@ async fn test_01_group_select() {
     );
 
     // --- Cleanup: restore original group on live DB ---
-    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
     let _ = std::process::Command::new("swaymsg")
         .args(["workspace", &orig_ws])

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use sway_groups_tests::common::{
-    db_query, get_focused_workspace, orig_active_group, swayg_live, swayg_output,
+    db_query, get_focused_workspace, orig_active_group, swayg_fixture_db, swayg_output,
     window_count_in_tree, workspace_count_in_sway, DummyWindowHandle, TestFixture,
 };
 
@@ -319,7 +319,7 @@ async fn test_05g_multi_group_auto_delete() {
     );
 
     // --- Cleanup: restore original group on live DB ---
-    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
     let _ = std::process::Command::new("swaymsg")
         .args(["workspace", &orig_ws])

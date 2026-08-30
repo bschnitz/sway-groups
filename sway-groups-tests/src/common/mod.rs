@@ -1,86 +1,72 @@
+pub mod binaries;
+pub mod sway_instance;
+
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
 use anyhow::{Context, Result};
-use assert_cmd::cargo::CommandCargoExt;
 use assert_cmd::assert::OutputAssertExt;
 
-pub const TEST_DB_PATH: &str = "/tmp/swayg-integration-test.db";
+use binaries::binaries;
+use sway_instance::{instance_dir, SwayInstance};
+
 pub const TEST_PREFIX: &str = "zz_test_";
-const DAEMON_STATE_FILE: &str = "/tmp/swayg-daemon-test.state";
+/// The window that keeps the fixture's starting workspace from evaporating.
+pub const ANCHOR_APP_ID: &str = "zz_fixture_anchor";
 const TEST_COUNTER_FILE: &str = "/tmp/swayg-test-counter";
 const TEST_PROGRESS_FILE: &str = "/tmp/swayg-test-progress.json";
 const SIGUSR1: libc::c_int = 10;
 const SIGUSR2: libc::c_int = 12;
 
 static TEST_DAEMON: Mutex<Option<Child>> = Mutex::new(None);
-static PROD_DAEMON_REF_COUNT: Mutex<u32> = Mutex::new(0);
+
+/// The test database, next to the compositor it belongs to.
+pub fn test_db_path() -> PathBuf {
+    instance_dir().join("swayg-test.db")
+}
+
+/// Where the test daemon reports its state.
+fn daemon_state_file() -> PathBuf {
+    instance_dir().join("daemon.state")
+}
 
 // ---------------------------------------------------------------------------
 // swayg CLI helper
 // ---------------------------------------------------------------------------
 
 pub fn swayg(db_path: &PathBuf, args: &[&str]) -> assert_cmd::assert::Assert {
-    Command::cargo_bin("swayg")
-        .expect("swayg binary not found")
+    Command::new(&binaries().swayg)
         .arg("--db").arg(db_path)
         .args(args)
         .assert()
 }
 
-pub fn swayg_output(db_path: &PathBuf, args: &[&str]) -> String {
-    let output = std::process::Command::new(
-        std::env::var("CARGO_BIN_EXE_swayg").map(PathBuf::from).unwrap_or_else(|_| {
-            let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-                .map(PathBuf::from)
-                .unwrap_or_default();
-            manifest_dir
-                .parent()
-                .unwrap_or(&manifest_dir)
-                .join("target")
-                .join("debug")
-                .join("swayg")
-        }),
-    )
-    .arg("--db").arg(db_path)
-    .args(args)
-    .stdout(Stdio::piped())
-    .stderr(Stdio::null())
-    .output()
-    .expect("swayg command failed");
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
+/// Run swayg against the fixture database without naming it at the call site.
+///
+/// Was `swayg_live`, which ran against the user's real database back when the
+/// tests drove the user's real session.
+pub fn swayg_fixture_db(args: &[&str]) -> assert_cmd::assert::Assert {
+    swayg(&test_db_path(), args)
 }
 
-pub fn swayg_live(args: &[&str]) -> assert_cmd::assert::Assert {
-    Command::cargo_bin("swayg")
-        .expect("swayg binary not found")
+pub fn swayg_output(db_path: &PathBuf, args: &[&str]) -> String {
+    let output = Command::new(&binaries().swayg)
+        .arg("--db").arg(db_path)
         .args(args)
-        .assert()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .expect("swayg command failed");
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
 // ---------------------------------------------------------------------------
 // Shared test daemon
 // ---------------------------------------------------------------------------
 
-fn daemon_binary() -> PathBuf {
-    std::env::var("CARGO_BIN_EXE_swayg-daemon")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-                .map(PathBuf::from)
-                .unwrap_or_default();
-            manifest_dir
-                .parent()
-                .unwrap_or(&manifest_dir)
-                .join("target")
-                .join("debug")
-                .join("swayg-daemon")
-        })
-}
-
 fn read_daemon_state() -> Option<String> {
-    std::fs::read_to_string(DAEMON_STATE_FILE)
+    std::fs::read_to_string(daemon_state_file())
         .ok()
         .map(|s| s.trim().to_string())
 }
@@ -117,11 +103,11 @@ fn start_test_daemon_inner(config_path: Option<&std::path::Path>) {
         return;
     }
 
-    let _ = std::fs::remove_file(DAEMON_STATE_FILE);
+    let _ = std::fs::remove_file(daemon_state_file());
 
-    let mut cmd = Command::new(daemon_binary());
-    cmd.arg(TEST_DB_PATH)
-        .arg(DAEMON_STATE_FILE)
+    let mut cmd = Command::new(&binaries().daemon);
+    cmd.arg(test_db_path())
+        .arg(daemon_state_file())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
@@ -172,52 +158,7 @@ pub fn stop_test_daemon() {
         let _ = child.wait();
         *guard = None;
     }
-    let _ = std::fs::remove_file(DAEMON_STATE_FILE);
-}
-
-fn stop_prod_daemon() {
-    let _ = Command::new("systemctl")
-        .args(["--user", "stop", "swayg-daemon.service"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    for _ in 0..20 {
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        let output = Command::new("systemctl")
-            .args(["--user", "is-active", "swayg-daemon.service"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .ok();
-        if let Some(o) = output
-            && String::from_utf8_lossy(&o.stdout).trim() == "inactive" {
-                break;
-            }
-    }
-}
-
-fn start_prod_daemon() {
-    let _ = Command::new("systemctl")
-        .args(["--user", "start", "swayg-daemon.service"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-}
-
-fn acquire_prod_daemon_lock() {
-    let mut count = PROD_DAEMON_REF_COUNT.lock().unwrap();
-    *count += 1;
-    if *count == 1 {
-        stop_prod_daemon();
-    }
-}
-
-fn release_prod_daemon_lock() {
-    let mut count = PROD_DAEMON_REF_COUNT.lock().unwrap();
-    if *count == 1 {
-        start_prod_daemon();
-    }
-    *count -= 1;
+    let _ = std::fs::remove_file(daemon_state_file());
 }
 
 pub fn daemon_state() -> Option<String> {
@@ -228,46 +169,64 @@ pub fn daemon_state() -> Option<String> {
 // TestFixture
 // ---------------------------------------------------------------------------
 
+/// One test, one compositor, one database.
+///
+/// Starting a private headless sway is what makes a test independent: it begins
+/// from a compositor that has nothing on it but sway's own workspace `1`, and
+/// whatever it does to that compositor dies with the fixture. Nothing needs to
+/// be put back, and nothing outside the test can be broken by getting the
+/// putting-back wrong.
 pub struct TestFixture {
     pub db_path: PathBuf,
     pub orig_workspace: String,
     pub orig_output: String,
+    /// Kept alive for the duration of the test; dropping it stops sway.
+    pub sway: SwayInstance,
+    /// Keeps the starting workspace alive; see [`TestFixture::with_sway_config`].
+    _anchor: DummyWindowHandle,
     test_name: String,
 }
 
 impl TestFixture {
     pub async fn new() -> Result<Self> {
-        acquire_prod_daemon_lock();
+        Self::with_sway_config("").await
+    }
 
-        let db_path = PathBuf::from(TEST_DB_PATH);
+    /// A fixture whose compositor is configured with extra sway config lines,
+    /// for tests that need sway itself to react to a rule.
+    pub async fn with_sway_config(extra_config: &str) -> Result<Self> {
+        let sway = SwayInstance::start_with_config(extra_config)
+            .context("start headless sway for this test")?;
+
+        let db_path = test_db_path();
         if db_path.exists() {
             std::fs::remove_file(&db_path).context("Failed to remove stale test DB")?;
         }
 
-        // Clean up stale HEADLESS outputs from previous failed test runs
-        let outputs = Command::new("swaymsg")
-            .args(["-t", "get_outputs"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .ok();
-        if let Some(outputs) = outputs
-            && let Ok(all) = serde_json::from_slice::<serde_json::Value>(&outputs.stdout)
-                && let Some(arr) = all.as_array() {
-                    for o in arr.iter().filter_map(|o| o.get("name").and_then(|n| n.as_str())) {
-                        if o.starts_with("HEADLESS") {
-                            let _ = Command::new("swaymsg")
-                                .args(["output", o, "unplug"])
-                                .stdout(Stdio::null())
-                                .stderr(Stdio::null())
-                                .status();
-                        }
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(200));
-                }
+        // sway destroys a workspace the moment it is empty and unfocused, so a
+        // fresh compositor's workspace `1` would evaporate as soon as a test
+        // navigated away from it — and "go back to where you started" would
+        // have nowhere to go. One window pins it, which is also what a real
+        // session looks like: you start a test on a workspace with something
+        // on it.
+        let anchor = DummyWindowHandle::spawn(ANCHOR_APP_ID).context("spawn fixture anchor")?;
 
         let orig_output = get_primary_output()?;
         let orig_workspace = get_focused_workspace()?;
+
+        // Seed the state a test expects to find, which is the state a session
+        // someone has actually used is in: the default group `0` exists, holds
+        // the workspace sway started on, and is the active group on the output.
+        // `repair` before `select` is what keeps the focus where it is - the
+        // group already owns the focused workspace, so selecting it is a no-op
+        // for the user's view instead of a jump to an empty default workspace.
+        swayg(&db_path, &["init"]).success();
+        swayg(&db_path, &["repair"]).success();
+        swayg(
+            &db_path,
+            &["group", "select", "0", "--output", &orig_output, "--create"],
+        )
+        .success();
 
         // Derive test name from the current binary name
         let test_name = std::env::current_exe()
@@ -283,6 +242,8 @@ impl TestFixture {
             db_path,
             orig_workspace,
             orig_output,
+            sway,
+            _anchor: anchor,
             test_name,
         })
     }
@@ -299,20 +260,8 @@ impl TestFixture {
 impl Drop for TestFixture {
     fn drop(&mut self) {
         stop_test_daemon();
-
-        let _ = Command::new("swaymsg")
-            .args(["workspace", &self.orig_workspace])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-
-        // Re-sync the live DB to waybar so the bar reflects the real state
-        // after tests that may have changed outputs or workspace focus.
-        let _ = swayg_live(&["sync"]);
-
         waybar_test_finished(&self.test_name);
-
-        release_prod_daemon_lock();
+        // `self.sway` shuts the compositor down from here.
     }
 }
 
@@ -364,35 +313,7 @@ impl Drop for DummyWindowHandle {
 }
 
 fn dummy_window_binary() -> PathBuf {
-    if let Ok(path) = std::env::var("CARGO_BIN_EXE_sway-dummy-window") {
-        return PathBuf::from(path);
-    }
-
-    let target_dir = std::env::var("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-                .map(PathBuf::from)
-                .unwrap_or_default();
-            manifest_dir
-                .parent()
-                .unwrap_or(&manifest_dir)
-                .join("target")
-        });
-
-    let candidate = target_dir.join("debug").join("sway-dummy-window");
-    if candidate.exists() {
-        return candidate;
-    }
-
-    if let Ok(mut exe) = std::env::current_exe() {
-        exe.pop();
-        let candidate = exe.join("sway-dummy-window");
-        if candidate.exists() {
-            return candidate;
-        }
-    }
-    PathBuf::from("sway-dummy-window")
+    binaries().dummy_window.clone()
 }
 
 // ---------------------------------------------------------------------------
@@ -494,20 +415,15 @@ fn count_app_id_in_tree(node: &serde_json::Value, app_id: &str) -> i64 {
 }
 
 // ---------------------------------------------------------------------------
-// Production swayg helpers
+// Fixture state helpers
 // ---------------------------------------------------------------------------
 
-/// Read the active group for an output from the **production** database.
-/// Does NOT pass `--db`, so it reads the live user database.
+/// The active group for an output, as the fixture database sees it.
+///
+/// Named for what tests use it for: the group that was active before the test
+/// started messing with them.
 pub fn orig_active_group(output_name: &str) -> String {
-    Command::cargo_bin("swayg")
-        .expect("swayg binary not found")
-        .args(["group", "active", output_name])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_default()
+    swayg_output(&test_db_path(), &["group", "active", output_name])
 }
 
 // ---------------------------------------------------------------------------
@@ -530,8 +446,7 @@ pub fn line_starts_with(haystack: &str, needle: &str) -> bool {
 
 /// Run `swayg --db <path> <args>` and return stderr as a String.
 pub fn swayg_stderr(db_path: &PathBuf, args: &[&str]) -> String {
-    Command::cargo_bin("swayg")
-        .expect("swayg binary not found")
+    Command::new(&binaries().swayg)
         .arg("--db")
         .arg(db_path)
         .args(args)

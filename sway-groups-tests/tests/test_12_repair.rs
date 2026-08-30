@@ -1,5 +1,5 @@
 use sway_groups_tests::common::{
-    db_count, db_exec, get_focused_workspace, orig_active_group, output_contains, swayg_live,
+    db_count, db_exec, get_focused_workspace, orig_active_group, output_contains, swayg_fixture_db,
     swayg_output, workspace_exists_in_sway, DummyWindowHandle, TestFixture,
 };
 
@@ -232,7 +232,7 @@ async fn test_12_repair() {
     assert_eq!(ws_gone, 0, "no test workspaces remain");
 
     // --- Cleanup: restore original group on live DB ---
-    swayg_live(&["group", "select", &orig_group, "--output", &fixture.orig_output])
+    swayg_fixture_db(&["group", "select", &orig_group, "--output", &fixture.orig_output])
         .success();
     let _ = std::process::Command::new("swaymsg")
         .args(["workspace", &orig_ws])

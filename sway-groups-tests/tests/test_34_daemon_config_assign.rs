@@ -16,31 +16,15 @@ fn write_test_config(content: &str) {
     std::fs::write(CONFIG_PATH, content).expect("write test config");
 }
 
-fn check_assignment_rule() {
-    let config_path = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/sway/assignments.conf");
-
-    if !config_path.exists()
-        || !std::fs::read_to_string(&config_path)
-            .unwrap_or_default()
-            .contains("assignment-test-id")
-    {
-        panic!(
-            "ASSIGNMENT RULE NOT FOUND.\n\
-             Please add to {}:\n\
-             \n\
-             for_window [app_id=\"assignment-test-id\"] workspace test_workspace_1\n",
-            config_path.display()
-        );
-    }
-}
-
 #[tokio::test]
 async fn test_34_daemon_config_assign() {
-    check_assignment_rule();
-
-    let fixture = TestFixture::new().await.expect("fixture setup");
+    // The rule under test lives in this compositor's own config, so the
+    // test does not depend on anything in the developer's sway setup.
+    let fixture = TestFixture::with_sway_config(
+        "for_window [app_id=\"assignment-test-id\"] workspace test_workspace_1",
+    )
+    .await
+    .expect("fixture setup");
     let orig_ws = fixture.orig_workspace.clone();
     let orig_output = fixture.orig_output.clone();
     let orig_group = orig_active_group(&orig_output);
