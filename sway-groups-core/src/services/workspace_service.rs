@@ -259,10 +259,6 @@ impl WorkspaceService {
         Ok(active.insert(self.db.conn()).await?)
     }
 
-    /// Add a workspace to a group.
-    ///
-    /// `con_id` materialises a workspace sway does not know yet by moving that
-    /// container into it; see [`Self::ensure_workspace`].
     /// File a workspace in a group, whether or not it is already filed there.
     ///
     /// The counterpart to [`add_to_group`](Self::add_to_group), which reports
@@ -311,6 +307,10 @@ impl WorkspaceService {
         }
     }
 
+    /// Add a workspace to a group.
+    ///
+    /// `con_id` materialises a workspace sway does not know yet by moving that
+    /// container into it; see [`Self::ensure_workspace`].
     pub async fn add_to_group(
         &self,
         workspace_name: &str,

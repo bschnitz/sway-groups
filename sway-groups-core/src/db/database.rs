@@ -57,11 +57,13 @@ impl DatabaseManager {
         // the rows have to go before the index can be built. Keeping the oldest
         // of each set preserves the original `created_at`.
         conn.execute_unprepared(
-            "DELETE FROM workspace_groups WHERE id NOT IN              (SELECT MIN(id) FROM workspace_groups GROUP BY workspace_id, group_id)",
+            "DELETE FROM workspace_groups WHERE id NOT IN \
+             (SELECT MIN(id) FROM workspace_groups GROUP BY workspace_id, group_id)",
         )
         .await?;
         conn.execute_unprepared(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_groups_membership              ON workspace_groups (workspace_id, group_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_groups_membership \
+             ON workspace_groups (workspace_id, group_id)",
         )
         .await?;
         info!("Ensured unique membership index on 'workspace_groups'");
