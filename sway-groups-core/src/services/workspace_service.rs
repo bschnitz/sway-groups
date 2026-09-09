@@ -10,8 +10,10 @@ use crate::db::entities::{
 };
 use crate::error::{Error, Result};
 use crate::sway::SwayIpcClient;
+use sea_orm::sea_query::OnConflict;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, DbErr, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter,
+    Set,
 };
 use tracing::info;
 
@@ -261,6 +263,54 @@ impl WorkspaceService {
     ///
     /// `con_id` materialises a workspace sway does not know yet by moving that
     /// container into it; see [`Self::ensure_workspace`].
+    /// File a workspace in a group, whether or not it is already filed there.
+    ///
+    /// The counterpart to [`add_to_group`](Self::add_to_group), which reports
+    /// an existing membership as a user error -- right for `workspace add`,
+    /// wrong for a caller whose goal is simply that the membership exists.
+    /// Restoring a membership races the daemon doing the same from an
+    /// `[[assign]]` rule, so the insert leaves the decision to the unique index
+    /// instead of checking first.
+    pub async fn ensure_in_group(&self, workspace_name: &str, group_name: &str) -> Result<()> {
+        let workspace = self.ensure_workspace(workspace_name, None).await?;
+
+        let group = GroupEntity::find_by_name(group_name)
+            .one(self.db.conn())
+            .await?
+            .ok_or_else(|| Error::GroupNotFound(group_name.to_string()))?;
+
+        let membership = workspace_group::ActiveModel {
+            workspace_id: Set(workspace.id),
+            group_id: Set(group.id),
+            created_at: Set(Some(chrono::Utc::now().naive_utc())),
+            ..Default::default()
+        };
+
+        match WorkspaceGroupEntity::insert(membership)
+            .on_conflict(
+                OnConflict::columns([
+                    workspace_group::Column::WorkspaceId,
+                    workspace_group::Column::GroupId,
+                ])
+                .do_nothing()
+                .to_owned(),
+            )
+            .exec(self.db.conn())
+            .await
+        {
+            // Nothing inserted because the membership was already there, which
+            // is the state the caller asked for.
+            Ok(_) | Err(DbErr::RecordNotInserted) => {
+                info!(
+                    "Workspace '{}' is in group '{}'",
+                    workspace_name, group_name
+                );
+                Ok(())
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
     pub async fn add_to_group(
         &self,
         workspace_name: &str,

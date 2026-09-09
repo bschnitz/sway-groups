@@ -2,6 +2,7 @@
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use sway_groups_config::SwaygConfig;
 use sway_groups_core::services::{
     GroupService, NavigationService, WaybarSyncService, WorkspaceService,
 };
@@ -377,6 +378,15 @@ enum NavAction {
         /// Move workspace to this output if it doesn't exist yet.
         #[arg(short, long)]
         output: Option<String>,
+        /// Group the workspace belongs to, for when the database no longer
+        /// knows. Repeatable, and takes precedence over the `[[assign]]` rules
+        /// in the config.
+        ///
+        /// Only consulted when the workspace has no group membership at all --
+        /// it restores a forgotten one, it does not move a workspace that is
+        /// still filed somewhere.
+        #[arg(short, long = "group", value_name = "GROUP")]
+        groups: Vec<String>,
     },
     /// Focus the previously focused workspace.
     Back,
@@ -399,15 +409,29 @@ enum ContainerAction {
     },
 }
 
-pub async fn run(
-    cli: Cli,
-    group_service: &GroupService,
-    workspace_service: &WorkspaceService,
-    waybar_sync: &WaybarSyncService,
-    nav_service: &NavigationService,
-    ipc_client: &SwayIpcClient,
-    db_path: PathBuf,
-) -> anyhow::Result<()> {
+/// Everything a command handler draws on, assembled once in `main`.
+///
+/// The handlers still take the pieces they need individually -- this only
+/// keeps the single entry point from growing an argument per collaborator.
+pub struct Context<'a> {
+    pub group_service: &'a GroupService,
+    pub workspace_service: &'a WorkspaceService,
+    pub waybar_sync: &'a WaybarSyncService,
+    pub nav_service: &'a NavigationService,
+    pub ipc_client: &'a SwayIpcClient,
+    pub config: &'a SwaygConfig,
+}
+
+pub async fn run(cli: Cli, ctx: &Context<'_>, db_path: PathBuf) -> anyhow::Result<()> {
+    let Context {
+        group_service,
+        workspace_service,
+        waybar_sync,
+        nav_service,
+        ipc_client,
+        config,
+    } = *ctx;
+
     match cli.command {
         Command::Group { action } => {
             run_group(
@@ -438,6 +462,7 @@ pub async fn run(
                 workspace_service,
                 waybar_sync,
                 ipc_client,
+                config,
             )
             .await?
         }
@@ -506,6 +531,7 @@ pub async fn run(
                 workspace_service,
                 waybar_sync,
                 ipc_client,
+                config,
             )
             .await?;
         }
@@ -1150,8 +1176,56 @@ async fn focus_away_from_hidden(
 /// `ensure_workspace_in_active_group`, which *adds* the workspace to the current
 /// group (pulling it in) instead of switching to where it already lives. A
 /// not-yet-existing workspace has no groups → no-op, so creation still works.
+/// Put a workspace back into the groups it is meant to live in.
+///
+/// sway deletes a workspace together with its last window, and the deletion
+/// takes the group memberships with it -- an emptied group is then pruned on
+/// top of that. So by the time something jumps back to such a workspace, the
+/// database no longer knows where it belongs, and the jump would recreate it
+/// in whatever group happens to be active: precisely the group the jump was
+/// supposed to leave.
+///
+/// Where it belongs is already written down. `explicit` wins when the caller
+/// passed `--group`; otherwise the `[[assign]]` rules answer it, the same
+/// rules the daemon uses to file a freshly created workspace. Groups are
+/// created as needed, because the pruning removes those too.
+///
+/// Returns the group names the workspace is now a member of, empty if nothing
+/// said where it belongs.
+async fn restore_workspace_groups(
+    workspace: &str,
+    explicit: &[String],
+    config: &SwaygConfig,
+    group_service: &GroupService,
+    workspace_service: &WorkspaceService,
+) -> anyhow::Result<Vec<String>> {
+    let wanted: Vec<String> = if explicit.is_empty() {
+        config
+            .matching_rules(workspace)
+            .iter()
+            .flat_map(|rule| rule.groups.iter().cloned())
+            .collect()
+    } else {
+        explicit.to_vec()
+    };
+
+    let mut restored: Vec<String> = Vec::new();
+    for group in wanted {
+        if restored.contains(&group) {
+            continue;
+        }
+        group_service.get_or_create_group(&group).await?;
+        workspace_service.ensure_in_group(workspace, &group).await?;
+        restored.push(group);
+    }
+
+    Ok(restored)
+}
+
 async fn switch_to_workspace_group(
     workspace: &str,
+    explicit_groups: &[String],
+    config: &SwaygConfig,
     group_service: &GroupService,
     workspace_service: &WorkspaceService,
     waybar_sync: &WaybarSyncService,
@@ -1159,10 +1233,28 @@ async fn switch_to_workspace_group(
 ) -> anyhow::Result<()> {
     let output = resolve_output(None, ipc_client)?;
     let active_group = group_service.get_active_group(&output).await?;
-    let ws_groups = workspace_service
+    let mut ws_groups = workspace_service
         .get_groups_for_workspace(workspace)
         .await
         .unwrap_or_default();
+
+    // Nothing on record: the workspace died with its last window, or has never
+    // existed. Ask the config where it belongs before falling through to the
+    // "leave the active group alone" case below.
+    //
+    // This has to happen before `set_active_group`, which focuses the group's
+    // default workspace when the group is empty -- restoring the membership
+    // first is what keeps the focus from being stranded there.
+    if ws_groups.is_empty() {
+        ws_groups = restore_workspace_groups(
+            workspace,
+            explicit_groups,
+            config,
+            group_service,
+            workspace_service,
+        )
+        .await?;
+    }
 
     let in_active = active_group
         .as_ref()
@@ -1187,6 +1279,7 @@ async fn run_nav(
     workspace_service: &WorkspaceService,
     waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
+    config: &SwaygConfig,
 ) -> anyhow::Result<()> {
     match action {
         NavAction::Next {
@@ -1242,6 +1335,7 @@ async fn run_nav(
         NavAction::Go {
             workspace,
             output: _,
+            groups,
         } => {
             let is_new_workspace = ipc_client
                 .get_workspaces()
@@ -1262,6 +1356,8 @@ async fn run_nav(
                 // jump *to* it instead of pulling it into the current group.
                 switch_to_workspace_group(
                     &workspace,
+                    &groups,
+                    config,
                     group_service,
                     workspace_service,
                     waybar_sync,
@@ -1692,6 +1788,7 @@ async fn run_notification(
     workspace_service: &WorkspaceService,
     waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
+    config: &SwaygConfig,
 ) -> anyhow::Result<()> {
     match action {
         NotificationAction::Go { no_delete_msg } => {
@@ -1717,6 +1814,8 @@ async fn run_notification(
             let ws_name = &record.workspace_name;
             switch_to_workspace_group(
                 ws_name,
+                &[],
+                config,
                 group_service,
                 workspace_service,
                 waybar_sync,

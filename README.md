@@ -347,6 +347,7 @@ swayg workspace show-hidden -t       # toggle the global show_hidden flag
 # Navigation (group-aware — skips hidden unless show_hidden=true)
 swayg nav next -w                    # next visible workspace, wrap
 swayg nav go 3                       # focus workspace 3 (works even if hidden)
+swayg nav go 3 -g dev                # ... and file it in "dev" if nothing knows where it belongs
 swayg nav back                       # previous focus
 
 # Container moves
@@ -383,6 +384,40 @@ So there are two honest ways to end up with a real workspace:
 
 `swayg container move <ws>` moves the focused container by default; pass
 `--con-id <id>` to move a specific one instead.
+
+### Jumping to a workspace that no longer exists
+
+Sway destroys a workspace together with its last window. The destruction takes
+the workspace's group memberships with it, and an emptied group is pruned on
+top of that -- so a workspace you use every day is regularly absent from the
+database, group and all.
+
+`swayg nav go` restores that before it jumps. Where the workspace belongs is
+already written down in the [assignment rules](#assignment-rules), the same
+rules the daemon uses to file a newly created workspace:
+
+```toml
+[[assign]]
+match = "3"
+groups = ["dev"]
+```
+
+With that rule in place, `swayg nav go 3` recreates the group if it is gone,
+files the workspace in it, makes it the active group, and only then focuses the
+workspace. Without it, the jump would focus the workspace while the output still
+stood in the group it came from: the window appears, but the bar and every
+group-relative binding still belong to the old group.
+
+For a caller that knows the group at runtime but has no rule for it, `--group`
+(repeatable) says the same thing on the command line:
+
+```sh
+swayg nav go 3 --group dev
+```
+
+Both are a fallback, not an override. They are consulted only when the
+workspace has no group membership at all -- a workspace that is still filed
+somewhere is never refiled.
 
 `swayg status` sample:
 
@@ -445,6 +480,13 @@ groups = ["dev"]
 If a rule sets `global = true` but specifies no `groups`, the workspace
 is still added to the active group (in addition to being global).
 Multiple rules can match the same workspace — their groups are merged.
+
+The rules answer two questions, not one. The daemon reads them when sway
+creates a workspace, and `swayg nav go` reads them when it is asked to jump to
+a workspace the database has forgotten — see [jumping to a workspace that no
+longer exists](#jumping-to-a-workspace-that-no-longer-exists). A rule is
+therefore worth writing for every workspace that sway's own `assign` fills:
+without one, both paths fall back to whatever group happens to be active.
 
 Runtime DB flags (separate from the config file):
 

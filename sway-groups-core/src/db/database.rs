@@ -47,6 +47,25 @@ impl DatabaseManager {
         conn.execute(&stmt).await?;
         info!("Ensured table 'workspace_groups' exists");
 
+        // A workspace is in a group or it is not -- twice means nothing. The
+        // CLI and the daemon both file a workspace (the daemon from an
+        // `[[assign]]` rule when sway creates it, the CLI when a jump finds the
+        // membership missing), so a check-then-insert in either of them can be
+        // overtaken by the other. Only the database can rule the duplicate out.
+        //
+        // Older databases predate the index and may still hold duplicates, so
+        // the rows have to go before the index can be built. Keeping the oldest
+        // of each set preserves the original `created_at`.
+        conn.execute_unprepared(
+            "DELETE FROM workspace_groups WHERE id NOT IN              (SELECT MIN(id) FROM workspace_groups GROUP BY workspace_id, group_id)",
+        )
+        .await?;
+        conn.execute_unprepared(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_groups_membership              ON workspace_groups (workspace_id, group_id)",
+        )
+        .await?;
+        info!("Ensured unique membership index on 'workspace_groups'");
+
         let mut stmt = schema.create_table_from_entity(OutputEntity);
         stmt.if_not_exists();
         conn.execute(&stmt).await?;

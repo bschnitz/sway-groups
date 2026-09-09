@@ -5,11 +5,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
-use sea_orm::{ActiveModelTrait, ModelTrait, Set};
+use sea_orm::sea_query::OnConflict;
+use sea_orm::{ActiveModelTrait, DbErr, EntityTrait, ModelTrait, Set};
 use sway_groups_core::db::DatabaseManager;
 use sway_groups_core::db::entities::{
     GroupEntity, OutputEntity, PendingWorkspaceEventEntity, WorkspaceEntity, WorkspaceGroupEntity,
-    workspace, workspace_group,
+    group, workspace, workspace_group,
 };
 use sway_groups_core::sway::SwayIpcClient;
 use tracing::{error, info, warn};
@@ -308,33 +309,75 @@ async fn handle_workspace_created(
     if has_rule_groups {
         // Assignment rules specify groups — use those instead of active group.
         for group_name in &rule_groups {
-            if let Some(group) = GroupEntity::find_by_name(group_name)
+            // The group may well be gone: it is pruned once its last workspace
+            // disappears, and a workspace disappears with its last window. A
+            // rule that names a group is a statement that the group should
+            // exist, so recreate it instead of dropping the assignment — the
+            // alternative is that the workspace silently lands in whatever
+            // group is active, which is what the rule exists to prevent.
+            let group = match GroupEntity::find_by_name(group_name)
                 .one(db.conn())
                 .await
                 .unwrap_or(None)
             {
-                let membership = workspace_group::ActiveModel {
-                    workspace_id: Set(ws.id),
-                    group_id: Set(group.id),
-                    created_at: Set(Some(now)),
-                    ..Default::default()
-                };
-                if let Err(e) = membership.insert(db.conn()).await {
+                Some(group) => Some(group),
+                None => {
+                    let active = group::ActiveModel {
+                        name: Set(group_name.clone()),
+                        created_at: Set(Some(now)),
+                        updated_at: Set(Some(now)),
+                        ..Default::default()
+                    };
+                    match active.insert(db.conn()).await {
+                        Ok(group) => {
+                            info!("Created group '{}' for a config rule", group_name);
+                            Some(group)
+                        }
+                        Err(e) => {
+                            error!("Failed to create group '{}': {}", group_name, e);
+                            None
+                        }
+                    }
+                }
+            };
+
+            let Some(group) = group else {
+                continue;
+            };
+
+            let membership = workspace_group::ActiveModel {
+                workspace_id: Set(ws.id),
+                group_id: Set(group.id),
+                created_at: Set(Some(now)),
+                ..Default::default()
+            };
+            // A jump to the same workspace files it from the same rule, so this
+            // insert races the CLI's. Leave the decision to the unique index.
+            let inserted = WorkspaceGroupEntity::insert(membership)
+                .on_conflict(
+                    OnConflict::columns([
+                        workspace_group::Column::WorkspaceId,
+                        workspace_group::Column::GroupId,
+                    ])
+                    .do_nothing()
+                    .to_owned(),
+                )
+                .exec(db.conn())
+                .await;
+
+            match inserted {
+                Ok(_) | Err(DbErr::RecordNotInserted) => {
+                    info!(
+                        "Workspace '{}' is in group '{}' (config rule)",
+                        ws_name, group_name
+                    );
+                }
+                Err(e) => {
                     error!(
                         "Failed to add workspace '{}' to group '{}': {}",
                         ws_name, group_name, e
                     );
-                } else {
-                    info!(
-                        "Added workspace '{}' to group '{}' (config rule)",
-                        ws_name, group_name
-                    );
                 }
-            } else {
-                warn!(
-                    "Config rule references group '{}' which does not exist, skipping",
-                    group_name
-                );
             }
         }
     } else {

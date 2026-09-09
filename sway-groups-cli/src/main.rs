@@ -68,16 +68,16 @@ async fn main() -> AnyResult<()> {
     let waybar_sync = WaybarSyncService::with_config(db.clone(), ipc_client.clone(), &config);
     let nav_service = NavigationService::new(db.clone(), ipc_client.clone());
 
-    commands::run(
-        cli,
-        &group_service,
-        &workspace_service,
-        &waybar_sync,
-        &nav_service,
-        &ipc_client,
-        db_path,
-    )
-    .await?;
+    let ctx = commands::Context {
+        group_service: &group_service,
+        workspace_service: &workspace_service,
+        waybar_sync: &waybar_sync,
+        nav_service: &nav_service,
+        ipc_client: &ipc_client,
+        config: &config,
+    };
+
+    commands::run(cli, &ctx, db_path).await?;
 
     Ok(())
 }
