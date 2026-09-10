@@ -364,7 +364,27 @@ swayg config dump                    # print the default config TOML
 swayg -v ...                         # verbose
 swayg --db /tmp/test.db ...          # alternate DB file
 swayg --config ~/my.toml ...         # alternate config file
+swayg --json status                  # machine-readable answer (see below)
 ```
+
+### Machine-readable output (`--json`)
+
+The read commands `group list`, `workspace list`, `workspace groups` and
+`status` also answer as JSON:
+
+```bash
+swayg --json workspace list
+swayg workspace list --json          # the flag is global, position is free
+```
+
+It exists so that programs stop parsing the human text. The text form is meant
+for eyes and is free to be reworded; the JSON is the interface, and it carries
+the full shape regardless of the presentation flags — `--plain`, `--groups` and
+`--flatten` only shape the text and are ignored in JSON. `--visible` is not a
+presentation flag but a filter, so it does change the JSON: it answers with the
+names of the workspaces the output currently shows.
+
+Every other command keeps printing its one-line confirmation.
 
 ### Adding a workspace sway does not know yet
 

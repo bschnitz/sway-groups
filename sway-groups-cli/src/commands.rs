@@ -2,6 +2,8 @@
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+
+use crate::report::{self, ListStyle};
 use sway_groups_config::SwaygConfig;
 use sway_groups_core::services::{
     GroupService, NavigationService, WaybarSyncService, WorkspaceService,
@@ -23,6 +25,13 @@ pub struct Cli {
     /// Path to the config file. Overrides the default location.
     #[arg(short, long, env = "SWAYG_CONFIG")]
     pub config: Option<PathBuf>,
+
+    /// Print the read commands' answers as JSON instead of text.
+    ///
+    /// Applies to `group list`, `workspace list`, `workspace groups` and
+    /// `status`; every other command keeps its confirmation line.
+    #[arg(long, global = true)]
+    pub json: bool,
 
     #[command(subcommand)]
     command: Command,
@@ -432,6 +441,8 @@ pub async fn run(cli: Cli, ctx: &Context<'_>, db_path: PathBuf) -> anyhow::Resul
         config,
     } = *ctx;
 
+    let json = cli.json;
+
     match cli.command {
         Command::Group { action } => {
             run_group(
@@ -440,6 +451,7 @@ pub async fn run(cli: Cli, ctx: &Context<'_>, db_path: PathBuf) -> anyhow::Resul
                 workspace_service,
                 waybar_sync,
                 ipc_client,
+                json,
             )
             .await?
         }
@@ -451,6 +463,7 @@ pub async fn run(cli: Cli, ctx: &Context<'_>, db_path: PathBuf) -> anyhow::Resul
                 nav_service,
                 waybar_sync,
                 ipc_client,
+                json,
             )
             .await?
         }
@@ -518,7 +531,14 @@ pub async fn run(cli: Cli, ctx: &Context<'_>, db_path: PathBuf) -> anyhow::Resul
             run_repair(workspace_service, group_service, waybar_sync, ipc_client).await?;
         }
         Command::Status => {
-            run_status(group_service, workspace_service, waybar_sync, ipc_client).await?;
+            run_status(
+                group_service,
+                workspace_service,
+                waybar_sync,
+                ipc_client,
+                json,
+            )
+            .await?;
         }
         Command::Config { action } => {
             run_config(action)?;
@@ -570,24 +590,12 @@ async fn run_group(
     workspace_service: &WorkspaceService,
     waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
+    json: bool,
 ) -> anyhow::Result<()> {
     match action {
         GroupAction::List { output } => {
             let groups = group_service.list_groups(output.as_deref()).await?;
-            if groups.is_empty() {
-                println!("No groups found.");
-            } else {
-                for group in &groups {
-                    println!("Group \"{}\":", group.name);
-                    if group.workspaces.is_empty() {
-                        println!("  (empty)");
-                    } else {
-                        for ws in &group.workspaces {
-                            println!("  - {}", ws);
-                        }
-                    }
-                }
-            }
+            report::emit(json, &report::GroupList::new(&groups))?;
         }
         GroupAction::Create { name } => {
             group_service.create_group(&name).await?;
@@ -711,6 +719,7 @@ async fn run_workspace(
     nav_service: &NavigationService,
     waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
+    json: bool,
 ) -> anyhow::Result<()> {
     match action {
         WorkspaceAction::List {
@@ -721,6 +730,9 @@ async fn run_workspace(
             groups,
             flatten,
         } => {
+            // --visible is a filter, not a format: it asks a different
+            // question (what does this output show right now) and answers with
+            // names alone.
             if visible {
                 let output_name = output
                     .as_deref()
@@ -730,93 +742,47 @@ async fn run_workspace(
                 let workspaces = workspace_service
                     .list_visible_workspaces(&output_name)
                     .await?;
-                if workspaces.is_empty() {
-                    if !plain {
-                        println!("No visible workspaces found.");
-                    }
-                } else {
-                    for ws in &workspaces {
-                        println!("{}", ws);
-                    }
-                }
+                report::emit(
+                    json,
+                    &report::VisibleWorkspaces {
+                        output: output_name,
+                        workspaces,
+                        plain,
+                    },
+                )?;
             } else {
                 let workspaces = workspace_service
                     .list_workspaces(output.as_deref(), group.as_deref())
                     .await?;
-                if workspaces.is_empty() {
-                    if !plain {
-                        println!("No workspaces found.");
+                // Only asked when no --group narrows the list: with one, the
+                // active group is not what the workspaces are measured against.
+                let active_group = if group.is_none() && !workspaces.is_empty() {
+                    let output_name = output
+                        .as_deref()
+                        .map(|s| s.to_string())
+                        .or_else(|| ipc_client.get_primary_output().ok());
+                    match output_name {
+                        Some(ref out) => group_service.get_active_group(out).await.ok(),
+                        None => None,
                     }
                 } else {
-                    let active_group_name = if group.is_none() {
-                        let output_name = output
-                            .as_deref()
-                            .map(|s| s.to_string())
-                            .or_else(|| ipc_client.get_primary_output().ok());
-                        match output_name {
-                            Some(ref out) => group_service.get_active_group(out).await.ok(),
-                            None => None,
-                        }
-                    } else {
-                        None
-                    };
+                    None
+                };
 
-                    if !plain {
-                        let group_label = group.as_deref().unwrap_or("active");
-                        let output_label = output.as_deref().unwrap_or("all");
-                        println!(
-                            "Workspaces in group \"{}\" on \"{}\":",
-                            group_label, output_label
-                        );
-                    }
-                    for ws in &workspaces {
-                        if plain && groups && flatten {
-                            let mut sorted_groups: Vec<&String> = ws.groups.iter().collect();
-                            sorted_groups.sort_by(|a, b| {
-                                if let Some(ref active) = active_group_name {
-                                    if active.as_deref() == Some(a.as_str()) {
-                                        return std::cmp::Ordering::Less;
-                                    }
-                                    if active.as_deref() == Some(b.as_str()) {
-                                        return std::cmp::Ordering::Greater;
-                                    }
-                                }
-                                a.cmp(b)
-                            });
-                            for g in &sorted_groups {
-                                println!("{}│{}", ws.name, g);
-                            }
-                        } else if plain && groups {
-                            let groups_str = ws.groups.join(",");
-                            if groups_str.is_empty() {
-                                println!("{}│", ws.name);
-                            } else {
-                                println!("{}│{}", ws.name, groups_str);
-                            }
-                        } else if plain {
-                            println!("{}", ws.name);
-                        } else {
-                            let status = if ws.is_global {
-                                "(global)"
-                            } else if let Some(ref active) = active_group_name {
-                                if ws
-                                    .groups
-                                    .iter()
-                                    .any(|g| Some(g.as_str()) == active.as_deref())
-                                {
-                                    "(visible)"
-                                } else if !ws.groups.is_empty() {
-                                    "(hidden)"
-                                } else {
-                                    "(visible)"
-                                }
-                            } else {
-                                ""
-                            };
-                            println!("  {:20} {}", ws.name, status);
-                        }
-                    }
-                }
+                report::emit(
+                    json,
+                    &report::WorkspaceList::new(
+                        &workspaces,
+                        output.as_deref(),
+                        group.as_deref(),
+                        active_group.as_ref(),
+                        ListStyle {
+                            plain,
+                            groups,
+                            flatten,
+                        },
+                    ),
+                )?;
             }
         }
         WorkspaceAction::Add {
@@ -1008,19 +974,7 @@ async fn run_workspace(
             let groups = workspace_service
                 .get_groups_for_workspace(&workspace)
                 .await?;
-            if groups.is_empty() {
-                println!("Workspace \"{}\" is not in any group.", workspace);
-            } else {
-                println!(
-                    "Workspace \"{}\" is in groups: {}",
-                    workspace,
-                    groups
-                        .iter()
-                        .map(|g| format!("\"{}\"", g))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
+            report::emit(json, &report::WorkspaceGroups { workspace, groups })?;
         }
         WorkspaceAction::Hide {
             workspace,
@@ -1644,22 +1598,18 @@ async fn run_status(
     workspace_service: &WorkspaceService,
     _waybar_sync: &WaybarSyncService,
     ipc_client: &SwayIpcClient,
+    json: bool,
 ) -> anyhow::Result<()> {
     let outputs = ipc_client.get_outputs()?;
 
-    let show_hidden = workspace_service.get_show_hidden().await.unwrap_or(false);
-    println!("show_hidden_workspaces = {}", show_hidden);
+    let show_hidden_workspaces = workspace_service.get_show_hidden().await.unwrap_or(false);
+    let mut per_output = Vec::new();
 
     for output in &outputs {
         let active_group = group_service
             .get_active_group(&output.name)
             .await
             .unwrap_or(None);
-        println!(
-            "{}: active group = \"{}\"",
-            output.name,
-            active_group.as_deref().unwrap_or("(none)")
-        );
 
         let visible = workspace_service
             .list_visible_workspaces(&output.name)
@@ -1733,34 +1683,23 @@ async fn run_status(
         global_ws.sort();
         global_ws.dedup();
 
-        println!(
-            "  Visible:  {}",
-            if visible_names.is_empty() {
-                "(none)".to_string()
-            } else {
-                visible_names.join(", ")
-            }
-        );
-        println!(
-            "  Inactive: {}",
-            if inactive.is_empty() {
-                "(none)".to_string()
-            } else {
-                inactive.join(", ")
-            }
-        );
-        println!(
-            "  Hidden:   {}",
-            if hidden_names.is_empty() {
-                "(none)".to_string()
-            } else {
-                hidden_names.join(", ")
-            }
-        );
-        if !global_ws.is_empty() {
-            println!("  Global:   {}", global_ws.join(", "));
-        }
+        per_output.push(report::OutputStatus {
+            name: output.name.clone(),
+            active_group,
+            visible: visible_names,
+            inactive,
+            hidden: hidden_names,
+            global: global_ws,
+        });
     }
+
+    report::emit(
+        json,
+        &report::Status {
+            show_hidden_workspaces,
+            outputs: per_output,
+        },
+    )?;
 
     Ok(())
 }

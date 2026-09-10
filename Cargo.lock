@@ -2797,6 +2797,7 @@ dependencies = [
  "clap",
  "directories",
  "serde",
+ "serde_json",
  "sway-groups-config",
  "sway-groups-core",
  "thiserror 2.0.18",

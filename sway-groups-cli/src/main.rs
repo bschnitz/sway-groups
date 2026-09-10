@@ -1,6 +1,7 @@
 //! swayg CLI - Sway workspace groups management.
 
 mod commands;
+mod report;
 
 use anyhow::Result as AnyResult;
 use clap::Parser;
