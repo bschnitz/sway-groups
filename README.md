@@ -561,7 +561,8 @@ swayg init
 
 ## Troubleshooting
 
-- `RUST_LOG=debug swayg <cmd>` — verbose tracing to stderr
+- `swayg --verbose <cmd>` — debug tracing to stderr (without it, stderr shows
+  warnings only; the log file always keeps info and above)
 - Log files under `~/.local/share/swayg/`
 - `swayg repair` — reconcile DB with sway (removes stale workspaces etc.)
 - `swayg sync --all --init-bars --init-bars-retries 20 --init-bars-delay-ms 500`

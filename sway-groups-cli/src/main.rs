@@ -9,7 +9,9 @@ use directories::ProjectDirs;
 use std::path::PathBuf;
 use tracing::info;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{
+    EnvFilter, Layer, filter::LevelFilter, layer::SubscriberExt, util::SubscriberInitExt,
+};
 
 use sway_groups_core::db::DatabaseManager;
 use sway_groups_core::services::{
@@ -45,8 +47,20 @@ async fn main() -> AnyResult<()> {
     std::fs::create_dir_all(&data_dir).ok();
 
     let file_appender = RollingFileAppender::new(Rotation::DAILY, data_dir, "swayg");
+    // The terminal gets warnings only: a keybinding or a bar script runs swayg
+    // and does not want a line per call. `--verbose` puts everything there, and
+    // the log file keeps the full record either way.
+    let stderr_level = if cli.verbose {
+        LevelFilter::TRACE
+    } else {
+        LevelFilter::WARN
+    };
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_filter(stderr_level),
+        )
         .with(tracing_subscriber::fmt::layer().with_writer(file_appender))
         .with(
             EnvFilter::from_default_env()

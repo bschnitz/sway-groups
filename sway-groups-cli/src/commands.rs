@@ -14,7 +14,7 @@ use sway_groups_core::sway::SwayIpcClient;
 #[command(name = "swayg")]
 #[command(author, version, about = "Sway workspace groups management CLI")]
 pub struct Cli {
-    /// Enable verbose logging (info/debug to stderr).
+    /// Print debug logging to stderr (without it, only warnings go there).
     #[arg(short, long)]
     pub verbose: bool,
 
