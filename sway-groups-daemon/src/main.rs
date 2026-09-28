@@ -1,4 +1,5 @@
 mod dbus_monitor;
+mod focus;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -76,7 +77,7 @@ async fn main() -> Result<()> {
         .with_ansi(false)
         .init();
 
-    let config = sway_groups_config::SwaygConfig::load()?;
+    let config = Arc::new(sway_groups_config::SwaygConfig::load()?);
 
     let paused = Arc::new(AtomicBool::new(false));
 
@@ -120,6 +121,8 @@ async fn main() -> Result<()> {
         dbus_monitor::run(ipc_for_dbus).await;
     });
 
+    let follower = focus::FocusFollower::new(db_path.clone(), ipc.clone(), Arc::clone(&config));
+
     info!("Subscribing to sway workspace and window events");
     let mut event_stream = ipc.subscribe(&["workspace", "window"])?;
 
@@ -135,7 +138,7 @@ async fn main() -> Result<()> {
                     continue;
                 }
                 if event_type == sway_groups_core::sway::SwayEventType::Workspace as u32 {
-                    handle_workspace_event(&db_path, &ipc, &payload, &config).await;
+                    handle_workspace_event(&db_path, &ipc, &payload, &config, &follower).await;
                 } else if event_type == sway_groups_core::sway::SwayEventType::Window as u32 {
                     handle_window_event(&db_path, &ipc, &payload, &config).await;
                 }
@@ -153,6 +156,7 @@ async fn handle_workspace_event(
     ipc: &SwayIpcClient,
     payload: &[u8],
     config: &sway_groups_config::SwaygConfig,
+    follower: &focus::FocusFollower,
 ) {
     let event: serde_json::Value = match serde_json::from_slice(payload) {
         Ok(v) => v,
@@ -163,6 +167,15 @@ async fn handle_workspace_event(
     };
 
     let change = event.get("change").and_then(|v| v.as_str()).unwrap_or("");
+    if change == "focus" {
+        let old = event
+            .get("old")
+            .and_then(|o| o.get("name"))
+            .and_then(|n| n.as_str())
+            .map(str::to_string);
+        follower.focused(old);
+        return;
+    }
     if change != "init" && change != "new" && change != "empty" {
         return;
     }

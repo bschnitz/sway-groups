@@ -65,8 +65,8 @@ The binary `swayg` lands in `~/.cargo/bin/`. Make sure that's in your `PATH`.
 
 ### 2. Install and start the daemon
 
-The daemon watches sway IPC events (workspace creation/deletion, urgency
-changes) and keeps the DB and bar in sync.
+The daemon watches sway IPC events (workspace creation/deletion, focus and
+urgency changes) and keeps the DB and bar in sync.
 
 **Install:**
 
@@ -438,6 +438,27 @@ swayg nav go 3 --group dev
 Both are a fallback, not an override. They are consulted only when the
 workspace has no group membership at all -- a workspace that is still filed
 somewhere is never refiled.
+
+### Focus changes that do not go through swayg
+
+Not every focus change is a `swayg` command. A `swaymsg workspace 3`, a
+launcher that runs `swaymsg '[app_id=…] focus'`, a click on a notification that
+takes you to its window: sway moves the focus and the database never hears of
+it. If the workspace belongs to a group other than the active one, the bar would
+go on listing the group you left.
+
+The daemon therefore follows the focus. When the focused workspace is not in its
+output's active group, it makes one of the workspace's groups active — the one
+you visited last — and redraws both bars. It changes the database only; sway is
+already where it should be, so the daemon issues no sway command of its own. A
+global workspace, or one that is also in the active group, leaves the active
+group alone. The group you left remembers the workspace you left it on, so
+selecting it again takes you back there.
+
+`swayg`'s own commands move the focus as well. So that the daemon never undoes
+one halfway through, it waits until the focus has been still for 150 ms, then
+compares where sway's focus is _now_ with the database, and does nothing while a
+`swayg` command has a workspace event pending.
 
 `swayg status` sample:
 
