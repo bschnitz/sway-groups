@@ -91,7 +91,7 @@ Type=simple
 ExecStart=%h/.cargo/bin/swayg-daemon
 Restart=on-failure
 RestartSec=5
-Environment=RUST_LOG=sway_groups_daemon=info
+Environment=RUST_LOG=swayg_daemon=info
 
 [Install]
 WantedBy=graphical-session.target
@@ -126,12 +126,13 @@ Add to your sway `config`:
 exec swayg-daemon
 ```
 
-The daemon runs in the foreground and exits when sway exits. Logs go to
-stderr (visible in sway's journal or log file). Set `RUST_LOG=info` for
-verbose output:
+The daemon runs in the foreground and exits when sway exits. It logs at `info`
+to `~/.local/share/swayg/swayg-daemon.log.YYYY-MM-DD` (see
+[Storage locations](#storage-locations)). For more detail, raise the level; the
+log target is the binary's name, `swayg_daemon`, not the crate's:
 
 ```
-exec RUST_LOG=sway_groups_daemon=info swayg-daemon
+exec RUST_LOG=swayg_daemon=debug swayg-daemon
 ```
 
 ### 3. Install waybar-dynamic
@@ -536,7 +537,8 @@ Runtime DB flags (separate from the config file):
 ## Storage locations
 
 - SQLite DB: `~/.local/share/swayg/swayg.db`
-- Log files: `~/.local/share/swayg/swayg.YYYY-MM-DD` (daily rotation)
+- Log files (daily rotation): `~/.local/share/swayg/swayg.YYYY-MM-DD` for the
+  CLI, `~/.local/share/swayg/swayg-daemon.log.YYYY-MM-DD` for the daemon
 - Config (optional): `~/.config/swayg/config.toml`
 
 Reset all state:

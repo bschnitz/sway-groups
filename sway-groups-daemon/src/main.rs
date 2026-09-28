@@ -69,10 +69,13 @@ async fn main() -> Result<()> {
     std::fs::create_dir_all(&db_parent)?;
 
     let file_appender = tracing_appender::rolling::daily(&db_parent, "swayg-daemon.log");
+    // Events are filed under the binary's name, `swayg_daemon`, not the
+    // crate's. A filter naming the crate matches nothing, and the log stays
+    // empty while the daemon runs fine.
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("swayg_daemon=info"));
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env().add_directive("sway_groups_daemon=info".parse()?),
-        )
+        .with_env_filter(filter)
         .with_writer(file_appender)
         .with_ansi(false)
         .init();
