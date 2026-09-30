@@ -1144,6 +1144,10 @@ async fn focus_away_from_hidden(
 /// rules the daemon uses to file a freshly created workspace. Groups are
 /// created as needed, because the pruning removes those too.
 ///
+/// A rule with `global = true` restores the global flag as well, before any
+/// group: marking a workspace global drops its memberships, so the other order
+/// would undo them again. The daemon does the same for a workspace sway creates.
+///
 /// Returns the group names the workspace is now a member of, empty if nothing
 /// said where it belongs.
 async fn restore_workspace_groups(
@@ -1153,6 +1157,14 @@ async fn restore_workspace_groups(
     group_service: &GroupService,
     workspace_service: &WorkspaceService,
 ) -> anyhow::Result<Vec<String>> {
+    if config
+        .matching_rules(workspace)
+        .iter()
+        .any(|rule| rule.global)
+    {
+        workspace_service.ensure_global(workspace).await?;
+    }
+
     let wanted: Vec<String> = if explicit.is_empty() {
         config
             .matching_rules(workspace)

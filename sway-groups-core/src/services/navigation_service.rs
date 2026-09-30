@@ -431,6 +431,12 @@ impl NavigationService {
             None => return Ok(()),
         };
 
+        // A global workspace is visible in every group; filing it into one
+        // would quietly turn it into a member of the active group.
+        if ws.is_global {
+            return Ok(());
+        }
+
         let output_name = self
             .ipc_client
             .get_primary_output()

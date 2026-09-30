@@ -636,6 +636,20 @@ impl WorkspaceService {
         Ok(())
     }
 
+    /// Make sure a workspace is on record and global, creating the row if needed.
+    ///
+    /// The counterpart to [`ensure_in_group`](Self::ensure_in_group) for an
+    /// `[[assign]]` rule with `global = true`: a jump that recreates such a
+    /// workspace must restore the flag, since the daemon leaves a workspace the
+    /// CLI creates to the CLI.
+    pub async fn ensure_global(&self, workspace_name: &str) -> Result<()> {
+        let workspace = self.ensure_workspace(workspace_name, None).await?;
+        if workspace.is_global {
+            return Ok(());
+        }
+        self.set_global(workspace_name, true).await
+    }
+
     /// Set workspace global status.
     pub async fn set_global(&self, workspace_name: &str, global: bool) -> Result<()> {
         let workspace = WorkspaceEntity::find_by_name(workspace_name)

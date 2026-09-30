@@ -440,6 +440,9 @@ Both are a fallback, not an override. They are consulted only when the
 workspace has no group membership at all -- a workspace that is still filed
 somewhere is never refiled.
 
+A rule with `global = true` is restored the same way: `nav go` marks the
+recreated workspace global again instead of filing it into the active group.
+
 ### Focus changes that do not go through swayg
 
 Not every focus change is a `swayg` command. A `swaymsg workspace 3`, a
