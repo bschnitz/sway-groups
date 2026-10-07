@@ -146,9 +146,13 @@ async fn main() -> Result<()> {
                     handle_window_event(&db_path, &ipc, &payload, &config).await;
                 }
             }
+            // A read error means the event socket is gone, typically because
+            // sway restarted. Retrying the dead socket never recovers, and the
+            // new sway listens on another one (a new SWAYSOCK), so exit and let
+            // systemd restart the daemon with the session's current environment.
             Err(e) => {
-                error!("Error reading sway event: {}", e);
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                error!("Lost the sway event stream, exiting: {}", e);
+                return Err(e.into());
             }
         }
     }

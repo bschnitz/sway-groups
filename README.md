@@ -102,6 +102,15 @@ systemctl --user daemon-reload
 systemctl --user enable --now swayg-daemon.service
 ```
 
+When sway restarts, the daemon loses its connection and exits with an error;
+`Restart=on-failure` starts it again against the new sway. It finds that sway
+through `SWAYSOCK` in the systemd user environment, so export it from your sway
+`config`:
+
+```
+exec systemctl --user import-environment SWAYSOCK
+```
+
 The unit is `WantedBy=graphical-session.target`. For sway users, make sure
 the target actually gets activated. Create
 `~/.config/systemd/user/sway-session.target`:
