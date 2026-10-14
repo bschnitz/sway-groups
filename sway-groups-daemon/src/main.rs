@@ -10,9 +10,10 @@ use sea_orm::sea_query::OnConflict;
 use sea_orm::{ActiveModelTrait, DbErr, EntityTrait, ModelTrait, Set};
 use sway_groups_core::db::DatabaseManager;
 use sway_groups_core::db::entities::{
-    GroupEntity, OutputEntity, PendingWorkspaceEventEntity, WorkspaceEntity, WorkspaceGroupEntity,
-    group, workspace, workspace_group,
+    GroupEntity, PendingWorkspaceEventEntity, WorkspaceEntity, WorkspaceGroupEntity, group,
+    workspace, workspace_group,
 };
+use sway_groups_core::services::GroupService;
 use sway_groups_core::sway::SwayIpcClient;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
@@ -276,7 +277,7 @@ async fn handle_workspace_created(
                     "Workspace '{}' exists but is orphaned (no group, not global), adopting",
                     ws_name
                 );
-                adopt_into_active_group(db, ws.id, &ws_output, now).await;
+                adopt_into_active_group(db, ipc, config, ws.id, &ws_output, now).await;
                 let waybar_sync = sway_groups_core::services::WaybarSyncService::with_config(
                     db.clone(),
                     ipc.clone(),
@@ -284,6 +285,9 @@ async fn handle_workspace_created(
                 );
                 if let Err(e) = waybar_sync.update_waybar().await {
                     warn!("Failed to update waybar: {}", e);
+                }
+                if let Err(e) = waybar_sync.update_waybar_groups().await {
+                    warn!("Failed to update waybar groups: {}", e);
                 }
             }
         }
@@ -401,52 +405,46 @@ async fn handle_workspace_created(
             }
         }
     } else {
-        // No rule groups — fall back to adding to the active group.
-        let output_model = OutputEntity::find_by_name(&ws_output)
-            .one(db.conn())
-            .await
-            .unwrap_or(None);
-
-        let active_group = output_model.as_ref().and_then(|o| o.active_group.clone());
-
-        if let Some(ref ag) = active_group {
-            if let Some(group) = GroupEntity::find_by_name(ag)
-                .one(db.conn())
-                .await
-                .unwrap_or(None)
-            {
-                let membership = workspace_group::ActiveModel {
-                    workspace_id: Set(ws.id),
-                    group_id: Set(group.id),
-                    created_at: Set(Some(now)),
-                    ..Default::default()
-                };
-                if let Err(e) = membership.insert(db.conn()).await {
-                    error!(
-                        "Failed to add workspace '{}' to group '{}': {}",
-                        ws_name, ag, e
-                    );
-                    return;
-                }
-                info!("Added external workspace '{}' to group '{}'", ws_name, ag);
-            } else {
-                warn!(
-                    "Active group '{}' not found for output '{}', workspace '{}' not assigned to any group",
-                    ag, ws_output, ws_name
+        // No rule groups — fall back to adding to the active group (or the
+        // default group, should the active one be gone).
+        let groups = GroupService::with_config(db.clone(), ipc.clone(), config);
+        let group = match groups.resolve_active_group(&ws_output).await {
+            Ok(group) => group,
+            Err(e) => {
+                error!(
+                    "No group for output '{}', workspace '{}' not assigned: {}",
+                    ws_output, ws_name, e
                 );
+                return;
             }
-        } else {
-            info!(
-                "No active group for output '{}', workspace '{}' not assigned",
-                ws_output, ws_name
+        };
+        let membership = workspace_group::ActiveModel {
+            workspace_id: Set(ws.id),
+            group_id: Set(group.id),
+            created_at: Set(Some(now)),
+            ..Default::default()
+        };
+        if let Err(e) = membership.insert(db.conn()).await {
+            error!(
+                "Failed to add workspace '{}' to group '{}': {}",
+                ws_name, group.name, e
             );
+            return;
         }
+        info!(
+            "Added external workspace '{}' to group '{}'",
+            ws_name, group.name
+        );
     }
 
     let waybar_sync =
         sway_groups_core::services::WaybarSyncService::with_config(db.clone(), ipc.clone(), config);
     if let Err(e) = waybar_sync.update_waybar().await {
         warn!("Failed to update waybar: {}", e);
+    }
+    // The fallback may have created the default group.
+    if let Err(e) = waybar_sync.update_waybar_groups().await {
+        warn!("Failed to update waybar groups: {}", e);
     }
 }
 
@@ -530,36 +528,36 @@ async fn handle_window_event(
     }
 }
 
-/// Add an existing workspace to the active group of the given output.
+/// Add an existing workspace to the active group of the given output (or the
+/// default group, should the active one be gone).
 async fn adopt_into_active_group(
     db: &DatabaseManager,
+    ipc: &SwayIpcClient,
+    config: &sway_groups_config::SwaygConfig,
     ws_id: i32,
     ws_output: &str,
     now: chrono::NaiveDateTime,
 ) {
-    let output_model = OutputEntity::find_by_name(ws_output)
-        .one(db.conn())
-        .await
-        .unwrap_or(None);
-
-    let active_group = output_model.as_ref().and_then(|o| o.active_group.clone());
-
-    if let Some(ref ag) = active_group
-        && let Some(group) = GroupEntity::find_by_name(ag)
-            .one(db.conn())
-            .await
-            .unwrap_or(None)
-    {
-        let membership = workspace_group::ActiveModel {
-            workspace_id: Set(ws_id),
-            group_id: Set(group.id),
-            created_at: Set(Some(now)),
-            ..Default::default()
-        };
-        if let Err(e) = membership.insert(db.conn()).await {
-            error!("Failed to adopt workspace into group '{}': {}", ag, e);
-        } else {
-            info!("Adopted orphaned workspace into group '{}'", ag);
+    let groups = GroupService::with_config(db.clone(), ipc.clone(), config);
+    let group = match groups.resolve_active_group(ws_output).await {
+        Ok(group) => group,
+        Err(e) => {
+            error!("No group for output '{}' to adopt into: {}", ws_output, e);
+            return;
         }
+    };
+    let membership = workspace_group::ActiveModel {
+        workspace_id: Set(ws_id),
+        group_id: Set(group.id),
+        created_at: Set(Some(now)),
+        ..Default::default()
+    };
+    if let Err(e) = membership.insert(db.conn()).await {
+        error!(
+            "Failed to adopt workspace into group '{}': {}",
+            group.name, e
+        );
+    } else {
+        info!("Adopted orphaned workspace into group '{}'", group.name);
     }
 }

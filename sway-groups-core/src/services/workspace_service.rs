@@ -1241,6 +1241,12 @@ impl WorkspaceService {
             0
         });
 
+        // Pruning may have deleted an output's active group; without this the
+        // daemon would find no group for the next new workspace.
+        if let Err(e) = group_service.reset_dangling_active_groups().await {
+            tracing::warn!("reset_dangling_active_groups failed: {}", e);
+        }
+
         info!(
             "repair: removed {} stale workspaces, added {} new workspaces, pruned {} empty groups",
             removed_ws, added_ws, removed_groups

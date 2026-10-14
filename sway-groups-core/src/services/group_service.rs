@@ -560,6 +560,57 @@ impl GroupService {
         Ok(())
     }
 
+    /// The group that is active on `output`, falling back to the default group
+    /// when the output has none or names a group that no longer exists (e.g.
+    /// after a repair pruned it). The fallback creates the default group if
+    /// needed and records it as the output's active group, DB-only.
+    pub async fn resolve_active_group(&self, output: &str) -> Result<group::Model> {
+        let active = OutputEntity::find_by_name(output)
+            .one(self.db.conn())
+            .await?
+            .and_then(|o| o.active_group);
+
+        if let Some(ref name) = active
+            && let Some(group) = GroupEntity::find_by_name(name).one(self.db.conn()).await?
+        {
+            return Ok(group);
+        }
+
+        let group = self.get_or_create_group(&self.default_group).await?;
+        self.upsert_output_active_group(output, &group.name).await?;
+        match active {
+            Some(name) => warn!(
+                "Active group '{}' of output '{}' no longer exists, fell back to default group '{}'",
+                name, output, group.name
+            ),
+            None => info!(
+                "Output '{}' had no active group, set default group '{}'",
+                output, group.name
+            ),
+        }
+        Ok(group)
+    }
+
+    /// Point every output whose active group no longer exists at the default
+    /// group. Returns the number of outputs changed.
+    pub async fn reset_dangling_active_groups(&self) -> Result<usize> {
+        let mut reset = 0;
+        for out in OutputEntity::find().all(self.db.conn()).await? {
+            let Some(ref name) = out.active_group else {
+                continue;
+            };
+            if GroupEntity::find_by_name(name)
+                .one(self.db.conn())
+                .await?
+                .is_none()
+            {
+                self.resolve_active_group(&out.name).await?;
+                reset += 1;
+            }
+        }
+        Ok(reset)
+    }
+
     // -----------------------------------------------------------------------
     // Navigation: next / prev group
     // -----------------------------------------------------------------------
