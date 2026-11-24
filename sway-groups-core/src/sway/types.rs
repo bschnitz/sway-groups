@@ -36,6 +36,7 @@ pub enum SwayEventType {
     BindingInfo = 0x80000005,
     Shutdown = 0x80000006,
     Tick = 0x80000007,
+    BarStateUpdate = 0x80000014,
 }
 
 /// Workspace representation from sway.

@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::db::DatabaseManager;
 use crate::db::entities::{GroupEntity, OutputEntity};
 use crate::error::Result;
+use crate::services::collapse::CollapseRules;
 use crate::sway::SwayIpcClient;
 use crate::sway::waybar_client::{
     WAYBAR_GROUPS_INSTANCE_NAME, WAYBAR_INSTANCE_NAME, WaybarClient, WaybarMessage, WidgetSpec,
@@ -42,6 +43,7 @@ pub struct WaybarSyncService {
     groups_display: BarDisplay,
     workspaces_show_global: bool,
     groups_show_empty: bool,
+    collapse: CollapseRules,
 }
 
 impl WaybarSyncService {
@@ -60,6 +62,7 @@ impl WaybarSyncService {
             groups_display: BarDisplay::All,
             workspaces_show_global: true,
             groups_show_empty: true,
+            collapse: CollapseRules::default(),
         }
     }
 
@@ -95,7 +98,19 @@ impl WaybarSyncService {
             groups_display: config.bar.groups.display,
             workspaces_show_global: config.bar.workspaces.show_global,
             groups_show_empty: config.bar.groups.show_empty,
+            collapse: CollapseRules::new(&config.bar.workspaces.collapse),
         }
+    }
+
+    /// Set the `bar_expanded` DB flag, which turns the collapse rules off
+    /// until it is cleared.
+    pub async fn set_bar_expanded(&self, value: bool) -> Result<()> {
+        crate::db::queries::set_setting(
+            self.db.conn(),
+            crate::db::entities::setting::BAR_EXPANDED,
+            if value { "true" } else { "false" },
+        )
+        .await
     }
 
     pub async fn update_waybar(&self) -> Result<()> {
@@ -250,6 +265,16 @@ impl WaybarSyncService {
                     seen.insert(sway_ws.name.clone());
                 }
             }
+        }
+
+        let expanded = crate::db::queries::get_bool_setting(
+            self.db.conn(),
+            crate::db::entities::setting::BAR_EXPANDED,
+            false,
+        )
+        .await?;
+        if !expanded {
+            widgets = self.collapse.fold(widgets);
         }
 
         widgets.sort_by(|a, b| a.label.cmp(&b.label));

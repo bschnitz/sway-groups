@@ -66,7 +66,7 @@ impl SwayIpcClient {
     }
 
     /// Subscribe to sway events. Returns an EventStream that yields events.
-    /// Events: "workspace", "output", "mode", "window", "barconfig_update", "binding", "shutdown", "tick"
+    /// Events: "workspace", "output", "mode", "window", "barconfig_update", "binding", "shutdown", "tick", "bar_state_update"
     pub fn subscribe(&self, events: &[&str]) -> Result<EventStream> {
         let mut stream = self.connect()?;
 

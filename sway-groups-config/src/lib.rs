@@ -63,6 +63,20 @@ pub struct BarSectionConfig {
     pub display: BarDisplay,
     pub show_global: bool,
     pub show_empty: bool,
+    /// Fold rules for the workspaces bar (ignored for the groups bar).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collapse: Vec<CollapseRule>,
+}
+
+/// Shows every workspace whose name matches `pattern` as a single widget
+/// labelled `label` in the workspaces bar. Purely visual: navigation is
+/// unchanged, and holding the bar modifier shows the workspaces again.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CollapseRule {
+    /// Regex matched against the workspace name (unanchored, like `[[assign]]`).
+    pub pattern: String,
+    /// Text of the folded widget; the number of workspaces is appended.
+    pub label: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -90,12 +104,14 @@ impl Default for BarConfig {
                 display: BarDisplay::All,
                 show_global: true,
                 show_empty: true,
+                collapse: Vec::new(),
             },
             groups: BarSectionConfig {
                 socket_instance: "swayg_groups".to_string(),
                 display: BarDisplay::All,
                 show_global: true,
                 show_empty: true,
+                collapse: Vec::new(),
             },
         }
     }
@@ -108,6 +124,7 @@ impl Default for BarSectionConfig {
             display: BarDisplay::All,
             show_global: true,
             show_empty: true,
+            collapse: Vec::new(),
         }
     }
 }

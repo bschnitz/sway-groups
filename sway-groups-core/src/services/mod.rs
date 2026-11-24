@@ -1,5 +1,6 @@
 //! Services module for sway-groups.
 
+pub mod collapse;
 pub mod group_service;
 pub mod navigation_service;
 pub mod visibility_service;

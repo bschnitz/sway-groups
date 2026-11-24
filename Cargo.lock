@@ -2824,6 +2824,7 @@ version = "0.4.1"
 dependencies = [
  "anyhow",
  "chrono",
+ "regex",
  "sea-orm",
  "serde",
  "serde_json",

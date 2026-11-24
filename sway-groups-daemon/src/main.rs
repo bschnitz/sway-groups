@@ -1,5 +1,6 @@
 mod dbus_monitor;
 mod focus;
+mod modifier;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -127,8 +128,12 @@ async fn main() -> Result<()> {
 
     let follower = focus::FocusFollower::new(db_path.clone(), ipc.clone(), Arc::clone(&config));
 
-    info!("Subscribing to sway workspace and window events");
-    let mut event_stream = ipc.subscribe(&["workspace", "window"])?;
+    let modifier =
+        modifier::ModifierWatcher::new(db_path.clone(), ipc.clone(), Arc::clone(&config));
+    modifier.reset().await;
+
+    info!("Subscribing to sway workspace, window and bar_state_update events");
+    let mut event_stream = ipc.subscribe(&["workspace", "window", "bar_state_update"])?;
 
     loop {
         if paused_loop.load(Ordering::Relaxed) {
@@ -145,6 +150,9 @@ async fn main() -> Result<()> {
                     handle_workspace_event(&db_path, &ipc, &payload, &config, &follower).await;
                 } else if event_type == sway_groups_core::sway::SwayEventType::Window as u32 {
                     handle_window_event(&db_path, &ipc, &payload, &config).await;
+                } else if event_type == sway_groups_core::sway::SwayEventType::BarStateUpdate as u32
+                {
+                    modifier.bar_state_update(&payload);
                 }
             }
             // A read error means the event socket is gone, typically because

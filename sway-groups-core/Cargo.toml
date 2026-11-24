@@ -23,6 +23,7 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 chrono.workspace = true
+regex = "1"
 sway-groups-config = { version = "0.4.1", path = "../sway-groups-config" }
 
 [features]

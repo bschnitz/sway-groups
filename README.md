@@ -192,8 +192,10 @@ state-changing command.
 Widgets carry CSS classes you can style in `~/.config/waybar/style.css`:
 
 - **`swayg_workspaces`**: `focused`, `visible`, `urgent`, `global`,
-  `hidden` (only when `show_hidden_workspaces = true`). Classes combine,
-  e.g. `.focused.global`, `.hidden.global.focused`.
+  `hidden` (only when `show_hidden_workspaces = true`), `collapsed` (a
+  widget standing for several workspaces, see
+  [collapsing workspaces](#collapsing-workspaces)). Classes combine,
+  e.g. `.focused.global`, `.hidden.global.focused`, `.collapsed.focused`.
 - **`swayg_groups`**: `active`, `urgent` (a workspace in the group is
   urgent).
 
@@ -503,6 +505,8 @@ Current sections:
 - `[bar.workspaces]` / `[bar.groups]` — per-bar tuning: socket instance
   name, display mode (`all` | `active` | `none`), `show_global`,
   `show_empty`
+- `[[bar.workspaces.collapse]]` — fold workspaces into one bar widget (see
+  [collapsing workspaces](#collapsing-workspaces))
 - `[[assign]]` — workspace assignment rules (see below)
 
 ### Assignment rules
@@ -542,9 +546,55 @@ longer exists](#jumping-to-a-workspace-that-no-longer-exists). A rule is
 therefore worth writing for every workspace that sway's own `assign` fills:
 without one, both paths fall back to whatever group happens to be active.
 
+### Collapsing workspaces
+
+A group that collects many similar workspaces — one per ticket, say — fills
+the bar with them. A collapse rule shows all workspaces whose name matches a
+pattern as a single widget, labelled with the rule's label and the number of
+workspaces:
+
+```toml
+# "20_ALPHA-1", "20_ALPHA-2", "20_BETA-7" → one widget "20_Tickets (3)"
+[[bar.workspaces.collapse]]
+pattern = "^20_(ALPHA|BETA)"
+label = "20_Tickets"
+```
+
+- `pattern` — regex matched against the workspace name. Like `[[assign]]`
+  regexes it is unanchored; use `^` and `$` to pin it.
+- `label` — text of the folded widget; ` (<count>)` is appended.
+
+The first matching rule wins. The folded widget carries the class
+`collapsed`, takes over `focused`, `visible` and `urgent` from its
+workspaces, lists them in its tooltip, and a click on it goes to the focused
+one (or the first). Only the bar changes: `swayg nav`, `group` and every other
+command still see each workspace on its own.
+
+**Showing them while the modifier is held.** Holding `Mod4` for 300 ms
+expands every fold; releasing it folds them again. The delay keeps the bar
+still during ordinary `$mod+…` bindings. sway reports the modifier only for a
+bar in `mode hide`, which a docked waybar is not, so add an invisible second
+bar to the sway config whose only job is to produce these events:
+
+```
+bar {
+    id modwatch
+    mode hide
+    hidden_state hide
+    modifier Mod4
+    swaybar_command true
+}
+```
+
+`swayg-daemon` listens for the bar's `bar_state_update` events and records the
+state as the runtime flag `bar_expanded`, so a `swayg` command that redraws the
+bar while the modifier is held keeps it expanded.
+
 Runtime DB flags (separate from the config file):
 
 - `show_hidden_workspaces` — toggled via `swayg workspace show-hidden`
+- `bar_expanded` — set by the daemon while the bar modifier is held; turns
+  the collapse rules off
 
 ## Storage locations
 
