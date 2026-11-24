@@ -4,7 +4,9 @@ use crate::db::DatabaseManager;
 use crate::db::entities::{GroupEntity, OutputEntity};
 use crate::error::Result;
 use crate::sway::SwayIpcClient;
-use crate::sway::waybar_client::{WaybarClient, WaybarMessage, WidgetSpec};
+use crate::sway::waybar_client::{
+    WAYBAR_GROUPS_INSTANCE_NAME, WAYBAR_INSTANCE_NAME, WaybarClient, WaybarMessage, WidgetSpec,
+};
 use sea_orm::EntityTrait;
 use tracing::info;
 
@@ -66,9 +68,24 @@ impl WaybarSyncService {
         ipc_client: SwayIpcClient,
         config: &sway_groups_config::SwaygConfig,
     ) -> Self {
-        let waybar_client =
-            WaybarClient::with_instance_name(&config.bar.workspaces.socket_instance);
-        let groups_client = WaybarClient::with_instance_name(&config.bar.groups.socket_instance);
+        // A `[bar.workspaces]` table without `socket_instance` (one that only
+        // adds collapse rules, say) deserialises to an empty name; that means
+        // the default instance, not a socket called `waybar-dynamic-.sock`.
+        let instance = |name: &str, default: &str| {
+            if name.is_empty() {
+                default.to_string()
+            } else {
+                name.to_string()
+            }
+        };
+        let waybar_client = WaybarClient::with_instance_name(&instance(
+            &config.bar.workspaces.socket_instance,
+            WAYBAR_INSTANCE_NAME,
+        ));
+        let groups_client = WaybarClient::with_instance_name(&instance(
+            &config.bar.groups.socket_instance,
+            WAYBAR_GROUPS_INSTANCE_NAME,
+        ));
         Self {
             db,
             ipc_client,
