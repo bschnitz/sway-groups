@@ -102,8 +102,8 @@ impl WaybarSyncService {
         }
     }
 
-    /// Set the `bar_expanded` DB flag, which turns the collapse rules off
-    /// until it is cleared.
+    /// Set the `bar_expanded` DB flag, which unfolds the collapse rules with
+    /// `expand_on_modifier` until it is cleared.
     pub async fn set_bar_expanded(&self, value: bool) -> Result<()> {
         crate::db::queries::set_setting(
             self.db.conn(),
@@ -273,9 +273,7 @@ impl WaybarSyncService {
             false,
         )
         .await?;
-        if !expanded {
-            widgets = self.collapse.fold(widgets);
-        }
+        widgets = self.collapse.fold(widgets, expanded);
 
         widgets.sort_by(|a, b| a.label.cmp(&b.label));
 

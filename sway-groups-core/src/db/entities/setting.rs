@@ -24,3 +24,9 @@ pub const SHOW_HIDDEN_WORKSPACES: &str = "show_hidden_workspaces";
 /// shows every workspace instead of folding them by the collapse rules. The
 /// daemon sets it while the bar modifier is held.
 pub const BAR_EXPANDED: &str = "bar_expanded";
+
+/// Key of the workspace focused last among those of the collapse rule
+/// `label`; `nav next`/`nav prev` go there when they stop on its fold.
+pub fn collapse_last_key(label: &str) -> String {
+    format!("collapse_last:{}", label)
+}

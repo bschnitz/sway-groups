@@ -15,6 +15,7 @@ use sway_groups_core::db::entities::{
     workspace, workspace_group,
 };
 use sway_groups_core::services::GroupService;
+use sway_groups_core::services::collapse::CollapseRules;
 use sway_groups_core::sway::SwayIpcClient;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
@@ -127,6 +128,7 @@ async fn main() -> Result<()> {
     });
 
     let follower = focus::FocusFollower::new(db_path.clone(), ipc.clone(), Arc::clone(&config));
+    let collapse = CollapseRules::new(&config.bar.workspaces.collapse);
 
     let modifier =
         modifier::ModifierWatcher::new(db_path.clone(), ipc.clone(), Arc::clone(&config));
@@ -147,7 +149,8 @@ async fn main() -> Result<()> {
                     continue;
                 }
                 if event_type == sway_groups_core::sway::SwayEventType::Workspace as u32 {
-                    handle_workspace_event(&db_path, &ipc, &payload, &config, &follower).await;
+                    handle_workspace_event(&db_path, &ipc, &payload, &config, &follower, &collapse)
+                        .await;
                 } else if event_type == sway_groups_core::sway::SwayEventType::Window as u32 {
                     handle_window_event(&db_path, &ipc, &payload, &config).await;
                 } else if event_type == sway_groups_core::sway::SwayEventType::BarStateUpdate as u32
@@ -173,6 +176,7 @@ async fn handle_workspace_event(
     payload: &[u8],
     config: &sway_groups_config::SwaygConfig,
     follower: &focus::FocusFollower,
+    collapse: &CollapseRules,
 ) {
     let event: serde_json::Value = match serde_json::from_slice(payload) {
         Ok(v) => v,
@@ -190,6 +194,13 @@ async fn handle_workspace_event(
             .and_then(|n| n.as_str())
             .map(str::to_string);
         follower.focused(old);
+        if let Some(current) = event
+            .get("current")
+            .and_then(|c| c.get("name"))
+            .and_then(|n| n.as_str())
+        {
+            remember_fold_member(db_path, collapse, current).await;
+        }
         return;
     }
     if change != "init" && change != "new" && change != "empty" {
@@ -222,6 +233,24 @@ async fn handle_workspace_event(
     }
 
     handle_workspace_created(&db, ipc, &ws_name, ws_info, config).await;
+}
+
+/// Remember `ws_name` as the workspace focused last of its fold, for `nav
+/// next`/`nav prev` to return to.
+async fn remember_fold_member(db_path: &Path, collapse: &CollapseRules, ws_name: &str) {
+    if !collapse.matches(ws_name) {
+        return;
+    }
+    let db = match DatabaseManager::new(db_path.to_path_buf()).await {
+        Ok(db) => db,
+        Err(e) => {
+            error!("Failed to open DB '{}': {}", db_path.display(), e);
+            return;
+        }
+    };
+    if let Err(e) = collapse.remember(db.conn(), ws_name).await {
+        warn!("Failed to remember '{}' for its fold: {}", ws_name, e);
+    }
 }
 
 async fn handle_workspace_created(

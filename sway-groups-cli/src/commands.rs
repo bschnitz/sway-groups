@@ -345,6 +345,9 @@ enum WorkspaceAction {
 #[derive(Subcommand)]
 enum NavAction {
     /// Focus the next visible workspace.
+    ///
+    /// The workspaces of a collapse rule with `step_through = false` count as
+    /// one stop: the one of them focused last.
     Next {
         /// Target output (default: focused output).
         #[arg(short, long)]
@@ -357,12 +360,18 @@ enum NavAction {
         all_outputs: bool,
     },
     /// Focus the next visible workspace on the same output.
+    ///
+    /// The workspaces of a collapse rule with `step_through = false` count as
+    /// one stop: the one of them focused last.
     NextOnOutput {
         /// Wrap around past the last workspace on this output.
         #[arg(short, long)]
         wrap: bool,
     },
     /// Focus the previous visible workspace.
+    ///
+    /// The workspaces of a collapse rule with `step_through = false` count as
+    /// one stop: the one of them focused last.
     Prev {
         /// Target output (default: focused output).
         #[arg(short, long)]
@@ -375,6 +384,9 @@ enum NavAction {
         all_outputs: bool,
     },
     /// Focus the previous visible workspace on the same output.
+    ///
+    /// The workspaces of a collapse rule with `step_through = false` count as
+    /// one stop: the one of them focused last.
     PrevOnOutput {
         /// Wrap around past the first workspace on this output.
         #[arg(short, long)]

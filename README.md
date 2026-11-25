@@ -563,15 +563,28 @@ label = "20_Tickets"
 - `pattern` — regex matched against the workspace name. Like `[[assign]]`
   regexes it is unanchored; use `^` and `$` to pin it.
 - `label` — text of the folded widget; ` (<count>)` is appended.
+- `expand_on_modifier` — whether holding the bar modifier shows the
+  workspaces one by one again (default `true`, see below). Turn it off for a
+  fold whose workspaces you never want to pick from the bar, so it stays
+  quiet while `$mod` is held for other bindings.
+- `step_through` — whether `swayg nav next`/`nav prev` stop on every
+  workspace of the fold (default `true`). With `false` they stop once on the
+  fold, at its place in the bar, and go to the workspace of it focused last
+  (its first one if none is remembered). This keeps the fold from swallowing
+  a dozen key presses on the way past it; the workspace you work on in it is
+  still one press away.
 
 The first matching rule wins. The folded widget carries the class
 `collapsed`, takes over `focused`, `visible` and `urgent` from its
 workspaces, lists them in its tooltip, and a click on it goes to the focused
-one (or the first). Only the bar changes: `swayg nav`, `group` and every other
-command still see each workspace on its own.
+one (or the first). Apart from `step_through`, only the bar changes: `group`
+and every other command still see each workspace on its own.
+
+`swayg-daemon` remembers the workspace focused last of each fold, however the
+focus got there, as the runtime setting `collapse_last:<label>`.
 
 **Showing them while the modifier is held.** Holding `Mod4` for 300 ms
-expands every fold; releasing it folds them again. The delay keeps the bar
+expands every fold with `expand_on_modifier`; releasing it folds them again. The delay keeps the bar
 still during ordinary `$mod+…` bindings. sway reports the modifier only for a
 bar in `mode hide`, which a docked waybar is not, so add an invisible second
 bar to the sway config whose only job is to produce these events:
@@ -593,8 +606,11 @@ bar while the modifier is held keeps it expanded.
 Runtime DB flags (separate from the config file):
 
 - `show_hidden_workspaces` — toggled via `swayg workspace show-hidden`
-- `bar_expanded` — set by the daemon while the bar modifier is held; turns
-  the collapse rules off
+- `bar_expanded` — set by the daemon while the bar modifier is held; unfolds
+  the collapse rules with `expand_on_modifier`
+- `collapse_last:<label>` — set by the daemon to the workspace of a fold
+  focused last; where `nav next`/`nav prev` enter a fold without
+  `step_through`
 
 ## Storage locations
 

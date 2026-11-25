@@ -6,18 +6,39 @@ use crate::db::entities::{
     focus_history, workspace, workspace_group,
 };
 use crate::error::{Error, Result};
+use crate::services::collapse::{self, CollapseRules};
 use crate::sway::SwayIpcClient;
 use sea_orm::{ActiveModelTrait, IntoActiveModel, ModelTrait, Set};
+use sway_groups_config::SwaygConfig;
 use tracing::info;
 
 pub struct NavigationService {
     db: DatabaseManager,
     ipc_client: SwayIpcClient,
+    collapse: CollapseRules,
 }
 
 impl NavigationService {
     pub fn new(db: DatabaseManager, ipc_client: SwayIpcClient) -> Self {
-        Self { db, ipc_client }
+        Self {
+            db,
+            ipc_client,
+            collapse: CollapseRules::default(),
+        }
+    }
+
+    /// Like [`Self::new`], with the collapse rules of the workspaces bar:
+    /// `nav next`/`nav prev` stop once on a fold that is not stepped through.
+    pub fn with_config(
+        db: DatabaseManager,
+        ipc_client: SwayIpcClient,
+        config: &SwaygConfig,
+    ) -> Self {
+        Self {
+            db,
+            ipc_client,
+            collapse: CollapseRules::new(&config.bar.workspaces.collapse),
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -107,7 +128,7 @@ impl NavigationService {
             output, visible, current.name, wrap
         );
 
-        let next = find_next(&visible, &current.name, wrap);
+        let next = self.step(&visible, &current.name, wrap, true).await?;
         if let Some(ref target) = next {
             self.navigate_to_workspace(target).await?;
         } else {
@@ -128,7 +149,7 @@ impl NavigationService {
             output, visible, current.name, wrap
         );
 
-        let next = find_next(&visible, &current.name, wrap);
+        let next = self.step(&visible, &current.name, wrap, true).await?;
         if let Some(ref target) = next {
             self.navigate_to_workspace(target).await?;
         } else {
@@ -145,7 +166,7 @@ impl NavigationService {
             visible, current.name, wrap
         );
 
-        let next = find_next(&visible, &current.name, wrap);
+        let next = self.step(&visible, &current.name, wrap, true).await?;
         if let Some(ref target) = next {
             self.navigate_to_workspace(target).await?;
         } else {
@@ -162,7 +183,7 @@ impl NavigationService {
             output, visible, current.name, wrap
         );
 
-        let prev = find_prev(&visible, &current.name, wrap);
+        let prev = self.step(&visible, &current.name, wrap, false).await?;
         if let Some(ref target) = prev {
             self.navigate_to_workspace(target).await?;
         } else {
@@ -183,7 +204,7 @@ impl NavigationService {
             output, visible, current.name, wrap
         );
 
-        let prev = find_prev(&visible, &current.name, wrap);
+        let prev = self.step(&visible, &current.name, wrap, false).await?;
         if let Some(ref target) = prev {
             self.navigate_to_workspace(target).await?;
         } else {
@@ -200,7 +221,7 @@ impl NavigationService {
             visible, current.name, wrap
         );
 
-        let prev = find_prev(&visible, &current.name, wrap);
+        let prev = self.step(&visible, &current.name, wrap, false).await?;
         if let Some(ref target) = prev {
             self.navigate_to_workspace(target).await?;
         } else {
@@ -333,6 +354,22 @@ impl NavigationService {
     // -----------------------------------------------------------------------
     // Private helpers
     // -----------------------------------------------------------------------
+
+    /// The workspace after (`forward`) or before `current` among `visible`,
+    /// with the folds that are not stepped through taken as one stop each.
+    async fn step(
+        &self,
+        visible: &[String],
+        current: &str,
+        wrap: bool,
+        forward: bool,
+    ) -> Result<Option<String>> {
+        let stops = self.collapse.nav_stops(visible);
+        match collapse::neighbour(&stops, current, wrap, forward) {
+            Some(stop) => Ok(Some(self.collapse.target(self.db.conn(), stop).await?)),
+            None => Ok(None),
+        }
+    }
 
     /// Whether sway currently has a workspace of this name.
     fn workspace_exists_in_sway(&self, workspace_name: &str) -> Result<bool> {
@@ -547,23 +584,5 @@ impl NavigationService {
             }
         }
         Ok(workspace_name.to_string())
-    }
-}
-
-fn find_next(items: &[String], current: &str, wrap: bool) -> Option<String> {
-    let idx = items.iter().position(|i| i == current);
-    match idx {
-        Some(i) if i + 1 < items.len() => Some(items[i + 1].clone()),
-        Some(_) if wrap => items.first().cloned(),
-        _ => None,
-    }
-}
-
-fn find_prev(items: &[String], current: &str, wrap: bool) -> Option<String> {
-    let idx = items.iter().position(|i| i == current);
-    match idx {
-        Some(i) if i > 0 => Some(items[i - 1].clone()),
-        Some(_) if wrap => items.last().cloned(),
-        _ => None,
     }
 }

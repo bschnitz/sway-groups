@@ -1,6 +1,7 @@
 //! Collapse rules fold matching workspaces into one widget of the workspaces
 //! bar, and the `bar_expanded` flag (set by the daemon while the bar modifier
-//! is held) shows them again — also when a swayg command redraws the bar.
+//! is held) shows them again — also when a swayg command redraws the bar —
+//! except for a rule without `expand_on_modifier`.
 //!
 //! The test stands in for waybar-dynamic: it listens on the socket swayg
 //! pushes the widgets to and reads what arrives.
@@ -15,6 +16,8 @@ use sway_groups_tests::common::{DummyWindowHandle, TestFixture, db_exec};
 const WS_A: &str = "zz_test_fold_46_a";
 const WS_B: &str = "zz_test_fold_46_b";
 const LABEL: &str = "zz_fold_46";
+const WS_FIXED: &str = "zz_test_fixed_46_c";
+const LABEL_FIXED: &str = "zz_fixed_46";
 
 /// Labels of the widgets in the next `set_all` message on the socket.
 fn next_labels(messages: &mpsc::Receiver<String>) -> Vec<String> {
@@ -38,8 +41,10 @@ async fn test_46_bar_collapse() {
     std::fs::write(
         &config_path,
         format!(
-            "[[bar.workspaces.collapse]]\npattern = \"^zz_test_fold_46_\"\nlabel = \"{}\"\n",
-            LABEL
+            "[[bar.workspaces.collapse]]\npattern = \"^zz_test_fold_46_\"\nlabel = \"{}\"\n\n\
+             [[bar.workspaces.collapse]]\npattern = \"^zz_test_fixed_46_\"\nlabel = \"{}\"\n\
+             expand_on_modifier = false\n",
+            LABEL, LABEL_FIXED
         ),
     )
     .expect("write temp config");
@@ -52,6 +57,9 @@ async fn test_46_bar_collapse() {
     let _win_b = DummyWindowHandle::spawn(WS_B).expect("spawn dummy window B");
     std::thread::sleep(Duration::from_millis(500));
     fixture.swayg(&["container", "move", WS_B]).success();
+    let _win_fixed = DummyWindowHandle::spawn(WS_FIXED).expect("spawn dummy window C");
+    std::thread::sleep(Duration::from_millis(500));
+    fixture.swayg(&["container", "move", WS_FIXED]).success();
 
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR is set");
     let socket = std::path::Path::new(&runtime_dir).join("waybar-dynamic-swayg_workspaces.sock");
@@ -114,6 +122,12 @@ async fn test_46_bar_collapse() {
     assert!(
         !labels.contains(&folded),
         "with bar_expanded the fold is gone (labels: {:?})",
+        labels
+    );
+    let fixed = format!("{} (1)", LABEL_FIXED);
+    assert!(
+        labels.contains(&fixed) && !labels.iter().any(|l| l == WS_FIXED),
+        "a rule without expand_on_modifier stays folded (labels: {:?})",
         labels
     );
 

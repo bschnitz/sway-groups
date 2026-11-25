@@ -69,14 +69,24 @@ pub struct BarSectionConfig {
 }
 
 /// Shows every workspace whose name matches `pattern` as a single widget
-/// labelled `label` in the workspaces bar. Purely visual: navigation is
-/// unchanged, and holding the bar modifier shows the workspaces again.
+/// labelled `label` in the workspaces bar.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CollapseRule {
     /// Regex matched against the workspace name (unanchored, like `[[assign]]`).
     pub pattern: String,
     /// Text of the folded widget; the number of workspaces is appended.
     pub label: String,
+    /// Holding the bar modifier shows the workspaces one by one again.
+    #[serde(default = "default_true")]
+    pub expand_on_modifier: bool,
+    /// `nav next`/`nav prev` stop on every workspace; when off they stop once
+    /// on the fold, on the workspace of it focused last.
+    #[serde(default = "default_true")]
+    pub step_through: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

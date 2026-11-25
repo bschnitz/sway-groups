@@ -81,7 +81,7 @@ async fn main() -> AnyResult<()> {
     let group_service = GroupService::with_config(db.clone(), ipc_client.clone(), &config);
     let workspace_service = WorkspaceService::with_config(db.clone(), ipc_client.clone(), &config);
     let waybar_sync = WaybarSyncService::with_config(db.clone(), ipc_client.clone(), &config);
-    let nav_service = NavigationService::new(db.clone(), ipc_client.clone());
+    let nav_service = NavigationService::with_config(db.clone(), ipc_client.clone(), &config);
 
     let ctx = commands::Context {
         group_service: &group_service,
